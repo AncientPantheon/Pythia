@@ -1,0 +1,26 @@
+{
+  "name": "@ancientpantheon/pythia",
+  "version": "0.0.0",
+  "description": "Pythia gateway service — the private Hono runtime that serves the pooled, failover-safe read API. Deployed, never published.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "hono": "^4.12.0",
+    "@hono/node-server": "^2.0.0",
+    "@stoachain/stoa-core": "4.3.6",
+    "@stoachain/ouronet-core": "4.3.6"
+  },
+  "license": "UNLICENSED"
+}

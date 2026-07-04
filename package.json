@@ -1,0 +1,32 @@
+{
+  "name": "pythia",
+  "version": "0.0.0",
+  "description": "Pythia — the all-seeing read gateway of the AncientPantheon. Workspace root for @ancientpantheon/pythia-client (consumer SDK) and the private apps/pythia gateway service.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace=@ancientpantheon/pythia-client && npm run build --workspace=@ancientpantheon/pythia",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces",
+    "test:watch": "npm run test:watch --workspaces",
+    "clean": "npm run clean --workspaces"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AncientPantheon/Pythia.git"
+  },
+  "license": "UNLICENSED"
+}

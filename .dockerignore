@@ -1,0 +1,18 @@
+# Build the image from source only — never copy host build artifacts or the
+# dev toolchain footprint into the build context.
+node_modules
+**/node_modules
+dist
+**/dist
+build
+coverage
+.git
+.gitignore
+*.log
+npm-debug.log*
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+.bee
+**/*.test.ts

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pythia — StoaChain read gateway</title>
+    <meta
+      name="description"
+      content="Pythia — the all-seeing, failover-safe read gateway of the AncientPantheon. Live source health + ecosystem connectors."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <h1 class="hero-title">Pythia</h1>
+        <p class="hero-subtitle">
+          The all-seeing read gateway of the AncientPantheon — a pooled,
+          failover-safe StoaChain read API. Read-only: it never signs, never
+          broadcasts.
+        </p>
+      </header>
+
+      <section class="panel" aria-labelledby="sources-heading">
+        <h2 id="sources-heading" class="panel-title">Source health</h2>
+        <p class="panel-note">Polls <code>/healthz</code> every 15 seconds.</p>
+        <div id="sources" class="sources" aria-live="polite">
+          <div class="source-row">
+            <span class="dot" data-color="grey"></span>
+            <span class="source-label">checking…</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="connectors-heading">
+        <h2 id="connectors-heading" class="panel-title">Connectors</h2>
+        <p class="panel-note">Ecosystem apps that read through Pythia.</p>
+        <div id="connectors" class="connectors"></div>
+      </section>
+
+      <footer class="foot">
+        <span
+          >Read-only gateway ·
+          <a href="/healthz">/healthz</a> ·
+          <a href="/api/v1/connectors">/api/v1/connectors</a></span
+        >
+      </footer>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

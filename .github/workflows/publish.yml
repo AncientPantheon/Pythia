@@ -1,0 +1,143 @@
+name: Publish to npmjs.org
+
+# Triggered by pushing a version tag (e.g. v0.1.0).
+#
+# Only @ancientpantheon/pythia-client publishes. The gateway service
+# (apps/pythia) is private and is NEVER referenced in a publish step.
+#
+# The tag version MUST equal packages/pythia-client/package.json's version,
+# and the client's README + CHANGELOG must reference that version — otherwise
+# the workflow fails before npm sees a single byte.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    name: Publish pythia-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # `contents: write` lets `gh release create` publish a Release.
+    # `id-token: write` enables `npm publish --provenance` (OIDC -> SLSA).
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Plain Node setup — no registry-url so setup-node doesn't write its own
+      # scoped .npmrc. We write the root .npmrc ourselves in the next step.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Write .npmrc with auth token
+        run: |
+          cat > .npmrc <<EOF
+          //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
+          @ancientpantheon:registry=https://registry.npmjs.org
+          always-auth=true
+          EOF
+          echo "--- .npmrc structure (token redacted) ---"
+          sed 's|=.*|=***|' .npmrc
+
+      - name: Install dependencies
+        run: npm install --prefer-offline --no-audit --no-fund
+
+      # Belt-and-suspenders: typecheck + build + tests gate the publish so a
+      # broken client never makes it to the registry.
+      - name: Typecheck + Build + Test
+        run: |
+          npm run typecheck
+          npm run build
+          npm test
+
+      # ------------------------------------------------------------------
+      # Tag-version match: the tag MUST equal the client package version.
+      # If it doesn't, the tag is wrong — fail before npm sees a byte.
+      # ------------------------------------------------------------------
+      - name: Verify tag matches pythia-client version
+        id: version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          CLIENT_VERSION=$(node -p "require('./packages/pythia-client/package.json').version")
+          echo "Tag version:    $TAG_VERSION"
+          echo "Client version: $CLIENT_VERSION"
+          if [ "$TAG_VERSION" != "$CLIENT_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match @ancientpantheon/pythia-client version $CLIENT_VERSION."
+            echo "::error::Bump packages/pythia-client/package.json to $TAG_VERSION before tagging."
+            exit 1
+          fi
+          echo "TAG_VERSION=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # README + CHANGELOG version-parity gate (three greps).
+      # ------------------------------------------------------------------
+      - name: Verify README + CHANGELOG mention the publish version
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.TAG_VERSION }}"
+          PKG_DIR="packages/pythia-client"
+
+          # README: ## Status block must reference the version.
+          if ! grep -qE "\`${TAG_VERSION}\`[[:space:]]+on public npmjs" "${PKG_DIR}/README.md"; then
+            echo "::error::${PKG_DIR}/README.md ## Status block does not lead with version ${TAG_VERSION}"
+            echo "::error::Expected: a line containing \`${TAG_VERSION}\` on public npmjs"
+            exit 1
+          fi
+          echo "✓ ${PKG_DIR}/README.md ## Status block references ${TAG_VERSION}"
+
+          # README: version history must contain a **vX.Y.Z** entry.
+          if ! grep -qE "^\*\*v${TAG_VERSION}\*\*[[:space:]]" "${PKG_DIR}/README.md"; then
+            echo "::error::${PKG_DIR}/README.md version history is missing a **v${TAG_VERSION}** paragraph"
+            exit 1
+          fi
+          echo "✓ ${PKG_DIR}/README.md version history contains **v${TAG_VERSION}** entry"
+
+          # CHANGELOG: first ## heading must be the version.
+          FIRST_HEADING=$(grep -m1 '^## ' "${PKG_DIR}/CHANGELOG.md")
+          if ! echo "$FIRST_HEADING" | grep -qE "^## ${TAG_VERSION}[[:space:]]"; then
+            echo "::error::${PKG_DIR}/CHANGELOG.md's first ## heading does not match version ${TAG_VERSION}"
+            echo "::error::First heading found: ${FIRST_HEADING}"
+            exit 1
+          fi
+          echo "✓ ${PKG_DIR}/CHANGELOG.md leads with: ${FIRST_HEADING}"
+          echo "All documentation gates passed at v${TAG_VERSION}."
+
+      - name: Verify npm auth
+        run: |
+          echo "Checking npm whoami..."
+          npm whoami || echo "::warning::whoami failed — publish may too"
+
+      # ------------------------------------------------------------------
+      # Idempotent publish — skip if the version already exists on npm.
+      # ------------------------------------------------------------------
+      - name: Publish @ancientpantheon/pythia-client to npmjs.org
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.TAG_VERSION }}"
+          if npm view @ancientpantheon/pythia-client@${TAG_VERSION} version >/dev/null 2>&1; then
+            echo "@ancientpantheon/pythia-client@${TAG_VERSION} already on npm — skipping (idempotent)."
+          else
+            npm publish --workspace=@ancientpantheon/pythia-client --access public --provenance
+          fi
+
+      - name: Create GitHub Release for the pushed tag
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release for $TAG already exists — skipping."
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-from-tag \
+              --latest
+            echo "Created GitHub Release for $TAG."
+          fi

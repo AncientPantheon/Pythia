@@ -47,7 +47,7 @@ Two tiers:
   one API across all chains.
 
 MVP scope: StoaChain reads via a two-node operator pool
-(`node.stoachain.com`, `node2.stoachain.com`) with health-check +
+(`node1.stoachain.com`, `node2.stoachain.com`) with health-check +
 failover. Additional chains land as adapters when consumers need them.
 
 ## Status

@@ -1,0 +1,19 @@
+{
+  "sources": [
+    {
+      "id": "stoachain-primary",
+      "url": "https://node1.stoachain.com",
+      "role": "primary",
+      "chain": "stoachain"
+    },
+    {
+      "id": "stoachain-fallback",
+      "url": "https://node2.stoachain.com",
+      "role": "fallback",
+      "chain": "stoachain"
+    }
+  ],
+  "connectors": [],
+  "finalityDepth": 6,
+  "corsOrigins": []
+}

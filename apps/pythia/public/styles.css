@@ -1,0 +1,182 @@
+:root {
+  --bg: #0a0a0a;
+  --panel: #111114;
+  --border: #262626;
+  --text: #d2d3d4;
+  --muted: #888;
+  --accent: #ceac5f;
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --red: #c0392b;
+  --grey: #6b7280;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  line-height: 1.5;
+}
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 4rem;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.hero-title {
+  font-size: 2.75rem;
+  margin: 0 0 0.5rem;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.hero-subtitle {
+  margin: 0 auto;
+  max-width: 46ch;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.panel-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.panel-note {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.panel-note code,
+.foot code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color: var(--accent);
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.9rem;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--grey);
+}
+
+.dot[data-color="green"] {
+  background: var(--green);
+}
+.dot[data-color="amber"] {
+  background: var(--amber);
+}
+.dot[data-color="red"] {
+  background: var(--red);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.dot[data-color="grey"] {
+  background: var(--grey);
+}
+
+.source-label {
+  color: var(--text);
+}
+
+.connectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.connectors:empty::after {
+  content: "No connectors configured yet.";
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.connector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.connector:hover {
+  border-color: var(--accent);
+  background: rgba(206, 172, 95, 0.06);
+}
+
+.connector-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.foot {
+  margin-top: 2rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.foot a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--border);
+}
+
+.foot a:hover {
+  color: var(--accent);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
