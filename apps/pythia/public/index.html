@@ -3,47 +3,129 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pythia — StoaChain read gateway</title>
+    <title>Pythia — the all-seeing read gateway of the AncientPantheon</title>
     <meta
       name="description"
-      content="Pythia — the all-seeing, failover-safe read gateway of the AncientPantheon. Live source health + ecosystem connectors."
+      content="Pythia is the read-only, failover-safe read gateway of the AncientPantheon — one thin endpoint for pooled, decoded blockchain reads. Read-only: it never signs, never broadcasts."
     />
+    <meta property="og:title" content="Pythia — the all-seeing read gateway" />
+    <meta property="og:description" content="Pooled, failover-safe, read-only blockchain reads behind one endpoint. StoaChain live; more chains coming." />
+    <meta property="og:image" content="/pythia.jpg" />
+    <link rel="preload" as="image" href="/pythia.jpg" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div class="starfield" aria-hidden="true"></div>
+
     <main class="shell">
+      <!-- ── HERO ─────────────────────────────────────────────── -->
       <header class="hero">
-        <h1 class="hero-title">Pythia</h1>
-        <p class="hero-subtitle">
-          The all-seeing read gateway of the AncientPantheon — a pooled,
-          failover-safe StoaChain read API. Read-only: it never signs, never
-          broadcasts.
-        </p>
+        <div class="hero-copy">
+          <p class="eyebrow">The AncientPantheon · Read Constructor</p>
+          <h1 class="title">Pythia</h1>
+          <p class="tagline">The all-seeing read gateway.</p>
+          <p class="lede">
+            One thin endpoint for pooled, decoded, failover-safe blockchain
+            reads. Consumers ask Pythia; Pythia handles the nodes, the routing,
+            and the decoding. <strong>Read-only</strong> — it never holds keys,
+            never signs, never broadcasts.
+          </p>
+
+          <div id="livepill" class="livepill livepill--checking" title="Live service status">
+            <span class="livedot"></span>
+            <span id="livetext">checking status…</span>
+          </div>
+
+          <div class="cta">
+            <a class="btn btn--primary" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
+            <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">Source on GitHub</a>
+            <a class="btn btn--ghost" href="/healthz">/healthz</a>
+          </div>
+        </div>
+
+        <div class="hero-art">
+          <img src="/pythia.jpg" width="1024" height="1536" alt="Pythia — the oracle-titaness of the AncientPantheon, meditating amid the chains she watches over." />
+        </div>
       </header>
 
-      <section class="panel" aria-labelledby="sources-heading">
-        <h2 id="sources-heading" class="panel-title">Source health</h2>
-        <p class="panel-note">Polls <code>/healthz</code> every 15 seconds.</p>
+      <!-- ── LIVE NODE HEALTH ─────────────────────────────────── -->
+      <section class="panel" aria-labelledby="sources-h">
+        <div class="panel-head">
+          <h2 id="sources-h">Node pool</h2>
+          <p class="panel-note">Live from <code>/healthz</code>, refreshed every 15s.</p>
+        </div>
         <div id="sources" class="sources" aria-live="polite">
           <div class="source-row">
             <span class="dot" data-color="grey"></span>
             <span class="source-label">checking…</span>
           </div>
         </div>
+        <p class="legend">
+          <span class="key"><span class="dot" data-color="green"></span> reachable (primary)</span>
+          <span class="key"><span class="dot" data-color="amber"></span> fallback only</span>
+          <span class="key"><span class="dot" data-color="red"></span> unreachable</span>
+        </p>
       </section>
 
-      <section class="panel" aria-labelledby="connectors-heading">
-        <h2 id="connectors-heading" class="panel-title">Connectors</h2>
-        <p class="panel-note">Ecosystem apps that read through Pythia.</p>
-        <div id="connectors" class="connectors"></div>
+      <!-- ── PROTOCOLS ────────────────────────────────────────── -->
+      <section class="panel" aria-labelledby="proto-h">
+        <div class="panel-head">
+          <h2 id="proto-h">What she watches</h2>
+          <p class="panel-note">One language library per chain — shared across the Pantheon.</p>
+        </div>
+        <div class="cards">
+          <article class="card card--live">
+            <div class="card-badge">Live</div>
+            <h3>StoaChain</h3>
+            <p>Pooled reads over a two-node failover pool — decoded balances, confirmation depth, and a verbatim relay, over chainweb.</p>
+          </article>
+          <article class="card card--soon">
+            <div class="card-badge">Coming soon</div>
+            <h3>Arweave</h3>
+            <p>The permaweb — next chain in line, arriving as its own read language library.</p>
+          </article>
+          <article class="card card--future">
+            <div class="card-badge">On the horizon</div>
+            <h3>&amp; beyond</h3>
+            <p>Bitcoin, Ethereum, and the chains the Pantheon bridges — each added when a consumer needs it.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ── FOR DEVELOPERS ───────────────────────────────────── -->
+      <section class="panel" aria-labelledby="dev-h">
+        <div class="panel-head">
+          <h2 id="dev-h">For developers</h2>
+          <p class="panel-note">Call Pythia without embedding node routing or Pact decoding.</p>
+        </div>
+        <pre class="install"><code>npm install @ancientpantheon/pythia-client</code></pre>
+        <ul class="endpoints">
+          <li><span class="verb verb--get">GET</span> <code>/healthz</code><span class="ep-note">service + node-pool status</span></li>
+          <li><span class="verb verb--get">GET</span> <code>/api/v1/getBalance?chain=stoachain&amp;address=…</code><span class="ep-note">composite decoded balance</span></li>
+          <li><span class="verb verb--get">GET</span> <code>/api/v1/getConfirmations?chain=stoachain&amp;tx=…</code><span class="ep-note">pending vs final + depth</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/stoachain/rpc</code><span class="ep-note">verbatim relay to a healthy node</span></li>
+        </ul>
+      </section>
+
+      <!-- ── CONNECTORS ───────────────────────────────────────── -->
+      <section class="panel" aria-labelledby="conn-h">
+        <div class="panel-head">
+          <h2 id="conn-h">Connectors</h2>
+          <p class="panel-note">Ecosystem apps that read through Pythia.</p>
+        </div>
+        <div id="connectors" class="connectors">
+          <p class="empty">No connectors listed yet.</p>
+        </div>
       </section>
 
       <footer class="foot">
-        <span
-          >Read-only gateway ·
-          <a href="/healthz">/healthz</a> ·
-          <a href="/api/v1/connectors">/api/v1/connectors</a></span
-        >
+        <span class="foot-mark">Pythia</span>
+        <span class="foot-sep">·</span>
+        <span>Read-only gateway — never signs, never broadcasts</span>
+        <span class="foot-sep">·</span>
+        <a href="/healthz">/healthz</a>
+        <span class="foot-sep">·</span>
+        <a href="/api/v1/connectors">/api/v1/connectors</a>
       </footer>
     </main>
 
