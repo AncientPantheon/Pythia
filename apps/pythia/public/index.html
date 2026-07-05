@@ -37,8 +37,8 @@
           </div>
 
           <div class="cta">
-            <a class="btn btn--primary" href="#chains">Explore the chains</a>
-            <a class="btn" href="#stats">Activity</a>
+            <a class="btn btn--primary" href="#" data-tab="chains">Explore the chains</a>
+            <a class="btn" href="#" data-tab="activity">Activity</a>
             <a class="btn" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
             <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">GitHub</a>
             <a class="btn btn--ghost" href="/healthz">/healthz</a>
@@ -50,24 +50,30 @@
         </div>
       </header>
 
-      <!-- ── CHAINS (modular, one module per chain) ───────────── -->
-      <section class="panel" id="chains" aria-labelledby="chains-h">
+      <!-- ── TOP-LEVEL TABS ───────────────────────────────────── -->
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
+        <button class="tab tab--active" data-tab="chains" role="tab" aria-selected="true" type="button">Chains</button>
+        <button class="tab" data-tab="activity" role="tab" aria-selected="false" type="button">Activity</button>
+        <button class="tab" data-tab="developers" role="tab" aria-selected="false" type="button">For developers</button>
+        <button class="tab" data-tab="connectors" role="tab" aria-selected="false" type="button">Connectors</button>
+      </nav>
+
+      <!-- ── CHAINS ───────────────────────────────────────────── -->
+      <section class="panel tabpanel" data-panel="chains" aria-labelledby="chains-h">
         <div class="panel-head">
           <h2 id="chains-h">Chains</h2>
           <p class="panel-note">One keyless out-point per chain — node pool, dirty read, broadcast, poll. Pick a chain.</p>
         </div>
-        <!-- chain selector + the selected chain's module are rendered by app.js -->
         <div class="chain-tabs" id="chain-tabs" role="tablist" aria-label="Chains"></div>
         <div class="chain-module" id="chain-module" role="tabpanel"></div>
       </section>
 
-      <!-- ── ACTIVITY (usage analytics) ───────────────────────── -->
-      <section class="panel" id="stats" aria-labelledby="stats-h">
+      <!-- ── ACTIVITY ─────────────────────────────────────────── -->
+      <section class="panel tabpanel" data-panel="activity" aria-labelledby="stats-h" hidden>
         <div class="panel-head">
           <h2 id="stats-h">Activity</h2>
           <p class="panel-note">Aggregate usage across the gateway — reads, broadcasts, and polls. Attributed by consumer, never per request.</p>
         </div>
-
         <div id="stats-body" class="stats" aria-live="polite">
           <p class="empty">Loading activity…</p>
         </div>
@@ -75,7 +81,7 @@
       </section>
 
       <!-- ── FOR DEVELOPERS ───────────────────────────────────── -->
-      <section class="panel" aria-labelledby="dev-h">
+      <section class="panel tabpanel" data-panel="developers" aria-labelledby="dev-h" hidden>
         <div class="panel-head">
           <h2 id="dev-h">For developers</h2>
           <p class="panel-note">One base URL, one keyless surface, the same shape on every chain.</p>
@@ -86,12 +92,16 @@
           live chain exposes the same three verbs —
           <code>POST&nbsp;/{chain}/read</code>,
           <code>/{chain}/send</code>, and <code>/{chain}/poll</code> — plus the
-          service-wide <code>GET&nbsp;/healthz</code>.
+          service-wide <code>GET&nbsp;/healthz</code> and <code>GET&nbsp;/stats</code>.
+        </p>
+        <p class="dev-note">
+          Registered connectors pass their key as an <code>x-pythia-key</code>
+          header so their usage is attributed by name in Activity.
         </p>
       </section>
 
       <!-- ── CONNECTORS ───────────────────────────────────────── -->
-      <section class="panel" aria-labelledby="conn-h">
+      <section class="panel tabpanel" data-panel="connectors" aria-labelledby="conn-h" hidden>
         <div class="panel-head">
           <h2 id="conn-h">Connectors</h2>
           <p class="panel-note">Ecosystem apps that read through Pythia.</p>
@@ -108,7 +118,7 @@
         <span class="foot-sep">·</span>
         <a href="/healthz">/healthz</a>
         <span class="foot-sep">·</span>
-        <a href="/api/v1/connectors">/api/v1/connectors</a>
+        <a href="/stats">/stats</a>
       </footer>
     </main>
 

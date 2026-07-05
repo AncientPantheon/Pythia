@@ -357,10 +357,28 @@ function statNumber(label, value) {
   return card;
 }
 
+// Expand the (gap-filled) daily series to exactly `n` days ending today, so the
+// chart always has a consistent axis — one narrow bar per day, today at the right,
+// even when there's only a single day of data so far.
+function padDays(daily, n) {
+  if (!daily.length) return [];
+  const map = new Map(daily.map((d) => [d.day, d]));
+  const end = new Date(daily[daily.length - 1].day + "T00:00:00Z");
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const dt = new Date(end);
+    dt.setUTCDate(end.getUTCDate() - i);
+    const key = dt.toISOString().slice(0, 10);
+    const rec = map.get(key);
+    out.push({ day: key, requests: rec ? rec.requests : 0 });
+  }
+  return out;
+}
+
 // A vanilla SVG bar chart of daily request counts — no chart library. Bars scale
 // to the busiest day; a few evenly-spaced dates are labelled along the axis.
 function buildActivityChart(daily) {
-  const days = daily.slice(-CHART_DAYS);
+  const days = padDays(daily, CHART_DAYS);
   const W = 640;
   const H = 160;
   const pad = { top: 8, right: 8, bottom: 20, left: 8 };
@@ -368,7 +386,7 @@ function buildActivityChart(daily) {
   const plotH = H - pad.top - pad.bottom;
   const max = days.reduce((m, d) => Math.max(m, d.requests), 0) || 1;
   const slot = plotW / days.length;
-  const barW = Math.max(1, slot * 0.7);
+  const barW = Math.max(2, Math.min(slot * 0.68, 20));
 
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("class", "activity-chart");
@@ -483,8 +501,32 @@ async function loadStats() {
   }
 }
 
+// ── top-level tabs (Chains / Activity / For developers / Connectors) ─────────
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => {
+    const on = t.dataset.tab === name;
+    t.classList.toggle("tab--active", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  document.querySelectorAll(".tabpanel").forEach((p) => {
+    p.hidden = p.dataset.panel !== name;
+  });
+  if (name === "activity") loadStats(); // refresh usage each time it's opened
+}
+
+function wireTabs() {
+  document.querySelectorAll("[data-tab]").forEach((elm) => {
+    elm.addEventListener("click", (e) => {
+      if (elm.tagName === "A") e.preventDefault(); // hero CTAs are tab switchers
+      showTab(elm.dataset.tab);
+    });
+  });
+}
+
 // ── init ─────────────────────────────────────────────────────────────────────
+wireTabs();
 renderChainTabs();
 startHealthPill();
 loadConnectors();
 loadStats();
+showTab("chains");

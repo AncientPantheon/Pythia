@@ -223,6 +223,18 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .foot a { color: var(--ink-soft); text-decoration: none; }
 .foot a:hover { color: var(--gold); }
 
+/* top-level tabs (Chains / Activity / For developers / Connectors) */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 2px; }
+.tab {
+  padding: 11px 18px; border-radius: 12px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.03);
+  color: var(--ink-soft); font: inherit; font-size: 14.5px; font-weight: 600;
+  cursor: pointer; transition: border-color .15s, background .15s, color .15s;
+}
+.tab:hover { border-color: var(--gold-dim); color: var(--ink); }
+.tab--active { border-color: var(--gold-dim); background: rgba(230,190,106,.1); color: var(--ink); }
+.tabpanel[hidden] { display: none; }
+
 /* chains — modular per-chain module */
 .chain-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
 .chain-tab {
