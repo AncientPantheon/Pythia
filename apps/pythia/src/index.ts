@@ -3,9 +3,9 @@ import { dirname, join } from "node:path";
 import { Hono } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { registerHealthz } from "./routes/healthz.js";
-import { registerRpc } from "./routes/rpc.js";
-import { registerGetBalance } from "./routes/getBalance.js";
-import { registerGetConfirmations } from "./routes/getConfirmations.js";
+import { registerRead } from "./routes/read.js";
+import { registerSend } from "./routes/send.js";
+import { registerPoll } from "./routes/poll.js";
 import { registerConnectors } from "./routes/connectors.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loadConfigFromDisk } from "./config/index.js";
@@ -13,19 +13,19 @@ import { loadConfigFromDisk } from "./config/index.js";
 /**
  * The Pythia gateway application.
  *
- * A bootable Hono instance wired with the Phase-2 transport routes —
- * `GET /healthz` (service liveness + per-source reachability + active routing)
- * and `POST /stoachain/rpc` (verbatim read relay over Pythia's own two-host
- * failover dial) — plus the Phase-3 normalized reads:
- * `GET /api/v1/getBalance` (composite IGNIS / OURO-dispo / virtual-OURO picture
- * + optional DPTF token supply) and `GET /api/v1/getConfirmations` (decoded
- * pending-vs-final status/depth). All reads run over the same failover dial and
- * reach no broadcast/signing surface.
+ * A bootable Hono instance wired as a KEYLESS generic per-chain transport
+ * gateway over Pythia's own two-host failover dial:
+ * `GET /healthz` (service liveness + per-source reachability + active routing),
+ * `POST /stoachain/read` (generic dirty read — the caller supplies the Pact
+ * code; the node response is returned verbatim, never decoded),
+ * `POST /stoachain/send` (keyless broadcast — relays the caller-SIGNED `cmds`
+ * verbatim to the node's /send) and `POST /stoachain/poll` (per-request-key tx
+ * status + depth). Pythia never holds keys and never signs — it only relays
+ * caller-supplied payloads in either direction.
  *
  * It also serves the static landing page at `/` (source-health list + connector
  * links) plus `GET /api/v1/connectors` (the config-driven connector list). The
- * landing surface is read-only — it polls `/healthz` and reads connectors; it
- * signs nothing.
+ * landing surface is read-only — it polls `/healthz` and reads connectors.
  */
 export const app = new Hono();
 
@@ -42,11 +42,11 @@ const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public")
 app.use("*", corsMiddleware(loadConfigFromDisk().corsOrigins));
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
-// static handler never shadows `/healthz`, `/stoachain/rpc`, or `/api/v1/*`.
+// static handler never shadows `/healthz`, `/stoachain/*`, or `/api/v1/*`.
 registerHealthz(app);
-registerRpc(app);
-registerGetBalance(app);
-registerGetConfirmations(app);
+registerRead(app);
+registerSend(app);
+registerPoll(app);
 registerConnectors(app);
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves

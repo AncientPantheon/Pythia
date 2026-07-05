@@ -5,16 +5,16 @@ import { Hono } from "hono";
 // SDK dependencies: `tests/**` is excluded from `tsconfig.build.json`, so none of
 // this lands in the published `dist` and the shipped client stays dependency-free.
 import { registerHealthz } from "../../../apps/pythia/src/routes/healthz.js";
-import { registerRpc } from "../../../apps/pythia/src/routes/rpc.js";
-import { registerGetBalance } from "../../../apps/pythia/src/routes/getBalance.js";
-import { registerGetConfirmations } from "../../../apps/pythia/src/routes/getConfirmations.js";
+import { registerRead } from "../../../apps/pythia/src/routes/read.js";
+import { registerSend } from "../../../apps/pythia/src/routes/send.js";
+import { registerPoll } from "../../../apps/pythia/src/routes/poll.js";
 import { resolveHealth } from "../../../apps/pythia/src/health/index.js";
 import type { SourceConfig } from "../../../apps/pythia/src/config/index.js";
 import {
   PythiaClient,
   PythiaPoolExhaustedError,
   type HealthSnapshot,
-  type Balance,
+  type PollResult,
 } from "../src/index.js";
 
 const primary: SourceConfig = {
@@ -31,18 +31,9 @@ const fallback: SourceConfig = {
 };
 const sources = { primary, fallback };
 
-/** A chainweb /local success envelope carrying a Pact decimal result (Phase-3
- * mock shape). */
-function localOk(decimal: string): Response {
-  return new Response(
-    JSON.stringify({ result: { status: "success", data: { decimal } } }),
-    { status: 200, headers: { "content-type": "application/json" } },
-  );
-}
-
 /**
  * Build a fresh, hermetic gateway app with an injected stubbed upstream. The
- * `/info` liveness ping and the chainweb `/local` reads are canned so no live
+ * `/info` liveness ping and the chainweb transport reads are canned so no live
  * node (and no disk config) is touched. The client's own `fetchImpl` delegates
  * to `app.request` so the round-trip is real client -> in-process HTTP.
  */
@@ -55,9 +46,13 @@ function buildApp(upstream: (url: string, init?: RequestInit) => Response) {
     resolve: () =>
       resolveHealth({ primary, fallback, fetchImpl: fetchImpl as never }),
   });
-  registerRpc(app, { sources, fetchImpl: fetchImpl as never });
-  registerGetBalance(app, { sources, fetchImpl: fetchImpl as never });
-  registerGetConfirmations(app, { sources, fetchImpl: fetchImpl as never });
+  registerRead(app, { sources, fetchImpl: fetchImpl as never });
+  registerSend(app, { sources, fetchImpl: fetchImpl as never });
+  registerPoll(app, {
+    sources,
+    fetchImpl: fetchImpl as never,
+    finalityDepth: 6,
+  });
   return app;
 }
 
@@ -70,9 +65,15 @@ function buildClient(app: Hono): PythiaClient {
   });
 }
 
+function nodeJson(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 describe("PythiaClient e2e over the in-process gateway", () => {
   it("client.health() returns a typed HealthSnapshot (service:'ok') from the round-trip", async () => {
-    // Both hosts answer /info -> routing resolves to the primary.
     const app = buildApp((url) => {
       if (url.endsWith("/info")) return new Response("{}", { status: 200 });
       return new Response("{}", { status: 200 });
@@ -87,40 +88,63 @@ describe("PythiaClient e2e over the in-process gateway", () => {
     expect(health.sources.map((s) => s.reachable)).toEqual([true, true]);
   });
 
-  it("client.getBalance() decodes a typed Balance from the stubbed upstream", async () => {
-    // Route each /local read to a supply keyed by the Pact module the body names
-    // (Phase-3 mock shape) so the composite decodes field-by-field.
-    const app = buildApp((_url, init) => {
-      const body = String(init?.body);
-      if (body.includes("DALOS.UR_DISPOSupply")) return localOk("12.5");
-      if (body.includes("TFT.URC_VirtualOuro")) return localOk("3.25");
-      if (body.includes("GAS-8Nh-JO8JO4F5")) return localOk("0.001");
-      return localOk("0");
+  it("client.read() relays the built /local command and returns the node body verbatim", async () => {
+    // The node echoes a success envelope; the client returns it undecoded.
+    const nodeBody = { result: { status: "success", data: 42 } };
+    const app = buildApp((url, init) => {
+      // The read route must build a {cmd,hash,sigs} /local envelope.
+      const body = JSON.parse(String(init?.body)) as { cmd: string; hash: string };
+      expect(typeof body.cmd).toBe("string");
+      expect(typeof body.hash).toBe("string");
+      expect(url.endsWith("/pact/api/v1/local")).toBe(true);
+      return nodeJson(nodeBody);
     });
     const client = buildClient(app);
 
-    const balance: Balance = await client.getBalance({ address: "k:abc123" });
+    const result = await client.read({ code: "(+ 40 2)" });
+    expect(result).toEqual(nodeBody);
+  });
 
-    expect(balance).toEqual({
-      chain: "stoachain",
-      address: "k:abc123",
-      ignis: "0.001",
-      ouroDispo: "12.5",
-      virtualOuro: "3.25",
+  it("client.send() relays {cmds} verbatim to /send and returns the node response", async () => {
+    const cmds = [{ cmd: "{}", hash: "h", sigs: [{ sig: "caller-sig" }] }];
+    const app = buildApp((url, init) => {
+      expect(url.endsWith("/pact/api/v1/send")).toBe(true);
+      // Keyless: the body is exactly {cmds} with the caller's own sig intact.
+      expect(JSON.parse(String(init?.body))).toEqual({ cmds });
+      return nodeJson({ requestKeys: ["rk-1"] });
+    });
+    const client = buildClient(app);
+
+    const result = await client.send({ cmds });
+    expect(result).toEqual({ requestKeys: ["rk-1"] });
+  });
+
+  it("client.poll() returns per-request-key status/depth from the poll+cut round-trip", async () => {
+    const app = buildApp((url) => {
+      if (url.endsWith("/cut")) {
+        return nodeJson({ hashes: { "0": { height: 110, hash: "h" } } });
+      }
+      // /poll — key mined at height 100 → depth 10 → final at finalityDepth 6.
+      return nodeJson({ "rk-a": { reqKey: "rk-a", blockHeight: 100 } });
+    });
+    const client = buildClient(app);
+
+    const result: PollResult = await client.poll({ requestKeys: ["rk-a"] });
+    expect(result.finalityDepth).toBe(6);
+    expect(result.results["rk-a"]).toEqual({
+      status: "final",
+      depth: 10,
+      blockHeight: 100,
     });
   });
 
   it("surfaces PythiaPoolExhaustedError when both upstream hosts fail transport", async () => {
-    // Every host throws -> the dial exhausts the pool -> the service answers 502
-    // -> the client maps it to the typed PythiaPoolExhaustedError.
     const app = buildApp(() => {
       throw new TypeError("all hosts down");
     });
     const client = buildClient(app);
 
-    const err = await client
-      .getBalance({ address: "k:abc123" })
-      .catch((e) => e);
+    const err = await client.read({ code: "(f)" }).catch((e) => e);
 
     expect(err).toBeInstanceOf(PythiaPoolExhaustedError);
     expect((err as PythiaPoolExhaustedError).failures.length).toBeGreaterThan(0);

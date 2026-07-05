@@ -7,13 +7,13 @@ export {
 } from "./errors.js";
 export type { SourceFailure } from "./errors.js";
 export type {
-  Balance,
-  Confirmations,
   HealthSnapshot,
   Routing,
   SourceHealth,
   PythiaClientOptions,
-  GetBalanceInput,
-  GetConfirmationsInput,
-  RpcInput,
+  ReadInput,
+  SendInput,
+  PollInput,
+  PollKeyResult,
+  PollResult,
 } from "./types.js";

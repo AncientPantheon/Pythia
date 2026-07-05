@@ -1,30 +1,14 @@
 import { describe, it, expectTypeOf } from "vitest";
 import type {
-  Balance,
-  Confirmations,
   HealthSnapshot,
   PythiaClientOptions,
-  GetBalanceInput,
-  GetConfirmationsInput,
-  RpcInput,
+  ReadInput,
+  SendInput,
+  PollInput,
+  PollResult,
 } from "./types.js";
 
 describe("public response/input type contracts", () => {
-  it("Balance amounts are decimal strings and token is optional", () => {
-    expectTypeOf<Balance["ignis"]>().toEqualTypeOf<string>();
-    expectTypeOf<Balance["ouroDispo"]>().toEqualTypeOf<string>();
-    expectTypeOf<Balance["virtualOuro"]>().toEqualTypeOf<string>();
-    expectTypeOf<Balance["chain"]>().toEqualTypeOf<"stoachain">();
-    expectTypeOf<Balance>().toHaveProperty("token");
-  });
-
-  it("Confirmations status is the pending|final union", () => {
-    expectTypeOf<Confirmations["status"]>().toEqualTypeOf<
-      "pending" | "final"
-    >();
-    expectTypeOf<Confirmations["depth"]>().toEqualTypeOf<number>();
-  });
-
   it("HealthSnapshot carries service:ok, routing tri-state, and per-source health", () => {
     expectTypeOf<HealthSnapshot["service"]>().toEqualTypeOf<"ok">();
     expectTypeOf<HealthSnapshot["routing"]>().toEqualTypeOf<
@@ -35,10 +19,28 @@ describe("public response/input type contracts", () => {
     >();
   });
 
-  it("client option and method-input shapes match the API surface", () => {
+  it("ReadInput requires a string code and allows optional chainId/data/sender", () => {
+    expectTypeOf<ReadInput["code"]>().toEqualTypeOf<string>();
+    expectTypeOf<ReadInput["chainId"]>().toEqualTypeOf<number | undefined>();
+  });
+
+  it("SendInput carries the cmds array of caller-signed commands", () => {
+    expectTypeOf<SendInput["cmds"]>().toEqualTypeOf<unknown[]>();
+  });
+
+  it("PollInput requires a requestKeys string array", () => {
+    expectTypeOf<PollInput["requestKeys"]>().toEqualTypeOf<string[]>();
+  });
+
+  it("PollResult keys per-request-key status/depth by request key", () => {
+    expectTypeOf<PollResult["finalityDepth"]>().toEqualTypeOf<number>();
+    expectTypeOf<
+      PollResult["results"][string]["status"]
+    >().toEqualTypeOf<"pending" | "final">();
+    expectTypeOf<PollResult["results"][string]["depth"]>().toEqualTypeOf<number>();
+  });
+
+  it("client option shape matches the API surface", () => {
     expectTypeOf<PythiaClientOptions["baseUrl"]>().toEqualTypeOf<string>();
-    expectTypeOf<GetBalanceInput["address"]>().toEqualTypeOf<string>();
-    expectTypeOf<GetConfirmationsInput["tx"]>().toEqualTypeOf<string>();
-    expectTypeOf<RpcInput["payload"]>().toEqualTypeOf<unknown>();
   });
 });

@@ -2,8 +2,11 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Broadcast/signing symbols the read-only service must never reference in its
- * own source. Phases 2-3 extend this list as new transport surfaces appear.
+ * Broadcast/signing symbols the KEYLESS gateway must never reference in its own
+ * source. Pythia never holds keys and never signs — it relays caller-supplied
+ * payloads in either direction (a caller-signed /send broadcast is a plain fetch
+ * to the node's /send, NOT any signing/submit client). These are the
+ * signing/submit-client symbols that must stay out of Pythia's import graph.
  */
 export const BANNED_BROADCAST_SYMBOLS = [
   "submit",
@@ -22,20 +25,19 @@ export interface Violation {
 }
 
 /**
- * Module specifiers the read-only service must never import. The sibling's
+ * Module specifiers the KEYLESS gateway must never import. The sibling's
  * `network` module houses the write-capable failover client
- * (`getFailoverClient`), so importing it at all — even for a "read" — puts the
- * broadcast surface inside Pythia's import graph. Banning the import path is a
- * stronger boundary than banning only the symbol.
+ * (`getFailoverClient`), so importing it at all puts the signing/submit surface
+ * inside Pythia's import graph. Pythia relays caller-signed txs with a plain
+ * fetch to the node's /send instead. Banning the import path is a stronger
+ * boundary than banning only the symbol.
  */
 export const BANNED_IMPORT_MODULES = [
   "@stoachain/stoa-core/network",
   // The reads barrel pulls createClient (from kadena-stoic-legacy) and the
   // network failover client (getFailoverClient / pollOne) transitively — the
-  // banned wrapper path. Pythia builds /local, /poll and /cut over its own
-  // dial() instead. The pure `@stoachain/stoa-core/pact` subpath is deliberately
-  // NOT on this list: it re-exports zero-import format helpers (mayComeWithDeimal)
-  // that the reads layer legitimately imports.
+  // banned wrapper path. Pythia builds /local, /send, /poll and /cut over its own
+  // dial() instead.
   "@stoachain/stoa-core/reads",
 ] as const;
 
@@ -64,7 +66,7 @@ function bannedImportPatternFor(mod: string): RegExp {
 // The scanner's own definition file necessarily spells the banned symbols to
 // enumerate them; it is the enforcement mechanism, not service transport code,
 // so it is excluded from the scan to avoid flagging its own roster.
-const SCANNER_FILENAME = "readOnlyScanner.ts";
+const SCANNER_FILENAME = "keylessScanner.ts";
 
 function collectTsFiles(dir: string, acc: string[]): void {
   for (const entry of readdirSync(dir)) {

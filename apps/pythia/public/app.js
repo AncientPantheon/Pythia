@@ -148,5 +148,58 @@ function startHealth() {
   });
 }
 
+// --- dirty-read console ---------------------------------------------------
+function wireConsole() {
+  const btn = document.getElementById("c-run");
+  const code = document.getElementById("c-code");
+  const chain = document.getElementById("c-chain");
+  const out = document.getElementById("c-out");
+  const status = document.getElementById("c-status");
+  if (!btn || !code || !out) return;
+
+  async function run() {
+    const src = code.value.trim();
+    if (!src) {
+      status.textContent = "enter some Pact read code";
+      return;
+    }
+    const chainId = Number(chain ? chain.value : 0) || 0;
+    status.textContent = "reading…";
+    out.textContent = "";
+    btn.disabled = true;
+    try {
+      const res = await fetch("/stoachain/read", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ chainId, code: src }),
+      });
+      const raw = await res.text();
+      let pretty = raw;
+      try {
+        pretty = JSON.stringify(JSON.parse(raw), null, 2);
+      } catch {
+        /* not JSON — show raw */
+      }
+      out.textContent = pretty || "(empty response)";
+      status.textContent = `HTTP ${res.status}`;
+    } catch (err) {
+      status.textContent = "request failed";
+      out.textContent = String(err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener("click", run);
+  // Ctrl/Cmd + Enter to run from the textarea
+  code.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      run();
+    }
+  });
+}
+
 loadConnectors();
 startHealth();
+wireConsole();

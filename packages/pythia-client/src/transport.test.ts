@@ -22,7 +22,7 @@ describe("Transport JSON decoding resilience", () => {
       ) as never,
     });
 
-    const parsed = await transport.get("/stoachain/rpc");
+    const parsed = await transport.get("/stoachain/read");
     expect(parsed.status).toBe(502);
     // The caller maps by status; the raw text is preserved as the body.
     expect(parsed.body).toBe("<html>502 Bad Gateway</html>");
@@ -36,7 +36,7 @@ describe("Transport JSON decoding resilience", () => {
       ) as never,
     });
 
-    const parsed = await transport.postJson("/stoachain/rpc", { a: 1 });
+    const parsed = await transport.postJson("/stoachain/read", { a: 1 });
     expect(parsed.status).toBe(503);
     // An empty body decodes to the empty string, not a thrown SyntaxError.
     expect(parsed.body).toBe("");
@@ -54,7 +54,7 @@ describe("Transport JSON decoding resilience", () => {
       ) as never,
     });
 
-    const parsed = await transport.postJson("/stoachain/rpc", { a: 1 });
+    const parsed = await transport.postJson("/stoachain/read", { a: 1 });
     expect(parsed.status).toBe(200);
     expect(parsed.body).toEqual({ result: "ok" });
   });

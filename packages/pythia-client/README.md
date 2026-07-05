@@ -1,23 +1,25 @@
 # @ancientpantheon/pythia-client
 
-The dependency-light consumer SDK for **Pythia**, the all-seeing read
-gateway of the AncientPantheon. It wraps the gateway's read API behind a small
-typed `PythiaClient` over a configurable base URL:
+The dependency-light consumer SDK for **Pythia**, the keyless transport
+gateway of the AncientPantheon. It wraps the gateway's per-chain transport
+surface behind a small typed `PythiaClient` over a configurable base URL:
 
-- **Native pass-through** — `client.rpc(...)` relays a chain payload to the node
-  verbatim.
-- **Normalized cross-chain** — `client.getBalance(...)` and
-  `client.getConfirmations(...)` return decoded, typed StoaChain reads;
-  `client.health()` returns the gateway's liveness snapshot.
+- **Dirty read** — `client.read(...)` relays a caller-supplied Pact expression
+  to a healthy node and returns the node response verbatim (never decoded).
+- **Keyless broadcast** — `client.send(...)` relays caller-SIGNED commands to
+  the node's `/send` verbatim. Pythia holds no keys and signs nothing.
+- **Tx status** — `client.poll(...)` returns per-request-key pending-vs-final
+  status and confirmation depth; `client.health()` returns the gateway's
+  liveness snapshot.
 
 ## Status
 
-`1.0.1` on public npmjs — proprietary release, all rights reserved (see
+`1.1.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
-`PythiaClient` class wrapping the four gateway endpoints (`getBalance`,
-`getConfirmations`, `rpc`, `health`) over a configurable base URL with an
-injectable `fetchImpl`, and mirrors the service error taxonomy as client-side
-typed errors (`PythiaValidationError`, `PythiaUnsupportedChainError`,
+`PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
+`poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
+and mirrors the service error taxonomy as client-side typed errors
+(`PythiaValidationError`, `PythiaUnsupportedChainError`,
 `PythiaPoolExhaustedError`) under a shared `PythiaClientError` root. The package
 carries **no runtime dependencies** — it rests only on the runtime `fetch` and
 its own types.
@@ -29,9 +31,15 @@ import { PythiaClient } from "@ancientpantheon/pythia-client";
 
 const client = new PythiaClient({ baseUrl: "https://pythia.ancientholdings.eu" });
 
-const balance = await client.getBalance({ address: "k:abc123" });
-const status = await client.getConfirmations({ tx: "req-key", chainId: 0 });
-const node = await client.rpc({ payload: { exec: { code: "(+ 1 2)" } } });
+// Dirty read — you supply the Pact code; the node response comes back verbatim.
+const node = await client.read({ code: "(coin.get-balance \"k:abc\")" });
+
+// Keyless broadcast — relay your OWN caller-signed commands.
+const sent = await client.send({ cmds: mySignedCmds });
+
+// Tx status — pending vs final + depth, per request key.
+const status = await client.poll({ requestKeys: ["req-key-1"], chainId: 0 });
+
 const health = await client.health();
 ```
 
@@ -43,16 +51,24 @@ npm install @ancientpantheon/pythia-client
 
 ## Version history
 
+**v1.1.0** — the gateway pivots from a decode-baked read service to a keyless
+generic transport gateway (pre-adoption reshape). Removes `getBalance`,
+`getConfirmations`, and
+`rpc` (plus the `Balance`/`Confirmations` types) and adds `read` (generic dirty
+read), `send` (keyless broadcast of caller-signed commands), and `poll`
+(per-request-key tx status). `health()` is unchanged. Node responses from
+`read`/`send` pass through verbatim; `poll` returns a typed `PollResult`.
+
 **v1.0.1** — adopt the AncientHoldings proprietary license (all rights reserved),
 matching the AncientPantheon family; ship the `LICENSE` in the package tarball.
 No API change.
 
-**v1.0.0** — first public release. Ships the `PythiaClient` class over
-the four gateway endpoints (`getBalance`, `getConfirmations`, `rpc`, `health`)
-with a configurable base URL, an injectable `fetchImpl`, and the client-side
-typed error taxonomy. Dependency-light (`fetch` + own types only); establishes
-the publishable package shape (`sideEffects: false`, public `publishConfig`,
-provenance-signed publish).
+**v1.0.0** — first public release. Shipped the `PythiaClient` class over
+the original four gateway endpoints (`getBalance`, `getConfirmations`, `rpc`,
+`health`) with a configurable base URL, an injectable `fetchImpl`, and the
+client-side typed error taxonomy. Dependency-light (`fetch` + own types only);
+established the publishable package shape (`sideEffects: false`, public
+`publishConfig`, provenance-signed publish).
 
 ## License
 

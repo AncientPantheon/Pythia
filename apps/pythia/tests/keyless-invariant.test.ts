@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, basename } from "node:path";
 import {
   BANNED_BROADCAST_SYMBOLS,
   BANNED_IMPORT_MODULES,
   scanForBannedSymbols,
   scanForBannedImports,
-} from "../src/invariants/readOnlyScanner.js";
+} from "../src/invariants/keylessScanner.js";
 
 const SERVICE_SRC = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -18,9 +18,10 @@ const SERVICE_SRC = join(
   "src",
 );
 
-describe("read-only invariant scanner", () => {
+describe("keyless invariant scanner", () => {
   it("exposes the exact banned broadcast/signing symbol list", () => {
-    // These five are the transport/signing surface the service must never reach.
+    // These five are the signing/submit-client surface the keyless gateway must
+    // never reach — Pythia never signs; it relays caller-signed payloads.
     expect([...BANNED_BROADCAST_SYMBOLS].sort()).toEqual(
       ["createClient", "getFailoverClient", "listen", "pollOne", "submit"].sort(),
     );
@@ -60,7 +61,7 @@ describe("read-only invariant scanner", () => {
     it("flags a source file that IMPORTS the write-capable network module", () => {
       // The offender fixture imports @stoachain/stoa-core/network — the module
       // housing getFailoverClient. The boundary bans not just the symbol but any
-      // import of that module at all, since it is the write-capable transport surface.
+      // import of that signing-capable transport module at all.
       const importViolations = scanForBannedImports(fixtureDir);
       expect(
         importViolations.some((v) => v.file.endsWith("offender.ts")),
@@ -96,10 +97,10 @@ describe("read-only invariant scanner", () => {
     });
   });
 
-  it("passes against the real service source now that real transport code exists", () => {
-    // Phase 2 landed the dial/relay/health transport over plain fetch. Pythia
-    // owns its transport and reaches for none of the banned broadcast symbols,
-    // so the invariant still holds against the real tree.
+  it("passes against the real service source — Pythia signs nothing and reaches no submit client", () => {
+    // The keyless gateway relays caller-supplied payloads (read via /local,
+    // broadcast via a plain fetch to /send) and reaches for none of the banned
+    // signing/submit symbols, so the invariant holds against the real tree.
     const violations = scanForBannedSymbols(SERVICE_SRC);
     expect(violations).toEqual([]);
   });
@@ -111,21 +112,17 @@ describe("read-only invariant scanner", () => {
     expect(importViolations).toEqual([]);
   });
 
-  it("bans the dirty reads barrel while leaving the pure pact subpath allowed", () => {
-    // @stoachain/stoa-core/reads pulls createClient + getFailoverClient/pollOne
-    // (the banned wrapper path), so it is on the banned-module roster. The pure
-    // @stoachain/stoa-core/pact subpath (mayComeWithDeimal) must NOT be banned —
-    // it is the one sibling module Pythia's reads legitimately import.
+  it("bans both the network module and the dirty reads barrel", () => {
+    // Both sibling modules pull the signing/submit client (createClient /
+    // getFailoverClient / pollOne), so both are on the banned-module roster. The
+    // keyless gateway builds /local, /send, /poll and /cut over its own dial().
     expect([...BANNED_IMPORT_MODULES]).toContain("@stoachain/stoa-core/reads");
     expect([...BANNED_IMPORT_MODULES]).toContain("@stoachain/stoa-core/network");
-    expect([...BANNED_IMPORT_MODULES]).not.toContain("@stoachain/stoa-core/pact");
   });
 
   it("imports nothing from the dirty @stoachain/stoa-core/reads barrel", () => {
-    // The Phase-3 read modules build /local, /poll and /cut over Pythia's own
-    // dial() — never the sibling's read wrappers. Scanning the whole src tree
-    // (incl. reads/ + routes/getBalance.ts + routes/getConfirmations.ts) must
-    // find zero imports of the dirty barrel.
+    // Scanning the whole src tree (incl. reads/ + routes/) must find zero imports
+    // of the dirty barrel — Pythia owns its transport over plain fetch.
     const importViolations = scanForBannedImports(SERVICE_SRC);
     expect(
       importViolations.filter((v) =>
@@ -134,27 +131,28 @@ describe("read-only invariant scanner", () => {
     ).toEqual([]);
   });
 
-  it("DOES import the pure @stoachain/stoa-core/pact decoder in the reads layer", () => {
-    // Pins the reuse-vs-replicate decision: the decode helper mayComeWithDeimal
-    // is reused from the clean subpath, and the dirty /reads barrel is never
-    // swapped in for it. A future edit that replaced pact with reads would drop
-    // this positive import and fail here.
-    const readsDir = join(SERVICE_SRC, "reads");
+  it("imports NOTHING from any @stoachain/* module — the gateway is self-contained", () => {
+    // The keyless pivot dropped the last @stoachain couplings (the decode-baked
+    // balance reads). Pythia now depends on no sibling package at all; every real
+    // source module must carry zero @stoachain import specifiers. The scanner file
+    // and this invariant test enumerate the names in fixtures/comments, so they
+    // are excluded as the enforcement mechanism, not transport code.
+    const ENFORCEMENT_FILES = new Set(["keylessScanner.ts"]);
     const files: string[] = [];
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir)) {
+        if (entry === "node_modules") continue;
         const full = join(dir, entry);
         if (statSync(full).isDirectory()) walk(full);
-        else if (entry.endsWith(".ts") && !entry.endsWith(".test.ts")) {
+        else if (entry.endsWith(".ts") && !ENFORCEMENT_FILES.has(basename(full))) {
           files.push(full);
         }
       }
     };
-    walk(readsDir);
-    const source = files.map((f) => readFileSync(f, "utf8")).join("\n");
-    // Match an actual ESM import specifier, not a mere comment mention, so the
-    // assertion fails if the decoder is referenced only in prose but never wired.
-    expect(source).toMatch(/from\s+["']@stoachain\/stoa-core\/pact["']/);
-    expect(source).not.toMatch(/from\s+["']@stoachain\/stoa-core\/reads["']/);
+    walk(SERVICE_SRC);
+    const offenders = files.filter((f) =>
+      /from\s+["']@stoachain\//.test(readFileSync(f, "utf8")),
+    );
+    expect(offenders).toEqual([]);
   });
 });

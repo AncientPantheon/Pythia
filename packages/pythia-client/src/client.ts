@@ -1,25 +1,22 @@
 import { Transport, type ParsedResponse } from "./transport.js";
 import { mapServiceError, isPythiaErrorEnvelope } from "./mapError.js";
 import type {
-  Balance,
-  Confirmations,
   HealthSnapshot,
   PythiaClientOptions,
-  GetBalanceInput,
-  GetConfirmationsInput,
-  RpcInput,
+  ReadInput,
+  SendInput,
+  PollInput,
+  PollResult,
 } from "./types.js";
 
-/** The chain every v1 request targets. The client sets this itself so a
- * consumer never passes `chain`. */
-const CHAIN = "stoachain";
-
 /**
- * The dependency-light Pythia consumer SDK. Wraps the four gateway endpoints
- * over a configurable `baseUrl` with an injectable `fetchImpl`, always setting
- * `chain=stoachain` itself, and surfaces the service error taxonomy as
- * client-side typed errors. The only reads exposed are the gateway's own
- * read-only surface — no broadcast/signing.
+ * The dependency-light Pythia consumer SDK. Wraps the keyless gateway's
+ * transport surface over a configurable `baseUrl` with an injectable
+ * `fetchImpl`: a generic dirty `read`, a keyless `send` (relay of caller-SIGNED
+ * cmds), a tx-status `poll`, and `health`. The client holds no keys and signs
+ * nothing — `read` and `send` relay caller-supplied payloads and return the
+ * node response verbatim; only Pythia's OWN error envelopes are mapped to typed
+ * errors.
  */
 export class PythiaClient {
   private readonly transport: Transport;
@@ -35,60 +32,72 @@ export class PythiaClient {
     }
   }
 
-  /** `GET /api/v1/getBalance` — composite StoaChain balance. A `"0"` amount at
-   * 200 is a real no-balance answer, not an error. */
-  async getBalance(input: GetBalanceInput): Promise<Balance> {
-    const query: Record<string, string> = {
-      chain: CHAIN,
-      address: input.address,
-    };
-    if (input.token !== undefined) {
-      query.token = input.token;
-    }
-    const response = await this.transport.get("/api/v1/getBalance", query);
-    this.assertOk(response);
-    return response.body as Balance;
-  }
-
-  /** `GET /api/v1/getConfirmations` — decoded pending-vs-final status/depth. */
-  async getConfirmations(
-    input: GetConfirmationsInput,
-  ): Promise<Confirmations> {
-    const query: Record<string, string> = { chain: CHAIN, tx: input.tx };
-    if (input.chainId !== undefined) {
-      query.chainId = String(input.chainId);
-    }
-    const response = await this.transport.get(
-      "/api/v1/getConfirmations",
-      query,
-    );
-    this.assertOk(response);
-    return response.body as Confirmations;
-  }
-
   /**
-   * `POST /stoachain/rpc` — verbatim node relay. Returns the node's parsed body
-   * as-is on 2xx. Only Pythia's OWN error envelopes (its bad-body/chainId 400
-   * and pool-exhausted 502) are mapped to typed errors; a node-arrived HTTP
-   * error is returned verbatim as the node's own payload, never remapped.
+   * Return the parsed body for a relay response. On 2xx the node body is
+   * returned as-is. On a non-2xx that is one of Pythia's OWN error envelopes
+   * (self-identifying via `code`), the mapped typed error is thrown; a
+   * node-arrived HTTP error (no `code`) is returned verbatim as the node's own
+   * payload, never remapped — preserving the verbatim-relay contract.
    */
-  async rpc(input: RpcInput): Promise<unknown> {
-    const body: { chainId?: number; payload: unknown } = {
-      payload: input.payload,
-    };
-    if (input.chainId !== undefined) {
-      body.chainId = input.chainId;
-    }
-    const response = await this.transport.postJson("/stoachain/rpc", body);
-
+  private relayResult(response: ParsedResponse): unknown {
     if (
       (response.status < 200 || response.status >= 300) &&
       isPythiaErrorEnvelope(response.status, response.body)
     ) {
       throw mapServiceError(response.status, response.body);
     }
-    // 2xx node body, or a node-arrived HTTP error body — returned verbatim.
     return response.body;
+  }
+
+  /**
+   * `POST /stoachain/read` — a generic dirty read. The caller supplies the Pact
+   * `code` (plus optional `data`/`sender`/`chainId`); the node evaluates it and
+   * the response is returned verbatim. A read that needs keys/caps comes back as
+   * the node's own `{result:{status:"failure"}}` — that is a real answer, not an
+   * error, and is returned as-is.
+   */
+  async read(input: ReadInput): Promise<unknown> {
+    const body: {
+      chainId?: number;
+      code: string;
+      data?: object;
+      sender?: string;
+    } = { code: input.code };
+    if (input.chainId !== undefined) body.chainId = input.chainId;
+    if (input.data !== undefined) body.data = input.data;
+    if (input.sender !== undefined) body.sender = input.sender;
+
+    const response = await this.transport.postJson("/stoachain/read", body);
+    return this.relayResult(response);
+  }
+
+  /**
+   * `POST /stoachain/send` — a keyless broadcast. Relays the caller-SIGNED
+   * `cmds` array to the node's /send verbatim and returns the node response
+   * as-is. The client adds no key material and signs nothing.
+   */
+  async send(input: SendInput): Promise<unknown> {
+    const body: { chainId?: number; cmds: unknown[] } = { cmds: input.cmds };
+    if (input.chainId !== undefined) body.chainId = input.chainId;
+
+    const response = await this.transport.postJson("/stoachain/send", body);
+    return this.relayResult(response);
+  }
+
+  /**
+   * `POST /stoachain/poll` — tx-status polling. Resolves each request key's
+   * pending-vs-final status and confirmation depth, returned as a typed
+   * {@link PollResult} keyed by request key.
+   */
+  async poll(input: PollInput): Promise<PollResult> {
+    const body: { chainId?: number; requestKeys: string[] } = {
+      requestKeys: input.requestKeys,
+    };
+    if (input.chainId !== undefined) body.chainId = input.chainId;
+
+    const response = await this.transport.postJson("/stoachain/poll", body);
+    this.assertOk(response);
+    return response.body as PollResult;
   }
 
   /** `GET /healthz` — liveness + active routing + per-source reachability

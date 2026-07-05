@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pythia — the all-seeing read gateway of the AncientPantheon</title>
+    <title>Pythia — the keyless gateway of the AncientPantheon</title>
     <meta
       name="description"
-      content="Pythia is the read-only, failover-safe read gateway of the AncientPantheon — one thin endpoint for pooled, decoded blockchain reads. Read-only: it never signs, never broadcasts."
+      content="Pythia is the keyless, failover-safe transport gateway of the AncientPantheon — one endpoint for pooled blockchain reads, keyless broadcast of caller-signed transactions, and tx-status polling. It never holds keys and never signs."
     />
-    <meta property="og:title" content="Pythia — the all-seeing read gateway" />
-    <meta property="og:description" content="Pooled, failover-safe, read-only blockchain reads behind one endpoint. StoaChain live; more chains coming." />
+    <meta property="og:title" content="Pythia — the keyless blockchain gateway" />
+    <meta property="og:description" content="Pooled, failover-safe reads, keyless broadcast, and tx-status behind one endpoint. StoaChain live; more chains coming." />
     <meta property="og:image" content="/pythia.jpg" />
     <link rel="preload" as="image" href="/pythia.jpg" />
     <link rel="stylesheet" href="/styles.css" />
@@ -21,14 +21,15 @@
       <!-- ── HERO ─────────────────────────────────────────────── -->
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">The AncientPantheon · Read Constructor</p>
+          <p class="eyebrow">The AncientPantheon · Read &amp; Relay Constructor</p>
           <h1 class="title">Pythia</h1>
-          <p class="tagline">The all-seeing read gateway.</p>
+          <p class="tagline">The all-seeing gateway.</p>
           <p class="lede">
-            One thin endpoint for pooled, decoded, failover-safe blockchain
-            reads. Consumers ask Pythia; Pythia handles the nodes, the routing,
-            and the decoding. <strong>Read-only</strong> — it never holds keys,
-            never signs, never broadcasts.
+            One endpoint for pooled, failover-safe blockchain transport — read
+            any chain, broadcast your own signed transactions, and poll their
+            status. Consumers ask Pythia; Pythia handles the nodes, the routing,
+            and the failover. <strong>Keyless</strong> — it never holds keys and
+            never signs; it only relays what you give it.
           </p>
 
           <div id="livepill" class="livepill livepill--checking" title="Live service status">
@@ -37,8 +38,9 @@
           </div>
 
           <div class="cta">
-            <a class="btn btn--primary" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
-            <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">Source on GitHub</a>
+            <a class="btn btn--primary" href="#console">Try a dirty read</a>
+            <a class="btn" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
+            <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">GitHub</a>
             <a class="btn btn--ghost" href="/healthz">/healthz</a>
           </div>
         </div>
@@ -67,22 +69,63 @@
         </p>
       </section>
 
+      <!-- ── DIRTY-READ CONSOLE ───────────────────────────────── -->
+      <section class="panel" id="console" aria-labelledby="console-h">
+        <div class="panel-head">
+          <h2 id="console-h">Try a dirty read</h2>
+          <p class="panel-note">
+            Run a read-only Pact expression against a live StoaChain node. Read
+            code returns its result; anything that needs keys or capabilities
+            comes back as the node's failure — no keys, no signing.
+          </p>
+        </div>
+        <div class="console">
+          <div class="console-controls">
+            <label class="console-chain">Chain
+              <select id="c-chain" aria-label="Chain id">
+                <option value="0" selected>StoaChain · 0</option>
+                <option value="1">StoaChain · 1</option>
+                <option value="2">StoaChain · 2</option>
+                <option value="3">StoaChain · 3</option>
+                <option value="4">StoaChain · 4</option>
+                <option value="5">StoaChain · 5</option>
+                <option value="6">StoaChain · 6</option>
+                <option value="7">StoaChain · 7</option>
+                <option value="8">StoaChain · 8</option>
+                <option value="9">StoaChain · 9</option>
+              </select>
+            </label>
+            <button id="c-run" class="btn btn--primary" type="button">Read</button>
+            <span id="c-status" class="console-status" aria-live="polite"></span>
+          </div>
+          <textarea
+            id="c-code"
+            class="console-code"
+            spellcheck="false"
+            rows="4"
+            placeholder='(namespace "ouronet-ns")
+(keys DALOS.DALOS|AccountTable)'
+          ></textarea>
+          <pre id="c-out" class="console-out" aria-live="polite">// the node's dirty-read result appears here</pre>
+        </div>
+      </section>
+
       <!-- ── PROTOCOLS ────────────────────────────────────────── -->
       <section class="panel" aria-labelledby="proto-h">
         <div class="panel-head">
           <h2 id="proto-h">What she watches</h2>
-          <p class="panel-note">One language library per chain — shared across the Pantheon.</p>
+          <p class="panel-note">One keyless transport out-point per chain — read, broadcast, poll.</p>
         </div>
         <div class="cards">
           <article class="card card--live">
             <div class="card-badge">Live</div>
             <h3>StoaChain</h3>
-            <p>Pooled reads over a two-node failover pool — decoded balances, confirmation depth, and a verbatim relay, over chainweb.</p>
+            <p>Pooled dirty reads, keyless broadcast of caller-signed transactions, and tx-status polling — over chainweb, with two-node failover.</p>
           </article>
           <article class="card card--soon">
             <div class="card-badge">Coming soon</div>
             <h3>Arweave</h3>
-            <p>The permaweb — next chain in line, arriving as its own read language library.</p>
+            <p>The permaweb — next chain in line, plugging into the same read / broadcast / poll shape.</p>
           </article>
           <article class="card card--future">
             <div class="card-badge">On the horizon</div>
@@ -96,14 +139,14 @@
       <section class="panel" aria-labelledby="dev-h">
         <div class="panel-head">
           <h2 id="dev-h">For developers</h2>
-          <p class="panel-note">Call Pythia without embedding node routing or Pact decoding.</p>
+          <p class="panel-note">Call Pythia without embedding node routing — reads, broadcasts, and confirmations behind one base URL.</p>
         </div>
         <pre class="install"><code>npm install @ancientpantheon/pythia-client</code></pre>
         <ul class="endpoints">
           <li><span class="verb verb--get">GET</span> <code>/healthz</code><span class="ep-note">service + node-pool status</span></li>
-          <li><span class="verb verb--get">GET</span> <code>/api/v1/getBalance?chain=stoachain&amp;address=…</code><span class="ep-note">composite decoded balance</span></li>
-          <li><span class="verb verb--get">GET</span> <code>/api/v1/getConfirmations?chain=stoachain&amp;tx=…</code><span class="ep-note">pending vs final + depth</span></li>
-          <li><span class="verb verb--post">POST</span> <code>/stoachain/rpc</code><span class="ep-note">verbatim relay to a healthy node</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/stoachain/read</code><span class="ep-note">dirty read — caller supplies Pact code</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/stoachain/send</code><span class="ep-note">keyless broadcast — relay caller-signed txs</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/stoachain/poll</code><span class="ep-note">tx status — pending vs final + depth</span></li>
         </ul>
       </section>
 
@@ -121,7 +164,7 @@
       <footer class="foot">
         <span class="foot-mark">Pythia</span>
         <span class="foot-sep">·</span>
-        <span>Read-only gateway — never signs, never broadcasts</span>
+        <span>Keyless gateway — never holds keys, never signs</span>
         <span class="foot-sep">·</span>
         <a href="/healthz">/healthz</a>
         <span class="foot-sep">·</span>

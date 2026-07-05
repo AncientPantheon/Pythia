@@ -75,9 +75,10 @@ export function mapServiceError(
 
 /** Whether a service response body is one of Pythia's OWN error envelopes (as
  * opposed to a node-arrived relay body). Keys off the self-identifying `code`
- * discriminator: only Pythia's own bodies carry a known `code`. Used by `rpc`
- * to decide whether a non-2xx response is mapped to a typed error or returned
- * verbatim — a node's own `{error:"…"}` 400 has no `code` and is passed through. */
+ * discriminator: only Pythia's own bodies carry a known `code`. Used by the
+ * `read`/`send` relays to decide whether a non-2xx response is mapped to a typed
+ * error or returned verbatim — a node's own `{error:"…"}` 400 has no `code` and
+ * is passed through. */
 export function isPythiaErrorEnvelope(_status: number, body: unknown): boolean {
   const envelope = (body ?? {}) as ServiceErrorBody;
   return typeof envelope.code === "string" && PYTHIA_CODES.has(envelope.code);

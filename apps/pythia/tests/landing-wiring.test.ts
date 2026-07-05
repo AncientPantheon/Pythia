@@ -39,14 +39,14 @@ describe("landing wiring in the app", () => {
     expect(["primary", "fallback", "unreachable"]).toContain(body.routing);
   });
 
-  it("keeps the read relay reachable — POST /stoachain/rpc is not shadowed", async () => {
+  it("keeps the read relay reachable — POST /stoachain/read is not shadowed", async () => {
     // An out-of-range chainId is rejected with 400 BEFORE any network attempt,
-    // proving the rpc route handler ran — the static `/` catch-all did not shadow
+    // proving the read route handler ran — the static `/` catch-all did not shadow
     // it (a shadow would yield a 404 from static file resolution, not a 400).
-    const res = await app.request("/stoachain/rpc", {
+    const res = await app.request("/stoachain/read", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chainId: 99, payload: {} }),
+      body: JSON.stringify({ chainId: 99, code: "(f)" }),
     });
     expect(res.status).toBe(400);
   });
