@@ -193,6 +193,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   font-size: 14px;
 }
 .endpoints code { color: var(--ink); }
+.endpoints a { text-decoration: none; }
+.endpoints a code { color: var(--cyan); }
+.endpoints a:hover code { text-decoration: underline; }
 .verb { font-size: 11px; font-weight: 800; letter-spacing: .05em; padding: 3px 8px; border-radius: 6px; flex: none; }
 .verb--get  { background: rgba(88,201,232,.14); color: var(--cyan); }
 .verb--post { background: rgba(230,190,106,.14); color: var(--gold); }

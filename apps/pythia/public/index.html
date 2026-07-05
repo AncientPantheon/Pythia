@@ -88,12 +88,17 @@
         </div>
         <pre class="install"><code>npm install @ancientpantheon/pythia-client</code></pre>
         <p class="dev-note">
-          Point the SDK at <code>https://pythia.ancientholdings.eu</code>. Every
-          live chain exposes the same three verbs —
-          <code>POST&nbsp;/{chain}/read</code>,
-          <code>/{chain}/send</code>, and <code>/{chain}/poll</code> — plus the
-          service-wide <code>GET&nbsp;/healthz</code> and <code>GET&nbsp;/stats</code>.
+          Point the SDK at <code>https://pythia.ancientholdings.eu</code> — one base
+          URL, the same shape on every chain. GET endpoints are clickable.
         </p>
+        <ul class="endpoints">
+          <li><span class="verb verb--get">GET</span> <a href="/healthz"><code>/healthz</code></a><span class="ep-note">service + node-pool status</span></li>
+          <li><span class="verb verb--get">GET</span> <a href="/stats"><code>/stats</code></a><span class="ep-note">aggregate usage</span></li>
+          <li><span class="verb verb--get">GET</span> <a href="/api/v1/connectors"><code>/api/v1/connectors</code></a><span class="ep-note">connector directory</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/{chain}/read</code><span class="ep-note">dirty read — caller supplies Pact code</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/{chain}/send</code><span class="ep-note">keyless broadcast — relay caller-signed txs</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/{chain}/poll</code><span class="ep-note">tx status — pending vs final + depth</span></li>
+        </ul>
         <p class="dev-note">
           Registered connectors pass their key as an <code>x-pythia-key</code>
           header so their usage is attributed by name in Activity.
