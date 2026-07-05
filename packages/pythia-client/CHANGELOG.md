@@ -2,6 +2,14 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 1.0.1 — 2026-07-05
+
+- License: adopt the AncientHoldings proprietary license (all rights reserved),
+  matching the AncientPantheon family (`@ancientpantheon/khronoton-core`). The
+  `LICENSE` file now ships inside the published package tarball.
+- Docs: point the usage example at the live gateway
+  (`https://pythia.ancientholdings.eu`). No API change.
+
 ## 1.0.0 — 2026-07-04
 
 First public release.

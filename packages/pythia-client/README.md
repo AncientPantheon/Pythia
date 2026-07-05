@@ -12,7 +12,8 @@ typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`1.0.0` on public npmjs — the first public release. Ships the
+`1.0.1` on public npmjs — proprietary release, all rights reserved (see
+[LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the four gateway endpoints (`getBalance`,
 `getConfirmations`, `rpc`, `health`) over a configurable base URL with an
 injectable `fetchImpl`, and mirrors the service error taxonomy as client-side
@@ -26,7 +27,7 @@ its own types.
 ```ts
 import { PythiaClient } from "@ancientpantheon/pythia-client";
 
-const client = new PythiaClient({ baseUrl: "https://pythia.example" });
+const client = new PythiaClient({ baseUrl: "https://pythia.ancientholdings.eu" });
 
 const balance = await client.getBalance({ address: "k:abc123" });
 const status = await client.getConfirmations({ tx: "req-key", chainId: 0 });
@@ -42,6 +43,10 @@ npm install @ancientpantheon/pythia-client
 
 ## Version history
 
+**v1.0.1** — adopt the AncientHoldings proprietary license (all rights reserved),
+matching the AncientPantheon family; ship the `LICENSE` in the package tarball.
+No API change.
+
 **v1.0.0** — first public release. Ships the `PythiaClient` class over
 the four gateway endpoints (`getBalance`, `getConfirmations`, `rpc`, `health`)
 with a configurable base URL, an injectable `fetchImpl`, and the client-side
@@ -51,5 +56,7 @@ provenance-signed publish).
 
 ## License
 
-See the repository [LICENSE](../../LICENSE) — all rights reserved pending a
-final license decision before first API release.
+**Proprietary — all rights reserved.** © 2026 AncientHoldings. See
+[LICENSE](./LICENSE). No rights are granted; publication on npm is for
+AncientHoldings' operational convenience only and grants no license to any third
+party. For licensing inquiries: ancientholdings.eu.
