@@ -60,7 +60,14 @@ docker run -d --name pythia --restart unless-stopped \
 
 Add connector keys as you wire them in, e.g.
 `-e PYTHIA_API_KEYS='[{"name":"OuronetUI","key":"pk_live_…"}]'`. The named volume
-`pythia-data` persists the aggregate stats across redeploys (`docker rm` + `run`).
+`pythia-data` persists the aggregate stats across redeploys.
+
+**On redeploy**, stop the old container *gracefully* so its last counts flush:
+`docker stop pythia` (SIGTERM → the server writes its stats snapshot) then
+`docker rm pythia` — **not** `docker rm -f` (SIGKILL loses un-flushed counts). The
+image creates `/data` owned by the non-root `pythia` user (uid 1001), so a fresh
+volume is writable out of the box; a pre-existing **root-owned** volume needs a
+one-time fix: `docker run --rm -v pythia-data:/data alpine chown -R 1001:1001 /data`.
 
 Verify it serves:
 

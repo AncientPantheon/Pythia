@@ -38,9 +38,13 @@ RUN npm prune --production
 FROM node:22-alpine AS runtime
 
 ENV NODE_ENV=production
-# The single runtime knob. The server entry (apps/pythia/src/server.ts) reads
-# process.env.PORT and falls back to this default; EXPOSE mirrors it.
+# The server entry (apps/pythia/src/server.ts) reads process.env.PORT and falls
+# back to this default; EXPOSE mirrors it.
 ENV PORT=8080
+# Usage-stats aggregate snapshot — written to /data, which should be a mounted
+# volume so counts survive redeploys (see DEPLOY.md). Attribution keys come from
+# PYTHIA_API_KEYS at deploy (kept out of the image).
+ENV STATS_FILE=/data/stats.json
 
 WORKDIR /app
 
@@ -64,9 +68,13 @@ RUN test -f /app/apps/pythia/dist/server.js \
 
 # Create a non-root user that owns the app tree. The gateway is treated as
 # compromisable, so the long-lived process never runs as root.
+# Also create /data (the stats-volume mount point) owned by pythia, so a fresh
+# named volume mounted there inherits pythia ownership and the non-root process
+# can write its snapshot (root-owned volumes otherwise EACCES).
 RUN addgroup -g 1001 -S pythia \
  && adduser -S pythia -u 1001 -G pythia \
- && chown -R pythia:pythia /app
+ && mkdir -p /data \
+ && chown -R pythia:pythia /app /data
 
 USER pythia
 
