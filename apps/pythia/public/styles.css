@@ -223,6 +223,45 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .foot a { color: var(--ink-soft); text-decoration: none; }
 .foot a:hover { color: var(--gold); }
 
+/* chains — modular per-chain module */
+.chain-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.chain-tab {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-radius: 11px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.03);
+  color: var(--ink-soft); font: inherit; font-size: 14.5px; font-weight: 600;
+  cursor: pointer; transition: border-color .15s, background .15s, color .15s;
+}
+.chain-tab:hover { border-color: var(--gold-dim); color: var(--ink); }
+.chain-tab--active { border-color: var(--gold-dim); background: rgba(230,190,106,.09); color: var(--ink); }
+.chain-badge {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px;
+}
+.chain-badge--live { background: rgba(52,209,122,.16); color: #7ce6a8; }
+.chain-badge--soon { background: rgba(232,182,74,.16); color: var(--amber); }
+
+.chain-module {
+  border: 1px solid var(--line); border-radius: 13px;
+  background: rgba(255,255,255,.015);
+  padding: clamp(16px, 2.5vw, 24px);
+}
+.chain-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.chain-head h3 { margin: 0; font-size: 20px; }
+.chain-kind { color: var(--ink-mute); font-weight: 500; font-size: 15px; }
+.chain-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+.sub-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.sub-head h4 { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
+.sub-note { color: var(--ink-mute); font-size: 12.5px; }
+.sub-note code { color: var(--gold); }
+.endpoints--compact li { padding: 9px 12px; }
+.endpoints--compact code { font-size: 13px; }
+.chain-soon { text-align: center; padding: 28px 16px; }
+.chain-soon h3 { margin: 12px 0 8px; font-size: 20px; }
+.chain-soon p { margin: 0 auto; max-width: 48ch; color: var(--ink-soft); }
+.dev-note { margin: 16px 0 0; color: var(--ink-soft); font-size: 14.5px; }
+.dev-note code { color: var(--gold); }
+
 /* dirty-read console */
 .console { display: flex; flex-direction: column; gap: 12px; }
 .console-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -253,4 +292,5 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .hero { grid-template-columns: 1fr; text-align: left; }
   .hero-art { order: -1; max-width: 420px; }
   .cards { grid-template-columns: 1fr; }
+  .chain-grid { grid-template-columns: 1fr; }
 }

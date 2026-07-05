@@ -6,10 +6,10 @@
     <title>Pythia — the keyless gateway of the AncientPantheon</title>
     <meta
       name="description"
-      content="Pythia is the keyless, failover-safe transport gateway of the AncientPantheon — one endpoint for pooled blockchain reads, keyless broadcast of caller-signed transactions, and tx-status polling. It never holds keys and never signs."
+      content="Pythia is the keyless, failover-safe transport gateway of the AncientPantheon — one endpoint per chain for pooled reads, keyless broadcast of caller-signed transactions, and tx-status polling. It never holds keys and never signs."
     />
     <meta property="og:title" content="Pythia — the keyless blockchain gateway" />
-    <meta property="og:description" content="Pooled, failover-safe reads, keyless broadcast, and tx-status behind one endpoint. StoaChain live; more chains coming." />
+    <meta property="og:description" content="Per-chain pooled reads, keyless broadcast, and tx-status behind one gateway. StoaChain live; more chains coming." />
     <meta property="og:image" content="/pythia.jpg" />
     <link rel="preload" as="image" href="/pythia.jpg" />
     <link rel="stylesheet" href="/styles.css" />
@@ -25,11 +25,10 @@
           <h1 class="title">Pythia</h1>
           <p class="tagline">The all-seeing gateway.</p>
           <p class="lede">
-            One endpoint for pooled, failover-safe blockchain transport — read
-            any chain, broadcast your own signed transactions, and poll their
-            status. Consumers ask Pythia; Pythia handles the nodes, the routing,
-            and the failover. <strong>Keyless</strong> — it never holds keys and
-            never signs; it only relays what you give it.
+            One endpoint per chain for pooled, failover-safe blockchain
+            transport — read any chain, broadcast your own signed transactions,
+            and poll their status. <strong>Keyless</strong> — Pythia never holds
+            keys and never signs; it only relays what you give it.
           </p>
 
           <div id="livepill" class="livepill livepill--checking" title="Live service status">
@@ -38,7 +37,7 @@
           </div>
 
           <div class="cta">
-            <a class="btn btn--primary" href="#console">Try a dirty read</a>
+            <a class="btn btn--primary" href="#chains">Explore the chains</a>
             <a class="btn" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
             <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">GitHub</a>
             <a class="btn btn--ghost" href="/healthz">/healthz</a>
@@ -50,104 +49,31 @@
         </div>
       </header>
 
-      <!-- ── LIVE NODE HEALTH ─────────────────────────────────── -->
-      <section class="panel" aria-labelledby="sources-h">
+      <!-- ── CHAINS (modular, one module per chain) ───────────── -->
+      <section class="panel" id="chains" aria-labelledby="chains-h">
         <div class="panel-head">
-          <h2 id="sources-h">Node pool</h2>
-          <p class="panel-note">Live from <code>/healthz</code>, refreshed every 15s.</p>
+          <h2 id="chains-h">Chains</h2>
+          <p class="panel-note">One keyless out-point per chain — node pool, dirty read, broadcast, poll. Pick a chain.</p>
         </div>
-        <div id="sources" class="sources" aria-live="polite">
-          <div class="source-row">
-            <span class="dot" data-color="grey"></span>
-            <span class="source-label">checking…</span>
-          </div>
-        </div>
-        <p class="legend">
-          <span class="key"><span class="dot" data-color="green"></span> reachable (primary)</span>
-          <span class="key"><span class="dot" data-color="amber"></span> fallback only</span>
-          <span class="key"><span class="dot" data-color="red"></span> unreachable</span>
-        </p>
-      </section>
-
-      <!-- ── DIRTY-READ CONSOLE ───────────────────────────────── -->
-      <section class="panel" id="console" aria-labelledby="console-h">
-        <div class="panel-head">
-          <h2 id="console-h">Try a dirty read</h2>
-          <p class="panel-note">
-            Run a read-only Pact expression against a live StoaChain node. Read
-            code returns its result; anything that needs keys or capabilities
-            comes back as the node's failure — no keys, no signing.
-          </p>
-        </div>
-        <div class="console">
-          <div class="console-controls">
-            <label class="console-chain">Chain
-              <select id="c-chain" aria-label="Chain id">
-                <option value="0" selected>StoaChain · 0</option>
-                <option value="1">StoaChain · 1</option>
-                <option value="2">StoaChain · 2</option>
-                <option value="3">StoaChain · 3</option>
-                <option value="4">StoaChain · 4</option>
-                <option value="5">StoaChain · 5</option>
-                <option value="6">StoaChain · 6</option>
-                <option value="7">StoaChain · 7</option>
-                <option value="8">StoaChain · 8</option>
-                <option value="9">StoaChain · 9</option>
-              </select>
-            </label>
-            <button id="c-run" class="btn btn--primary" type="button">Read</button>
-            <span id="c-status" class="console-status" aria-live="polite"></span>
-          </div>
-          <textarea
-            id="c-code"
-            class="console-code"
-            spellcheck="false"
-            rows="4"
-            placeholder='(namespace "ouronet-ns")
-(keys DALOS.DALOS|AccountTable)'
-          ></textarea>
-          <pre id="c-out" class="console-out" aria-live="polite">// the node's dirty-read result appears here</pre>
-        </div>
-      </section>
-
-      <!-- ── PROTOCOLS ────────────────────────────────────────── -->
-      <section class="panel" aria-labelledby="proto-h">
-        <div class="panel-head">
-          <h2 id="proto-h">What she watches</h2>
-          <p class="panel-note">One keyless transport out-point per chain — read, broadcast, poll.</p>
-        </div>
-        <div class="cards">
-          <article class="card card--live">
-            <div class="card-badge">Live</div>
-            <h3>StoaChain</h3>
-            <p>Pooled dirty reads, keyless broadcast of caller-signed transactions, and tx-status polling — over chainweb, with two-node failover.</p>
-          </article>
-          <article class="card card--soon">
-            <div class="card-badge">Coming soon</div>
-            <h3>Arweave</h3>
-            <p>The permaweb — next chain in line, plugging into the same read / broadcast / poll shape.</p>
-          </article>
-          <article class="card card--future">
-            <div class="card-badge">On the horizon</div>
-            <h3>&amp; beyond</h3>
-            <p>Bitcoin, Ethereum, and the chains the Pantheon bridges — each added when a consumer needs it.</p>
-          </article>
-        </div>
+        <!-- chain selector + the selected chain's module are rendered by app.js -->
+        <div class="chain-tabs" id="chain-tabs" role="tablist" aria-label="Chains"></div>
+        <div class="chain-module" id="chain-module" role="tabpanel"></div>
       </section>
 
       <!-- ── FOR DEVELOPERS ───────────────────────────────────── -->
       <section class="panel" aria-labelledby="dev-h">
         <div class="panel-head">
           <h2 id="dev-h">For developers</h2>
-          <p class="panel-note">Call Pythia without embedding node routing — reads, broadcasts, and confirmations behind one base URL.</p>
+          <p class="panel-note">One base URL, one keyless surface, the same shape on every chain.</p>
         </div>
         <pre class="install"><code>npm install @ancientpantheon/pythia-client</code></pre>
-        <ul class="endpoints">
-          <li><span class="verb verb--get">GET</span> <code>/healthz</code><span class="ep-note">service + node-pool status</span></li>
-          <li><span class="verb verb--post">POST</span> <code>/stoachain/read</code><span class="ep-note">dirty read — caller supplies Pact code</span></li>
-          <li><span class="verb verb--post">POST</span> <code>/stoachain/send</code><span class="ep-note">keyless broadcast — relay caller-signed txs</span></li>
-          <li><span class="verb verb--post">POST</span> <code>/stoachain/poll</code><span class="ep-note">tx status — pending vs final + depth</span></li>
-        </ul>
+        <p class="dev-note">
+          Point the SDK at <code>https://pythia.ancientholdings.eu</code>. Every
+          live chain exposes the same three verbs —
+          <code>POST&nbsp;/{chain}/read</code>,
+          <code>/{chain}/send</code>, and <code>/{chain}/poll</code> — plus the
+          service-wide <code>GET&nbsp;/healthz</code>.
+        </p>
       </section>
 
       <!-- ── CONNECTORS ───────────────────────────────────────── -->

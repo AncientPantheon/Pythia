@@ -1,22 +1,43 @@
-// Pythia landing client — vanilla, framework-free, no bundler. Mirrors the
-// unit-tested logic in src/landing/{indicator,render}.ts, expressed here against
-// the real browser document/fetch/setInterval. Polls /healthz for live node
-// health and loads the connector list from /api/v1/connectors.
+// Pythia landing client — vanilla, framework-free, no bundler. The page is
+// MODULAR per chain: `CHAINS` drives a chain selector, and each chain renders
+// its own self-contained module (node pool + dirty-read console + endpoints).
+// Adding a chain = adding one entry to CHAINS.
 
 const POLL_INTERVAL_MS = 15000;
 
-// --- indicator: health -> colour ------------------------------------------
-// unreachable -> red; reachable on fallback routing -> amber; otherwise green.
+// ── chain registry ─────────────────────────────────────────────────────────
+const CHAINS = [
+  {
+    id: "stoachain",
+    name: "StoaChain",
+    status: "live",
+    kind: "Kadena chainweb",
+    blurb: "A two-node failover pool over Kadena chainweb.",
+    health: "/healthz",
+    base: "/stoachain",
+    readExample: '(namespace "ouronet-ns")\n(keys DALOS.DALOS|AccountTable)',
+  },
+  {
+    id: "arweave",
+    name: "Arweave",
+    status: "soon",
+    kind: "The permaweb",
+    blurb: "Next chain in line — it plugs into the same read / broadcast / poll shape.",
+  },
+];
+
+let stopChainHealth = null; // tears down the selected chain's health poll on switch
+
+// ── health indicator + rendering ────────────────────────────────────────────
 function sourceIndicator(source, routing) {
   if (!source.reachable) return "red";
   if (routing === "fallback") return "amber";
   return "green";
 }
 
-// --- render: node pool ----------------------------------------------------
 function renderSources(container, sources, routing) {
   container.textContent = "";
-  for (const source of sources) {
+  for (const source of sources || []) {
     const row = document.createElement("div");
     row.className = "source-row";
 
@@ -40,12 +61,11 @@ function renderSources(container, sources, routing) {
       }
       row.appendChild(url);
     }
-
     container.appendChild(row);
   }
 }
 
-// --- render: hero live pill -----------------------------------------------
+// ── hero live pill (service-wide, independent of chain selection) ────────────
 function updateLivePill(snapshot) {
   const pill = document.getElementById("livepill");
   const text = document.getElementById("livetext");
@@ -74,7 +94,7 @@ function pillError() {
   text.textContent = "status unavailable";
 }
 
-// --- render: connectors ---------------------------------------------------
+// ── connectors ──────────────────────────────────────────────────────────────
 function renderConnectors(container, connectors) {
   container.textContent = "";
   if (!connectors || connectors.length === 0) {
@@ -90,7 +110,6 @@ function renderConnectors(container, connectors) {
     link.href = connector.url;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
-
     if (connector.logo !== undefined) {
       const img = document.createElement("img");
       img.className = "connector-logo";
@@ -98,16 +117,14 @@ function renderConnectors(container, connectors) {
       img.alt = `${connector.name} logo`;
       link.appendChild(img);
     }
-
     const label = document.createElement("span");
     label.textContent = connector.name;
     link.appendChild(label);
-
     container.appendChild(link);
   }
 }
 
-// --- refresh loop: fire immediately, then every intervalMs ----------------
+// ── refresh loop ─────────────────────────────────────────────────────────────
 function createRefreshLoop({ fetchSnapshot, onSnapshot, onError, intervalMs }) {
   const tick = () => {
     fetchSnapshot().then(onSnapshot).catch(onError || (() => {}));
@@ -117,44 +134,18 @@ function createRefreshLoop({ fetchSnapshot, onSnapshot, onError, intervalMs }) {
   return () => clearInterval(timer);
 }
 
-// --- wiring ---------------------------------------------------------------
 async function fetchHealth() {
   const res = await fetch("/healthz", { headers: { accept: "application/json" } });
   return res.json();
 }
 
-async function loadConnectors() {
-  const container = document.getElementById("connectors");
-  if (!container) return;
-  try {
-    const res = await fetch("/api/v1/connectors", { headers: { accept: "application/json" } });
-    const body = await res.json();
-    renderConnectors(container, body.connectors ?? []);
-  } catch {
-    /* leave the empty-state message; connectors are static and non-critical */
-  }
-}
-
-function startHealth() {
-  const container = document.getElementById("sources");
-  createRefreshLoop({
-    fetchSnapshot: fetchHealth,
-    onSnapshot: (snapshot) => {
-      if (container) renderSources(container, snapshot.sources, snapshot.routing);
-      updateLivePill(snapshot);
-    },
-    onError: pillError,
-    intervalMs: POLL_INTERVAL_MS,
-  });
-}
-
-// --- dirty-read console ---------------------------------------------------
-function wireConsole() {
-  const btn = document.getElementById("c-run");
-  const code = document.getElementById("c-code");
-  const chain = document.getElementById("c-chain");
-  const out = document.getElementById("c-out");
-  const status = document.getElementById("c-status");
+// ── per-chain dirty-read console ────────────────────────────────────────────
+function wireConsole(root, base) {
+  const btn = root.querySelector('[data-role="run"]');
+  const code = root.querySelector('[data-role="code"]');
+  const chain = root.querySelector('[data-role="chainid"]');
+  const out = root.querySelector('[data-role="out"]');
+  const status = root.querySelector('[data-role="status"]');
   if (!btn || !code || !out) return;
 
   async function run() {
@@ -168,7 +159,7 @@ function wireConsole() {
     out.textContent = "";
     btn.disabled = true;
     try {
-      const res = await fetch("/stoachain/read", {
+      const res = await fetch(`${base}/read`, {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ chainId, code: src }),
@@ -191,7 +182,6 @@ function wireConsole() {
   }
 
   btn.addEventListener("click", run);
-  // Ctrl/Cmd + Enter to run from the textarea
   code.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
@@ -200,6 +190,156 @@ function wireConsole() {
   });
 }
 
+// ── chain module (node pool + console + endpoints) ──────────────────────────
+function chainIdOptions(chain) {
+  let out = "";
+  for (let n = 0; n <= 9; n++) {
+    out += `<option value="${n}"${n === 0 ? " selected" : ""}>${chain.name} · ${n}</option>`;
+  }
+  return out;
+}
+
+function renderChainModule(chain) {
+  if (stopChainHealth) {
+    stopChainHealth();
+    stopChainHealth = null;
+  }
+  const mod = document.getElementById("chain-module");
+  if (!mod) return;
+
+  if (chain.status !== "live") {
+    mod.innerHTML = `
+      <div class="chain-soon">
+        <span class="chain-badge chain-badge--soon">Coming soon</span>
+        <h3>${chain.name} <span class="chain-kind">· ${chain.kind}</span></h3>
+        <p>${chain.blurb}</p>
+      </div>`;
+    return;
+  }
+
+  mod.innerHTML = `
+    <div class="chain-head">
+      <h3>${chain.name} <span class="chain-kind">· ${chain.kind}</span></h3>
+      <span class="chain-badge chain-badge--live">Live</span>
+    </div>
+
+    <div class="chain-grid">
+      <div class="sub">
+        <div class="sub-head"><h4>Node pool</h4><span class="sub-note"><code>/healthz</code> · 15s</span></div>
+        <div class="sources" data-role="sources" aria-live="polite">
+          <div class="source-row"><span class="dot" data-color="grey"></span><span class="source-label">checking…</span></div>
+        </div>
+        <p class="legend">
+          <span class="key"><span class="dot" data-color="green"></span> primary</span>
+          <span class="key"><span class="dot" data-color="amber"></span> fallback</span>
+          <span class="key"><span class="dot" data-color="red"></span> down</span>
+        </p>
+      </div>
+
+      <div class="sub">
+        <div class="sub-head"><h4>Endpoints</h4></div>
+        <ul class="endpoints endpoints--compact">
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/read</code></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/send</code></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/poll</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sub">
+      <div class="sub-head"><h4>Try a dirty read</h4><span class="sub-note">read-only Pact code · no keys involved</span></div>
+      <div class="console">
+        <div class="console-controls">
+          <label class="console-chain">Chain
+            <select data-role="chainid" aria-label="Chain id">${chainIdOptions(chain)}</select>
+          </label>
+          <button data-role="run" class="btn btn--primary" type="button">Read</button>
+          <span data-role="status" class="console-status" aria-live="polite"></span>
+        </div>
+        <textarea data-role="code" class="console-code" spellcheck="false" rows="4"></textarea>
+        <pre data-role="out" class="console-out" aria-live="polite">// the node's dirty-read result appears here</pre>
+      </div>
+    </div>`;
+
+  // set the placeholder via property so the example's quotes/newlines are literal
+  const code = mod.querySelector('[data-role="code"]');
+  if (code) code.placeholder = chain.readExample || "";
+
+  // this chain's node-pool health poll
+  const sources = mod.querySelector('[data-role="sources"]');
+  stopChainHealth = createRefreshLoop({
+    fetchSnapshot: () => fetch(chain.health, { headers: { accept: "application/json" } }).then((r) => r.json()),
+    onSnapshot: (snap) => {
+      if (sources) renderSources(sources, snap.sources, snap.routing);
+    },
+    onError: () => {},
+    intervalMs: POLL_INTERVAL_MS,
+  });
+
+  wireConsole(mod, chain.base);
+}
+
+// ── chain selector ──────────────────────────────────────────────────────────
+function selectChain(id) {
+  document.querySelectorAll(".chain-tab").forEach((t) => {
+    const on = t.dataset.chain === id;
+    t.classList.toggle("chain-tab--active", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  const chain = CHAINS.find((c) => c.id === id);
+  if (chain) renderChainModule(chain);
+}
+
+function renderChainTabs() {
+  const tabs = document.getElementById("chain-tabs");
+  if (!tabs) return;
+  tabs.textContent = "";
+  CHAINS.forEach((c, i) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chain-tab" + (i === 0 ? " chain-tab--active" : "");
+    btn.dataset.chain = c.id;
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", i === 0 ? "true" : "false");
+
+    const name = document.createElement("span");
+    name.className = "chain-tab-name";
+    name.textContent = c.name;
+    const badge = document.createElement("span");
+    badge.className = `chain-badge chain-badge--${c.status}`;
+    badge.textContent = c.status === "live" ? "Live" : "Soon";
+
+    btn.appendChild(name);
+    btn.appendChild(badge);
+    btn.addEventListener("click", () => selectChain(c.id));
+    tabs.appendChild(btn);
+  });
+  selectChain(CHAINS[0].id);
+}
+
+// ── connectors loader + hero pill ───────────────────────────────────────────
+async function loadConnectors() {
+  const container = document.getElementById("connectors");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/v1/connectors", { headers: { accept: "application/json" } });
+    const body = await res.json();
+    renderConnectors(container, body.connectors ?? []);
+  } catch {
+    /* leave the empty-state message */
+  }
+}
+
+function startHealthPill() {
+  createRefreshLoop({
+    fetchSnapshot: fetchHealth,
+    onSnapshot: updateLivePill,
+    onError: pillError,
+    intervalMs: POLL_INTERVAL_MS,
+  });
+}
+
+// ── init ─────────────────────────────────────────────────────────────────────
+renderChainTabs();
+startHealthPill();
 loadConnectors();
-startHealth();
-wireConsole();
