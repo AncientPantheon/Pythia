@@ -287,10 +287,60 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
 }
 
+/* ── ACTIVITY / STATS ───────────────────────────────────── */
+.stats { display: grid; gap: 22px; }
+.stats-note { margin: 4px 0 0; color: var(--ink-mute); font-size: 13px; }
+.stats-note code { color: var(--gold); }
+.stats-sub {
+  margin: 0 0 10px; font-size: 13px; font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--ink-mute);
+}
+
+.stat-cards {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+}
+.stat-cards--verbs { grid-template-columns: repeat(3, 1fr); }
+.stat-card {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 16px 18px; border-radius: 12px;
+  background: rgba(255,255,255,.025); border: 1px solid var(--line);
+}
+.stat-value {
+  font-size: 30px; font-weight: 700; line-height: 1;
+  background: linear-gradient(180deg, #fff 0%, var(--gold) 80%, var(--gold-dim) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.stat-label {
+  font-size: 12.5px; color: var(--ink-mute);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+
+.stats-chart {
+  padding: 16px 18px; border-radius: 12px;
+  background: rgba(255,255,255,.02); border: 1px solid var(--line);
+}
+.activity-chart { display: block; width: 100%; height: auto; }
+.activity-bar { fill: var(--cyan); opacity: .85; }
+.activity-bar:hover { fill: var(--gold); opacity: 1; }
+.activity-axis { fill: var(--ink-mute); font-size: 10px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.stats-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.stats-table th, .stats-table td {
+  padding: 9px 12px; border-bottom: 1px solid var(--line); text-align: left;
+}
+.stats-table th {
+  color: var(--ink-mute); font-weight: 600; font-size: 12.5px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.stats-table td { color: var(--ink); }
+.stats-table .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--gold); }
+.stats-table tbody tr:last-child td { border-bottom: none; }
+
 /* ── RESPONSIVE ─────────────────────────────────────────── */
 @media (max-width: 860px) {
   .hero { grid-template-columns: 1fr; text-align: left; }
   .hero-art { order: -1; max-width: 420px; }
   .cards { grid-template-columns: 1fr; }
   .chain-grid { grid-template-columns: 1fr; }
+  .stat-cards { grid-template-columns: 1fr 1fr; }
 }

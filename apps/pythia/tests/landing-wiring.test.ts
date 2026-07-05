@@ -12,9 +12,11 @@ describe("landing wiring in the app", () => {
     const contentType = res.headers.get("content-type") ?? "";
     expect(contentType).toContain("text/html");
     const html = await res.text();
-    // Pins that it is the Pythia landing shell, not an arbitrary 200.
+    // Pins that it is the Pythia landing shell, not an arbitrary 200. The shell
+    // is the modular per-chain layout, so it carries the Chains section anchor
+    // (the old flat `id="sources"` list was refactored into per-chain modules).
     expect(html).toContain("<title>Pythia");
-    expect(html).toContain('id="sources"');
+    expect(html).toContain('id="chains"');
   });
 
   it("serves the static app.js asset (the client script resolves)", async () => {

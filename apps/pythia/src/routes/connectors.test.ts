@@ -12,6 +12,7 @@ function configWith(connectors: ConnectorConfig[]): PythiaConfig {
     connectors,
     finalityDepth: 6,
     corsOrigins: [],
+    readGasLimit: 100_000_000,
   };
 }
 

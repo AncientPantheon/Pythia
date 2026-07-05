@@ -15,5 +15,6 @@
   ],
   "connectors": [],
   "finalityDepth": 6,
-  "corsOrigins": []
+  "corsOrigins": [],
+  "readGasLimit": 100000000
 }

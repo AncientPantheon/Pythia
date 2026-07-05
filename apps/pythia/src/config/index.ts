@@ -8,6 +8,7 @@ export {
   loadPythiaConfig,
   PythiaConfigError,
   DEFAULT_FINALITY_DEPTH,
+  DEFAULT_READ_GAS_LIMIT,
 } from "./loader.js";
 export type {
   PythiaConfig,

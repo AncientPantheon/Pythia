@@ -19,6 +19,8 @@ export interface PythiaConfig {
   finalityDepth: number;
   /** Browser origins allowed to read through the gateway. Empty/absent → "*". */
   corsOrigins: string[];
+  /** Default gas ceiling for a dirty read. Absent → 100M. */
+  readGasLimit: number;
 }
 
 /**
@@ -27,6 +29,10 @@ export interface PythiaConfig {
  * proves the invariants (exactly one primary + one fallback, secure origin-only
  * urls, well-formed connectors).
  */
-export type RawPythiaConfig = Omit<PythiaConfig, "corsOrigins"> & {
+export type RawPythiaConfig = Omit<
+  PythiaConfig,
+  "corsOrigins" | "readGasLimit"
+> & {
   corsOrigins?: string[];
+  readGasLimit?: number;
 };

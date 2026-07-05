@@ -133,6 +133,68 @@ describe("POST /stoachain/read dirty read", () => {
     expect(cmd.meta.sender).toBe("k:sender");
   });
 
+  it("defaults meta.gasLimit to the injected config readGasLimit when the body omits gasLimit", async () => {
+    // The route's effective budget is config.readGasLimit unless the caller
+    // overrides it; an omitted body.gasLimit must fall through to the config value.
+    let capturedBody: string | undefined;
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedBody = init?.body as string;
+      return nodeOk({ ok: true });
+    });
+    const app = new Hono();
+    registerRead(app, {
+      sources: { primary, fallback },
+      fetchImpl: fetchImpl as never,
+      readGasLimit: 42_000_000,
+    });
+
+    await post(app, { code: "(f)" });
+
+    const cmd = JSON.parse(
+      (JSON.parse(capturedBody!) as { cmd: string }).cmd,
+    ) as { meta: { gasLimit: number } };
+    expect(cmd.meta.gasLimit).toBe(42_000_000);
+  });
+
+  it("honors a body gasLimit override over the config default", async () => {
+    // A caller may pin a per-read budget; the body value wins over config so an
+    // expensive read can raise (or lower) its own ceiling.
+    let capturedBody: string | undefined;
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      capturedBody = init?.body as string;
+      return nodeOk({ ok: true });
+    });
+    const app = new Hono();
+    registerRead(app, {
+      sources: { primary, fallback },
+      fetchImpl: fetchImpl as never,
+      readGasLimit: 42_000_000,
+    });
+
+    await post(app, { code: "(f)", gasLimit: 7_500_000 });
+
+    const cmd = JSON.parse(
+      (JSON.parse(capturedBody!) as { cmd: string }).cmd,
+    ) as { meta: { gasLimit: number } };
+    expect(cmd.meta.gasLimit).toBe(7_500_000);
+  });
+
+  it("rejects a non-positive-integer body gasLimit with a 400 and NO fetch", async () => {
+    // An invalid override (zero, negative, fractional) is a caller input error
+    // caught before any network attempt.
+    const fetchImpl = vi.fn(async () => nodeOk({}));
+
+    const res = await post(appWith(fetchImpl as never), {
+      code: "(f)",
+      gasLimit: -5,
+    });
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("pythia_validation");
+  });
+
   it("rejects a missing code with a self-identifying 400 (pythia_validation) and NO fetch", async () => {
     const fetchImpl = vi.fn(async () => nodeOk({}));
 

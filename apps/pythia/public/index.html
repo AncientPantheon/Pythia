@@ -38,6 +38,7 @@
 
           <div class="cta">
             <a class="btn btn--primary" href="#chains">Explore the chains</a>
+            <a class="btn" href="#stats">Activity</a>
             <a class="btn" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
             <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">GitHub</a>
             <a class="btn btn--ghost" href="/healthz">/healthz</a>
@@ -58,6 +59,19 @@
         <!-- chain selector + the selected chain's module are rendered by app.js -->
         <div class="chain-tabs" id="chain-tabs" role="tablist" aria-label="Chains"></div>
         <div class="chain-module" id="chain-module" role="tabpanel"></div>
+      </section>
+
+      <!-- ── ACTIVITY (usage analytics) ───────────────────────── -->
+      <section class="panel" id="stats" aria-labelledby="stats-h">
+        <div class="panel-head">
+          <h2 id="stats-h">Activity</h2>
+          <p class="panel-note">Aggregate usage across the gateway — reads, broadcasts, and polls. Attributed by consumer, never per request.</p>
+        </div>
+
+        <div id="stats-body" class="stats" aria-live="polite">
+          <p class="empty">Loading activity…</p>
+        </div>
+        <p class="stats-note">Public aggregate view · <code>GET /stats</code></p>
       </section>
 
       <!-- ── FOR DEVELOPERS ───────────────────────────────────── -->

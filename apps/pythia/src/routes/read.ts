@@ -7,6 +7,7 @@ import {
   STOA_NETWORK,
 } from "../dial/index.js";
 import { buildLocalCommand } from "../chainweb/localCommand.js";
+import { loadConfigFromDisk } from "../config/index.js";
 import {
   MAX_RELAY_BODY_BYTES,
   passthrough,
@@ -15,7 +16,11 @@ import {
   type RelayDeps,
 } from "./relay.js";
 
-export type ReadDeps = RelayDeps;
+export interface ReadDeps extends RelayDeps {
+  /** Default gas ceiling applied when the request body omits `gasLimit`.
+   * Injectable so tests avoid disk; defaults to the config-resolved value. */
+  readGasLimit?: number;
+}
 
 /** Build the chainweb /local read path for a host + chain. */
 function localReadPath(host: string, chainId: number): string {
@@ -46,6 +51,7 @@ export function registerRead(app: Hono, deps: ReadDeps = {}): void {
         code?: unknown;
         data?: object;
         sender?: string;
+        gasLimit?: unknown;
       } | null;
 
       if (parsed === null || typeof parsed !== "object") {
@@ -57,6 +63,7 @@ export function registerRead(app: Hono, deps: ReadDeps = {}): void {
 
       let chainId: number;
       let code: string;
+      let gasLimit: number;
       try {
         chainId = assertChainId(parsed.chainId);
         if (typeof parsed.code !== "string" || parsed.code.trim() === "") {
@@ -65,12 +72,30 @@ export function registerRead(app: Hono, deps: ReadDeps = {}): void {
           );
         }
         code = parsed.code;
+        // Effective budget: an explicit body override (validated) wins, else the
+        // injected/config default. The node accepts any ceiling for empty-sender
+        // reads, so the default is generous rather than the old 150k budget.
+        if (parsed.gasLimit !== undefined) {
+          if (
+            typeof parsed.gasLimit !== "number" ||
+            !Number.isInteger(parsed.gasLimit) ||
+            parsed.gasLimit < 1
+          ) {
+            throw new PythiaValidationError(
+              "gasLimit must be a positive integer when present",
+            );
+          }
+          gasLimit = parsed.gasLimit;
+        } else {
+          gasLimit = deps.readGasLimit ?? loadConfigFromDisk().readGasLimit;
+        }
       } catch (err) {
         return respondRelayError(c, err);
       }
 
       const body = buildLocalCommand(code, {
         chainId,
+        gasLimit,
         ...(parsed.data !== undefined ? { data: parsed.data } : {}),
         ...(parsed.sender !== undefined ? { sender: parsed.sender } : {}),
       });

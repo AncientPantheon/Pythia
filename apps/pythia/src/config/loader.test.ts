@@ -64,6 +64,34 @@ describe("loadPythiaConfig", () => {
     ]);
   });
 
+  it("defaults readGasLimit to 100M when the field is absent", () => {
+    // readGasLimit is optional; absent means "use the generous dirty-read
+    // default" so expensive reads are not gas-starved by an old low ceiling.
+    const raw = validRaw();
+    delete (raw as { readGasLimit?: unknown }).readGasLimit;
+
+    expect(loadPythiaConfig(raw).readGasLimit).toBe(100_000_000);
+  });
+
+  it("loads a configured readGasLimit verbatim", () => {
+    // When the operator pins a budget, the loader passes the exact integer
+    // through so it becomes the per-read default the route applies.
+    const raw = validRaw();
+    (raw as { readGasLimit?: number }).readGasLimit = 250_000;
+
+    expect(loadPythiaConfig(raw).readGasLimit).toBe(250_000);
+  });
+
+  it("rejects a readGasLimit that is not a positive integer", () => {
+    // A zero, negative, or fractional budget is a boot-time config error, not a
+    // silently coerced value.
+    for (const bad of [0, -1, 1.5, "100" as unknown]) {
+      const raw = validRaw();
+      (raw as { readGasLimit?: unknown }).readGasLimit = bad;
+      expect(() => loadPythiaConfig(raw)).toThrow(/readGasLimit/i);
+    }
+  });
+
   it("rejects a corsOrigins that is not an array of strings", () => {
     // A malformed allowlist (e.g. a bare string or a number entry) is a config
     // error surfaced at boot, not a silently ignored value.

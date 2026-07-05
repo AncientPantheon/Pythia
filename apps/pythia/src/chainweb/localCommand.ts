@@ -1,6 +1,14 @@
 import { blake2b } from "@noble/hashes/blake2b";
 import { STOA_NETWORK } from "../dial/index.js";
 
+/**
+ * Default gas budget for a dirty read. Chainweb `/local` charges no real gas
+ * for an empty sender and accepts any gasLimit (verified live to 1B), so an
+ * expensive read only fails when the ceiling is too low. 100M is generous
+ * enough for heavy reads while still bounding runaway evaluation.
+ */
+export const DEFAULT_READ_GAS_LIMIT = 100_000_000;
+
 export interface LocalCommandOptions {
   /** Chainweb chain the read targets (0-9). */
   chainId: number;
@@ -8,6 +16,8 @@ export interface LocalCommandOptions {
   data?: object;
   /** Optional sender account recorded in `meta`. Defaults to `""`. */
   sender?: string;
+  /** Optional gas ceiling for the read. Defaults to {@link DEFAULT_READ_GAS_LIMIT}. */
+  gasLimit?: number;
 }
 
 /** base64url = standard base64 with +→-, /→_, trailing = stripped. */
@@ -40,7 +50,7 @@ export function buildLocalCommand(
     meta: {
       chainId: String(options.chainId),
       sender: options.sender ?? "",
-      gasLimit: 150000,
+      gasLimit: options.gasLimit ?? DEFAULT_READ_GAS_LIMIT,
       gasPrice: 0.00000001,
       ttl: 600,
       creationTime: Math.floor(Date.now() / 1000),

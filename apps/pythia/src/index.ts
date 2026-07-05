@@ -7,8 +7,12 @@ import { registerRead } from "./routes/read.js";
 import { registerSend } from "./routes/send.js";
 import { registerPoll } from "./routes/poll.js";
 import { registerConnectors } from "./routes/connectors.js";
+import { registerStats } from "./routes/stats.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loadConfigFromDisk } from "./config/index.js";
+import { StatsStore } from "./stats/store.js";
+import { loadConsumerMap } from "./stats/consumers.js";
+import { statsMiddleware } from "./stats/middleware.js";
 
 /**
  * The Pythia gateway application.
@@ -29,6 +33,15 @@ import { loadConfigFromDisk } from "./config/index.js";
  */
 export const app = new Hono();
 
+// Usage analytics: an in-memory aggregate (day/consumer/chain/endpoint/ok) with
+// atomic JSON-snapshot persistence, plus the consumer key→name map loaded from
+// the DEPLOY-TIME `PYTHIA_API_KEYS` secret (NOT the public repo config). The
+// store is exported so the server can flush it on shutdown.
+export const statsStore = new StatsStore({
+  filePath: process.env.STATS_FILE || "./pythia-stats.json",
+});
+const consumerMap = loadConsumerMap(process.env.PYTHIA_API_KEYS);
+
 // The hand-written static landing assets, resolved relative to this module so
 // serving is independent of the process CWD (container runs from /app, local
 // `npm start` runs from apps/pythia). dist layout mirrors src, so from
@@ -41,13 +54,20 @@ const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public")
 // for this public read-only gateway. Same-origin static assets are unaffected.
 app.use("*", corsMiddleware(loadConfigFromDisk().corsOrigins));
 
+// Usage analytics runs before the route handlers so it can observe each
+// operational request's final status. It only counts `/{chain}/{read|send|poll}`
+// (health/static/connectors are ignored) and records nothing else — keyless, it
+// never signs or broadcasts.
+app.use("*", statsMiddleware(statsStore, consumerMap));
+
 // API + health routes are registered BEFORE the `/` static catch-all so the
-// static handler never shadows `/healthz`, `/stoachain/*`, or `/api/v1/*`.
+// static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
 registerHealthz(app);
 registerRead(app);
 registerSend(app);
 registerPoll(app);
 registerConnectors(app);
+registerStats(app, statsStore);
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves
 // the same regardless of where the process was started from.

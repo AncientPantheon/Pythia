@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { blake2b } from "@noble/hashes/blake2b";
-import { buildLocalCommand } from "./localCommand.js";
+import { buildLocalCommand, DEFAULT_READ_GAS_LIMIT } from "./localCommand.js";
 
 /** Recompute base64url(blake2b-256(utf8(cmd))) independently so the test pins
  * the node's own hash-verification rule, not the builder's own arithmetic. */
@@ -65,5 +65,31 @@ describe("buildLocalCommand", () => {
 
     expect(cmd.payload.exec.data).toEqual({});
     expect(cmd.meta.sender).toBe("");
+  });
+
+  it("defaults meta.gasLimit to DEFAULT_READ_GAS_LIMIT (100M) when the caller omits it", () => {
+    // Chainweb /local charges no real gas for an empty sender and accepts any
+    // gasLimit; the 100M default lets expensive dirty reads run instead of
+    // failing on the old hardcoded 150k budget.
+    const cmd = JSON.parse(
+      (JSON.parse(buildLocalCommand("(big-read)", { chainId: 0 })) as {
+        cmd: string;
+      }).cmd,
+    ) as { meta: { gasLimit: number } };
+
+    expect(DEFAULT_READ_GAS_LIMIT).toBe(100_000_000);
+    expect(cmd.meta.gasLimit).toBe(100_000_000);
+  });
+
+  it("puts the caller-supplied gasLimit into meta.gasLimit verbatim", () => {
+    // A caller may override the budget per read; the exact integer must land in
+    // meta so the node evaluates under the requested ceiling.
+    const cmd = JSON.parse(
+      (JSON.parse(
+        buildLocalCommand("(big-read)", { chainId: 0, gasLimit: 250_000 }),
+      ) as { cmd: string }).cmd,
+    ) as { meta: { gasLimit: number } };
+
+    expect(cmd.meta.gasLimit).toBe(250_000);
   });
 });

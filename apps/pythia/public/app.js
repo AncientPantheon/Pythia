@@ -339,7 +339,152 @@ function startHealthPill() {
   });
 }
 
+// ── activity / usage analytics ───────────────────────────────────────────────
+const SVG_NS = "http://www.w3.org/2000/svg";
+const CHART_DAYS = 30; // the bar chart shows the last 30 daily buckets
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function statNumber(label, value) {
+  const card = el("div", "stat-card");
+  card.appendChild(el("span", "stat-value", String(value)));
+  card.appendChild(el("span", "stat-label", label));
+  return card;
+}
+
+// A vanilla SVG bar chart of daily request counts — no chart library. Bars scale
+// to the busiest day; a few evenly-spaced dates are labelled along the axis.
+function buildActivityChart(daily) {
+  const days = daily.slice(-CHART_DAYS);
+  const W = 640;
+  const H = 160;
+  const pad = { top: 8, right: 8, bottom: 20, left: 8 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+  const max = days.reduce((m, d) => Math.max(m, d.requests), 0) || 1;
+  const slot = plotW / days.length;
+  const barW = Math.max(1, slot * 0.7);
+
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "activity-chart");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `Daily requests over the last ${days.length} days`);
+
+  days.forEach((d, i) => {
+    const h = (d.requests / max) * plotH;
+    const x = pad.left + i * slot + (slot - barW) / 2;
+    const y = pad.top + (plotH - h);
+    const rect = document.createElementNS(SVG_NS, "rect");
+    rect.setAttribute("class", "activity-bar");
+    rect.setAttribute("x", String(x));
+    rect.setAttribute("y", String(y));
+    rect.setAttribute("width", String(barW));
+    rect.setAttribute("height", String(Math.max(0, h)));
+    rect.setAttribute("rx", "1.5");
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = `${d.day}: ${d.requests} request${d.requests === 1 ? "" : "s"}`;
+    rect.appendChild(title);
+    svg.appendChild(rect);
+  });
+
+  // Label the first, middle, and last day along the x axis.
+  const labelIdx = days.length <= 1 ? [0] : [0, Math.floor((days.length - 1) / 2), days.length - 1];
+  [...new Set(labelIdx)].forEach((i) => {
+    const day = days[i];
+    if (!day) return;
+    const x = pad.left + i * slot + slot / 2;
+    const text = document.createElementNS(SVG_NS, "text");
+    text.setAttribute("class", "activity-axis");
+    text.setAttribute("x", String(x));
+    text.setAttribute("y", String(H - 6));
+    text.setAttribute("text-anchor", i === 0 ? "start" : i === days.length - 1 ? "end" : "middle");
+    text.textContent = day.day.slice(5); // MM-DD
+    svg.appendChild(text);
+  });
+
+  return svg;
+}
+
+function buildConsumerTable(byConsumer) {
+  const entries = Object.entries(byConsumer).sort((a, b) => b[1] - a[1]);
+  const table = el("table", "stats-table");
+  const thead = el("thead");
+  const hr = el("tr");
+  hr.appendChild(el("th", null, "Consumer"));
+  const thn = el("th", "num", "Requests");
+  hr.appendChild(thn);
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  const tbody = el("tbody");
+  for (const [name, count] of entries) {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, name));
+    tr.appendChild(el("td", "num", String(count)));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  return table;
+}
+
+function renderStats(container, stats) {
+  container.textContent = "";
+  const totals = stats.totals || { requests: 0, read: 0, send: 0, poll: 0, errors: 0 };
+
+  if (!stats.since || totals.requests === 0) {
+    container.appendChild(el("p", "empty", "No activity yet."));
+    return;
+  }
+
+  const daily = Array.isArray(stats.daily) ? stats.daily : [];
+  const today = daily.length ? daily[daily.length - 1].requests : 0;
+
+  const headline = el("div", "stat-cards");
+  headline.appendChild(statNumber("total requests", totals.requests));
+  headline.appendChild(statNumber("requests today", today));
+  headline.appendChild(statNumber("errors", totals.errors));
+  container.appendChild(headline);
+
+  const chartWrap = el("div", "stats-chart");
+  chartWrap.appendChild(el("h4", "stats-sub", "Daily requests"));
+  chartWrap.appendChild(buildActivityChart(daily));
+  container.appendChild(chartWrap);
+
+  const verbs = el("div", "stat-cards stat-cards--verbs");
+  verbs.appendChild(statNumber("read", totals.read));
+  verbs.appendChild(statNumber("send", totals.send));
+  verbs.appendChild(statNumber("poll", totals.poll));
+  container.appendChild(verbs);
+
+  const byConsumer = stats.byConsumer || {};
+  if (Object.keys(byConsumer).length > 0) {
+    const cWrap = el("div", "stats-consumers");
+    cWrap.appendChild(el("h4", "stats-sub", "By consumer"));
+    cWrap.appendChild(buildConsumerTable(byConsumer));
+    container.appendChild(cWrap);
+  }
+}
+
+async function loadStats() {
+  const container = document.getElementById("stats-body");
+  if (!container) return;
+  try {
+    const res = await fetch("/stats", { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderStats(container, await res.json());
+  } catch {
+    container.textContent = "";
+    container.appendChild(el("p", "empty", "Stats unavailable."));
+  }
+}
+
 // ── init ─────────────────────────────────────────────────────────────────────
 renderChainTabs();
 startHealthPill();
 loadConnectors();
+loadStats();

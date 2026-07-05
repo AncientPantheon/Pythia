@@ -30,11 +30,14 @@ stack, an ingress), update this section to match it.
 |---|---|---|---|
 | `PORT` | no | `8080` | TCP port the Hono server binds. `EXPOSE`d in the Dockerfile; the server entry (`apps/pythia/src/server.ts`) reads `process.env.PORT`. |
 | `NODE_ENV` | no | `production` (set in the image) | Standard Node environment flag. |
+| `STATS_FILE` | no | `./pythia-stats.json` | Path to the aggregate usage-stats JSON snapshot. **Point this at a mounted volume** (e.g. `/data/stats.json`) so counts survive container recreation. Aggregates only — never per-request rows. |
+| `PYTHIA_API_KEYS` | no | `[]` | JSON `Array<{name,key}>` mapping connector API keys → names for per-consumer usage attribution. **Kept OUT of the public repo** — set at deploy. A request's `x-pythia-key` header is matched here; unmatched/absent → `direct`. |
 
 The two upstream StoaChain node URLs (primary + fallback) are **not** env vars —
 they live in the checked-in config `apps/pythia/config/pythia.config.json`, which
 is copied into the runtime image. Changing a source or connector is a config edit
-+ rebuild/redeploy; there is no admin surface and no database.
++ rebuild/redeploy; there is no admin surface and no database. (`readGasLimit` also
+lives in that config — default 100M, so dirty reads never fail on gas.)
 
 ## Build and run
 
@@ -44,13 +47,20 @@ Build the image (from the repo root, where the `Dockerfile` lives):
 docker build -t pythia:local .
 ```
 
-Run it, mapping the port:
+Run it, mapping the port and mounting a volume for the usage-stats snapshot:
 
 ```sh
-docker run --rm -p 8080:8080 pythia:local
-# override the port:
-docker run --rm -e PORT=3000 -p 3000:3000 pythia:local
+docker run -d --name pythia --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 \
+  -v pythia-data:/data \
+  -e STATS_FILE=/data/stats.json \
+  -e PYTHIA_API_KEYS='[]' \
+  pythia:local
 ```
+
+Add connector keys as you wire them in, e.g.
+`-e PYTHIA_API_KEYS='[{"name":"OuronetUI","key":"pk_live_…"}]'`. The named volume
+`pythia-data` persists the aggregate stats across redeploys (`docker rm` + `run`).
 
 Verify it serves:
 

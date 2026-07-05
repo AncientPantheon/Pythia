@@ -8,6 +8,9 @@ import type {
 /** Default number of confirmations a read is considered final after. */
 export const DEFAULT_FINALITY_DEPTH = 6;
 
+/** Default gas ceiling for a dirty read when the config omits readGasLimit. */
+export const DEFAULT_READ_GAS_LIMIT = 100_000_000;
+
 /** Raised on any config-validation violation. Typed so callers can catch it. */
 export class PythiaConfigError extends Error {
   constructor(message: string) {
@@ -140,8 +143,23 @@ export function loadPythiaConfig(raw: RawPythiaConfig): PythiaConfig {
   }
 
   const corsOrigins = validateCorsOrigins(raw);
+  const readGasLimit = validateReadGasLimit(raw);
 
-  return { sources, connectors, finalityDepth, corsOrigins };
+  return { sources, connectors, finalityDepth, corsOrigins, readGasLimit };
+}
+
+/**
+ * Validate the optional default read gas ceiling. Absent → {@link
+ * DEFAULT_READ_GAS_LIMIT}. When present it must be a positive integer; anything
+ * else is a boot-time config error.
+ */
+function validateReadGasLimit(raw: RawPythiaConfig): number {
+  const value = (raw as { readGasLimit?: unknown }).readGasLimit;
+  if (value === undefined) return DEFAULT_READ_GAS_LIMIT;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new PythiaConfigError("Config readGasLimit must be a positive integer");
+  }
+  return value;
 }
 
 /**
