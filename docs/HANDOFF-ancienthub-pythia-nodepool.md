@@ -2,8 +2,12 @@
 
 **From:** Pythia (`pythia.ancientholdings.eu`) — the read layer.
 **To:** the agent building the AncientHoldings hub (`ancientholdings.eu`).
-**Companion to:** `HANDOFF-ancienthub-sso.md` (that one is the *human* login; this one
-is a *service-to-service* API — see the auth note in §6).
+**Status:** **spec-ready — draft the hub spec from this.** The human-login half is
+already built and live (see companions); this is the remaining hub-side piece.
+**Companions:** `HANDOFF-consumer-ancienthub-login.md` (human OIDC login — now LIVE,
+Pythia is the first working consumer) and `HANDOFF-ancienthub-sso.md` (the original
+SSO contract). This handoff is the *service-to-service* API — see §7 for how its auth
+relates to the now-live OIDC IdP.
 
 **Goal:** let Pythia distribute blockchain reads across the pool of chainweb
 containers the hub already orchestrates, and let the hub reward each container's
@@ -24,9 +28,11 @@ accounting — it only meters.
 - Pythia's 2 current nodes are also registered in the hub. They stay as Pythia's
   always-on **seed pool**; the hub-provided pool is *elastic* on top (see §7 on
   graceful degradation).
-- Pythia is building a **NodePool load-balancer** (round-robin across healthy nodes,
-  short-TTL + single-flight read cache, circuit breaking). This handoff is the
-  *dynamic source* that feeds it.
+- Pythia will build a **NodePool load-balancer** (round-robin across healthy nodes,
+  short-TTL + single-flight read cache, circuit breaking) as its side of this work.
+  This handoff is the *dynamic source* that feeds it.
+- The hub's **OIDC IdP is already live** (`/api/oidc/*`) and Pythia is a registered
+  confidential client — relevant to how these service endpoints authenticate (§7).
 
 ---
 
@@ -140,6 +146,13 @@ meter, the hub is the mint** — Pythia reports honest counts; the hub owns the
 economics. Since the hub controls the containers, it can cross-check Pythia's report
 against each container's own request logs — the meter is **trusted-but-verifiable**.
 
+**⚠ Do NOT trailing-slash-redirect this POST endpoint.** The hub's Next.js
+`trailingSlash: true` 308-redirects `POST /path` → `/path/`, and an HTTP client's
+auto-follow **drops the POST body + auth** across the redirect — this exact bug broke
+the OIDC token exchange and cost real debugging time. Serve `POST /api/pythia/usage`
+at its advertised URL **without** a redirect (exempt `/api/pythia/*` from the
+trailing-slash rule), or Pythia is forced to carry the manual-redirect workaround.
+
 ---
 
 ## 6. Rewards + PythXP leveling (hub-side economics)
@@ -156,8 +169,9 @@ against each container's own request logs — the meter is **trusted-but-verifia
      so a farmer spamming through a connector key can't steer rewards to their own
      node; traffic scatters across the whole pool by share. Earnings track *organic*
      connector demand × your pool share.
-  2. **Connector keys are `ancientadmin`-gated** (per the SSO handoff) — random users
-     can't mint a key to farm through.
+  2. **Connector keys are `ancient`-gated** — they are minted only from Pythia's
+     `ancient`-role connector manager (now live), so random users can't mint a key to
+     farm through. (Role is `ancient`, the hub's top tier — not "ancientadmin".)
 - **Design caution (your call):** compounding "more requests → higher level → more
   per request" rewards big operators twice; consider a diminishing/capped level curve
   so rewards don't over-concentrate.
@@ -166,13 +180,23 @@ against each container's own request logs — the meter is **trusted-but-verifia
 
 ## 7. Auth — service-to-service, NOT the human SSO
 
-These endpoints are **Pythia-only** → a **machine-to-machine service credential** the
-hub verifies on every call (a shared secret Pythia sends, e.g.
-`Authorization: Bearer <service-token>` / `x-pythia-service-key`, or mTLS). This is
-**separate** from the `ancientadmin` *human* login in the SSO handoff. So the hub has
-**two** auth surfaces: (1) human SSO for admin UIs, (2) this service credential for
-Pythia's server. Pythia holds the secret in its deploy env (out of the public repo)
-and sends it on every `/api/pythia/*` call; reject anything without it.
+These endpoints are **Pythia-only** → a **machine-to-machine credential** the hub
+verifies on every call, **separate** from the human OIDC login. Two ways — your pick:
+
+- **(a) Reuse the OIDC IdP via a `client_credentials` grant (preferred if cheap).**
+  Pythia is already a registered confidential OIDC client. If the hub adds the
+  `client_credentials` grant (discovery currently advertises only `authorization_code`),
+  Pythia mints a short-lived **service access token** with its existing
+  `client_id`/`client_secret` and sends it as `Authorization: Bearer …`; the hub
+  validates it like any token and checks it's Pythia's client with a service scope. One
+  credential system, nothing new for Pythia to hold.
+- **(b) A dedicated service secret** — a shared `x-pythia-service-key` header (or mTLS).
+  Simplest; no new grant. Pythia holds it in its deploy env (out of the public repo).
+
+Either way, **reject any `/api/pythia/*` request without a valid Pythia credential**,
+and — as in §5 — **do not 308-redirect these endpoints**, or Pythia's `POST` loses its
+body/auth. The hub ends up with two auth surfaces: (1) human OIDC login for admin UIs,
+(2) this service credential for Pythia's server.
 
 ---
 
@@ -216,6 +240,8 @@ usage reporter) into the load-balancer we're already building.
 - **Seed nodes in rewards** — whether Pythia's 2 own nodes participate or are excluded.
 - **Same-IP grouping** — confirm the hub can detect multiple machines/containers
   behind one public IP and collapse them to a single slot.
+- **Service-auth method** — §7 option (a) `client_credentials` grant reusing the OIDC
+  client, or (b) a dedicated service secret / mTLS.
 
 ---
 
