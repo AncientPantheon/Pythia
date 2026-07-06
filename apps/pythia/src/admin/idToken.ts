@@ -8,8 +8,18 @@ export interface AdminIdentity {
   roles: string[];
   /** Display-only, mutable — never a user key. */
   email?: string;
-  /** Display-only, mutable. */
-  name?: string;
+  /** Best available human-readable label (display_name → preferred_username →
+   * name → a short sub fallback). Display-only, mutable. */
+  displayName: string;
+}
+
+/** Pick the friendliest display label the token offers, falling back to sub. */
+function pickDisplayName(payload: Record<string, unknown>, sub: string): string {
+  for (const claim of ["display_name", "preferred_username", "name"] as const) {
+    const v = payload[claim];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return sub.length > 10 ? `${sub.slice(0, 10)}…` : sub;
 }
 
 /** The top admin tier. The gate on `/admin` requires exactly this (contract §7). */
@@ -59,9 +69,12 @@ export async function verifyIdToken(
     ? payload.roles.filter((r): r is string => typeof r === "string")
     : [];
 
-  const identity: AdminIdentity = { sub: payload.sub, roles };
+  const identity: AdminIdentity = {
+    sub: payload.sub,
+    roles,
+    displayName: pickDisplayName(payload as Record<string, unknown>, payload.sub),
+  };
   if (typeof payload.email === "string") identity.email = payload.email;
-  if (typeof payload.name === "string") identity.name = payload.name;
   return identity;
 }
 

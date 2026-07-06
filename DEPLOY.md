@@ -31,6 +31,7 @@ stack, an ingress), update this section to match it.
 | `PORT` | no | `8080` | TCP port the Hono server binds. `EXPOSE`d in the Dockerfile; the server entry (`apps/pythia/src/server.ts`) reads `process.env.PORT`. |
 | `NODE_ENV` | no | `production` (set in the image) | Standard Node environment flag. |
 | `STATS_FILE` | no | `./pythia-stats.json` | Path to the aggregate usage-stats JSON snapshot. **Point this at a mounted volume** (e.g. `/data/stats.json`) so counts survive container recreation. Aggregates only — never per-request rows. |
+| `CONNECTORS_FILE` | no | `/data/connectors.json` (image default) | Path to the admin-managed connector registry (names, URLs, key **hashes**). On the `/data` volume so registered connectors survive redeploys. Raw API keys are never stored. |
 | `PYTHIA_API_KEYS` | no | `[]` | JSON `Array<{name,key}>` mapping connector API keys → names for per-consumer usage attribution. **Kept OUT of the public repo** — set at deploy. A request's `x-pythia-key` header is matched here; unmatched/absent → `direct`. |
 | `PYTHIA_OIDC_CLIENT_ID` | no* | — | Pythia's confidential client id, issued by the AncientHoldings hub OIDC IdP at registration. Delivered out-of-band. |
 | `PYTHIA_OIDC_CLIENT_SECRET` | no* | — | The one-time confidential client secret. **Server-side only, kept OUT of the public repo.** |

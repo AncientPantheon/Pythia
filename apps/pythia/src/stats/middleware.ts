@@ -1,6 +1,10 @@
 import type { Context, Next } from "hono";
-import { consumerFor } from "./consumers.js";
 import type { StatsEndpoint, StatsStore } from "./store.js";
+
+/** Resolve a request's `x-pythia-key` to a consumer name (or the "direct"
+ * anonymous bucket). Injected so the source — env map, connector store, or both —
+ * is decided at wiring time. */
+export type ConsumerResolver = (key?: string) => string;
 
 /** Only the three operational verbs are counted — `/{chain}/{read|send|poll}`.
  * Health, connectors, and static assets deliberately do NOT match. */
@@ -21,7 +25,7 @@ const CONSUMER_HEADER = "x-pythia-key";
  */
 export function statsMiddleware(
   store: StatsStore,
-  consumerMap: Map<string, string>,
+  resolveConsumer: ConsumerResolver,
 ) {
   return async (c: Context, next: Next): Promise<void> => {
     const match = OPERATIONAL_PATH.exec(c.req.path);
@@ -32,7 +36,7 @@ export function statsMiddleware(
 
     const chain = match[1];
     const endpoint = match[2] as StatsEndpoint;
-    const consumer = consumerFor(consumerMap, c.req.header(CONSUMER_HEADER));
+    const consumer = resolveConsumer(c.req.header(CONSUMER_HEADER));
 
     await next();
 

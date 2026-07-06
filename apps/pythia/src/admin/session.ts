@@ -23,11 +23,13 @@ export interface LoginState {
   codeVerifier: string;
 }
 
-/** The authenticated admin session Pythia keeps after a successful login. */
+/** The authenticated session Pythia keeps after a successful login. */
 export interface SessionState {
   purpose: "session";
   sub: string;
   roles: string[];
+  /** Human-readable label for the header (display_name/username/…). */
+  name: string;
 }
 
 function key(secret: string): Uint8Array {

@@ -13,6 +13,7 @@ import {
   readSession,
   type SessionState,
 } from "./session.js";
+import type { ConnectorStore } from "../connectors/store.js";
 
 // The verified admin session is exposed to gated handlers via the Hono context.
 declare module "hono" {
@@ -21,15 +22,14 @@ declare module "hono" {
   }
 }
 
-// First-party cookies are scoped to the admin surface, HTTPS-only, HttpOnly, and
-// SameSite=Lax — Lax so the top-level navigation BACK from the hub carries the
-// login-state cookie, while cross-site sub-requests do not.
-const COOKIE_BASE = {
-  path: "/admin",
-  httpOnly: true,
-  secure: true,
-  sameSite: "Lax",
-} as const;
+// First-party cookies: HTTPS-only, HttpOnly, SameSite=Lax — Lax so the top-level
+// navigation BACK from the hub carries the login-state cookie (and gives CSRF
+// protection: cross-site POSTs don't send the session).
+const SECURE_COOKIE = { httpOnly: true, secure: true, sameSite: "Lax" } as const;
+// Login-state is only needed under /admin (set at /admin/login, read at callback).
+const LOGIN_COOKIE_OPTS = { ...SECURE_COOKIE, path: "/admin" } as const;
+// The session is read SITE-WIDE (header + gated APIs), so it lives at the root.
+const SESSION_COOKIE_OPTS = { ...SECURE_COOKIE, path: "/" } as const;
 
 /**
  * POST a form, manually following same-origin redirects so the method, body, and
@@ -70,40 +70,21 @@ function page(title: string, body: string): string {
 }
 
 /**
- * A reusable gate that admits ONLY an authenticated `ancient` admin. Absent a
- * valid session it bounces to `/admin/login`; authenticated-but-not-`ancient`
- * gets a 403. The verified session is stashed on the context as `adminSession`
- * for downstream handlers (the connector-manager increment).
+ * A reusable JSON gate that admits ONLY an authenticated `ancient` admin — used
+ * on the connector-management API. `401` when unauthenticated, `403` when
+ * authenticated but not `ancient`. The verified session is stashed on the context
+ * as `adminSession` for downstream handlers.
  */
 export function createAdminGate(cfg: OidcConfig): MiddlewareHandler {
   return async (c, next) => {
     const session = await readSession(getCookie(c, SESSION_COOKIE), cfg.sessionSecret);
-    if (!session) return c.redirect("/admin/login", 302);
+    if (!session) return c.json({ error: "authentication required" }, 401);
     if (!hasAncientRole(session.roles)) {
-      return c.html(
-        page(
-          "Pythia Admin — access denied",
-          `<h1>Access denied</h1><p>Your account (<code>${esc(
-            session.sub,
-          )}</code>) is authenticated but lacks the <code>ancient</code> role required for the connector manager.</p><p><a href="/admin/logout">Sign out</a></p>`,
-        ),
-        403,
-      );
+      return c.json({ error: "the ancient role is required" }, 403);
     }
     c.set("adminSession", session);
     return next();
   };
-}
-
-function adminHome(session: SessionState): string {
-  return page(
-    "Pythia Admin",
-    `<h1>Pythia Admin</h1><p>Signed in as <code>${esc(
-      session.sub,
-    )}</code> — roles: <code>${esc(
-      session.roles.join(", ") || "(none)",
-    )}</code>.</p><p>Connector management arrives in the next increment. This page confirms the AncientHoldings SSO gate is live and admitting only the <code>ancient</code> tier.</p><p><a href="/admin/logout">Sign out</a></p>`,
-  );
 }
 
 /**
@@ -113,18 +94,23 @@ function adminHome(session: SessionState): string {
  * - `GET /admin/login`    — mint PKCE/state/nonce, stash a signed login-state
  *   cookie, redirect to the hub `authorization_endpoint`.
  * - `GET /admin/callback` — verify `state`, exchange the `code` server-side,
- *   verify the `id_token` (all contract pins), gate on `ancient`, set a session.
- * - `GET /admin`          — the gated admin home.
- * - `GET /admin/logout`   — clear the local session.
+ *   verify the `id_token` (all contract pins), set a SITE-WIDE session, home.
+ * - `GET /admin/logout`   — clear the session, home.
+ * - `GET /api/me`         — current session (public; drives the header).
+ * - `GET/POST /admin/connectors[...]` — the `ancient`-gated connector manager.
  *
- * Only wired when {@link OidcConfig} is present, so the public gateway boots
- * unchanged with no SSO configured.
+ * Login is open to ANY hub user; the `ancient` gate applies only to the
+ * connector-mutation routes. Only wired when {@link OidcConfig} is present, so
+ * the public gateway boots unchanged with no SSO configured.
  */
-export function registerAdmin(app: Hono, cfg: OidcConfig): void {
+export function registerAdmin(
+  app: Hono,
+  cfg: OidcConfig,
+  store: ConnectorStore,
+): void {
   const gate = createAdminGate(cfg);
 
   app.get("/admin/login", async (c) => {
-    console.log("pythia admin: login start");
     const { discovery } = await getDiscovery(cfg.issuer);
     const challenge = createLoginChallenge();
 
@@ -139,7 +125,7 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
         },
         cfg.sessionSecret,
       ),
-      COOKIE_BASE,
+      LOGIN_COOKIE_OPTS,
     );
 
     const params = new URLSearchParams({
@@ -159,11 +145,7 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
     const code = c.req.query("code");
     const returnedState = c.req.query("state");
     const login = await readLoginState(getCookie(c, LOGIN_COOKIE), cfg.sessionSecret);
-    deleteCookie(c, LOGIN_COOKIE, COOKIE_BASE);
-
-    console.log(
-      `pythia admin: callback received (code=${!!code} state=${!!returnedState} login-cookie=${!!login})`,
-    );
+    deleteCookie(c, LOGIN_COOKIE, LOGIN_COOKIE_OPTS);
 
     if (!code || !returnedState || !login) {
       console.error(
@@ -220,7 +202,6 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
       console.error("pythia admin: token response carried no id_token");
       return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>No id_token returned. <a href=\"/admin/login\">Try again</a>.</p>"), 502);
     }
-    console.log("pythia admin: token exchange ok — verifying id_token");
 
     let identity;
     try {
@@ -236,26 +217,63 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
       );
       return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>Token verification failed. <a href=\"/admin/login\">Try again</a>.</p>"), 401);
     }
-    console.log(
-      `pythia admin: login ok sub=${identity.sub} roles=[${identity.roles.join(",")}]`,
-    );
 
     setCookie(
       c,
       SESSION_COOKIE,
-      await signSession({ sub: identity.sub, roles: identity.roles }, cfg.sessionSecret),
-      COOKIE_BASE,
+      await signSession(
+        { sub: identity.sub, roles: identity.roles, name: identity.displayName },
+        cfg.sessionSecret,
+      ),
+      SESSION_COOKIE_OPTS,
     );
-    return c.redirect("/admin", 302);
+    // Back to the site — the header now reflects the logged-in identity.
+    return c.redirect("/", 302);
   });
 
   app.get("/admin/logout", (c) => {
-    deleteCookie(c, SESSION_COOKIE, COOKIE_BASE);
-    return c.html(page("Pythia Admin — signed out", "<h1>Signed out</h1><p><a href=\"/admin/login\">Sign in again</a>.</p>"));
+    deleteCookie(c, SESSION_COOKIE, SESSION_COOKIE_OPTS);
+    return c.redirect("/", 302);
   });
 
-  app.get("/admin", gate, (c) => {
-    const session = c.get("adminSession") as SessionState;
-    return c.html(adminHome(session));
+  // Public: who (if anyone) is logged in — drives the site header + the enabled
+  // state of the "Add a new Connector" control. No secrets, just identity+roles.
+  app.get("/api/me", async (c) => {
+    const session = await readSession(getCookie(c, SESSION_COOKIE), cfg.sessionSecret);
+    if (!session) return c.json({ authenticated: false });
+    return c.json({
+      authenticated: true,
+      sub: session.sub,
+      name: session.name,
+      roles: session.roles,
+    });
+  });
+
+  // ── ancient-gated connector manager ──────────────────────────────────────
+  app.get("/admin/connectors", gate, (c) => c.json({ connectors: store.list() }));
+
+  app.post("/admin/connectors", gate, async (c) => {
+    const body = (await c.req.json().catch(() => null)) as
+      | { name?: unknown; url?: unknown; logo?: unknown; isPublic?: unknown }
+      | null;
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    const url = typeof body?.url === "string" ? body.url.trim() : "";
+    const logoRaw = typeof body?.logo === "string" ? body.logo.trim() : "";
+    if (!name || !url) {
+      return c.json({ error: "name and url are required" }, 400);
+    }
+    const created = store.add({
+      name,
+      url,
+      isPublic: body?.isPublic === true,
+      ...(logoRaw ? { logo: logoRaw } : {}),
+    });
+    // The apiKey is returned ONCE here and never retrievable again.
+    return c.json({ connector: created.view, apiKey: created.apiKey }, 201);
+  });
+
+  app.post("/admin/connectors/:id/revoke", gate, (c) => {
+    const ok = store.revoke(c.req.param("id"));
+    return c.json({ ok }, ok ? 200 : 404);
   });
 }

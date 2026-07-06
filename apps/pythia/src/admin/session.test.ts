@@ -24,16 +24,20 @@ describe("admin cookies", () => {
   });
 
   it("round-trips an authenticated session", async () => {
-    const token = await signSession({ sub: "u1", roles: ["ancient"] }, SECRET);
+    const token = await signSession(
+      { sub: "u1", roles: ["ancient"], name: "Ancient One" },
+      SECRET,
+    );
     expect(await readSession(token, SECRET)).toMatchObject({
       purpose: "session",
       sub: "u1",
       roles: ["ancient"],
+      name: "Ancient One",
     });
   });
 
   it("rejects a cookie signed with a different secret", async () => {
-    const token = await signSession({ sub: "u1", roles: [] }, SECRET);
+    const token = await signSession({ sub: "u1", roles: [], name: "x" }, SECRET);
     expect(await readSession(token, OTHER)).toBeNull();
   });
 
@@ -46,7 +50,7 @@ describe("admin cookies", () => {
   });
 
   it("does not accept a session cookie as login state", async () => {
-    const token = await signSession({ sub: "u", roles: [] }, SECRET);
+    const token = await signSession({ sub: "u", roles: [], name: "x" }, SECRET);
     expect(await readLoginState(token, SECRET)).toBeNull();
   });
 

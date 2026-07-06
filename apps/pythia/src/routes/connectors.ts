@@ -4,11 +4,15 @@ import {
   type PythiaConfig,
   type ConnectorConfig,
 } from "../config/index.js";
+import type { ConnectorStore } from "../connectors/store.js";
 
 export interface ConnectorsDeps {
   /** Load the checked-in config. Injectable so tests avoid disk; defaults to the
    * production disk loader. */
   loadConfig?: () => PythiaConfig;
+  /** The runtime connector store. When present, its PUBLIC connectors are merged
+   * in after the (legacy) checked-in config list. */
+  store?: ConnectorStore;
 }
 
 /** Project a config connector to the wire shape: name + url always, logo only
@@ -30,6 +34,8 @@ export function registerConnectors(app: Hono, deps: ConnectorsDeps = {}): void {
 
   app.get("/api/v1/connectors", (c) => {
     const config = loadConfig();
-    return c.json({ connectors: config.connectors.map(toWireConnector) }, 200);
+    const fromConfig = config.connectors.map(toWireConnector);
+    const fromStore = deps.store ? deps.store.publicList() : [];
+    return c.json({ connectors: [...fromConfig, ...fromStore] }, 200);
   });
 }

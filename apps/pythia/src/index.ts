@@ -11,6 +11,7 @@ import { registerStats } from "./routes/stats.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
+import { ConnectorStore } from "./connectors/store.js";
 import { loadConfigFromDisk } from "./config/index.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
@@ -42,7 +43,26 @@ export const app = new Hono();
 export const statsStore = new StatsStore({
   filePath: process.env.STATS_FILE || "./pythia-stats.json",
 });
-const consumerMap = loadConsumerMap(process.env.PYTHIA_API_KEYS);
+const envConsumerMap = loadConsumerMap(process.env.PYTHIA_API_KEYS);
+
+// Runtime connector registry (admin-managed, persisted on the volume). Its keys
+// are the primary attribution source; the legacy `PYTHIA_API_KEYS` env map is a
+// fallback for any manually-provisioned keys.
+export const connectorStore = new ConnectorStore({
+  filePath: process.env.CONNECTORS_FILE || "./pythia-connectors.json",
+});
+
+// Resolve an `x-pythia-key` to a consumer name: registered connector first, then
+// the env map, else the anonymous "direct" bucket.
+function resolveConsumer(key?: string): string {
+  if (key) {
+    const fromStore = connectorStore.nameForKey(key);
+    if (fromStore) return fromStore;
+    const fromEnv = envConsumerMap.get(key);
+    if (fromEnv) return fromEnv;
+  }
+  return "direct";
+}
 
 // The hand-written static landing assets, resolved relative to this module so
 // serving is independent of the process CWD (container runs from /app, local
@@ -60,7 +80,7 @@ app.use("*", corsMiddleware(loadConfigFromDisk().corsOrigins));
 // operational request's final status. It only counts `/{chain}/{read|send|poll}`
 // (health/static/connectors are ignored) and records nothing else — keyless, it
 // never signs or broadcasts.
-app.use("*", statsMiddleware(statsStore, consumerMap));
+app.use("*", statsMiddleware(statsStore, resolveConsumer));
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
@@ -68,7 +88,7 @@ registerHealthz(app);
 registerRead(app);
 registerSend(app);
 registerPoll(app);
-registerConnectors(app);
+registerConnectors(app, { store: connectorStore });
 registerStats(app, statsStore);
 
 // The human admin surface (connector manager) is gated on the AncientHoldings
@@ -76,7 +96,7 @@ registerStats(app, statsStore);
 // present, so the public keyless gateway boots unchanged with no SSO configured.
 // Registered before the static catch-all so `/admin/*` is not shadowed.
 const oidcConfig = loadOidcConfig();
-if (oidcConfig) registerAdmin(app, oidcConfig);
+if (oidcConfig) registerAdmin(app, oidcConfig, connectorStore);
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves
 // the same regardless of where the process was started from. `onFound` stamps

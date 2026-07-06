@@ -129,6 +129,67 @@ function renderConnectors(container, connectors) {
   }
 }
 
+// Admin view of connectors: name, url, key prefix, public badge, revoke.
+function renderAdminConnectors(container, connectors) {
+  container.textContent = "";
+  if (!connectors || connectors.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No connectors yet. Add one above.";
+    container.appendChild(empty);
+    return;
+  }
+  for (const conn of connectors) {
+    const card = document.createElement("div");
+    card.className = "connector-admin";
+
+    const head = document.createElement("div");
+    head.className = "ca-head";
+    const nm = document.createElement("b");
+    nm.textContent = conn.name;
+    head.appendChild(nm);
+    if (conn.isPublic) {
+      const badge = document.createElement("span");
+      badge.className = "ca-badge";
+      badge.textContent = "public";
+      head.appendChild(badge);
+    }
+
+    const url = document.createElement("a");
+    url.className = "ca-url";
+    url.href = conn.url;
+    url.target = "_blank";
+    url.rel = "noopener noreferrer";
+    url.textContent = conn.url;
+
+    const key = document.createElement("code");
+    key.className = "ca-key";
+    key.textContent = `${conn.keyPrefix}…`;
+
+    const revoke = document.createElement("button");
+    revoke.className = "btn btn--ghost btn--small ca-revoke";
+    revoke.type = "button";
+    revoke.textContent = "Revoke";
+    revoke.addEventListener("click", () => revokeConnector(conn.id, conn.name));
+
+    card.append(head, url, key, revoke);
+    container.appendChild(card);
+  }
+}
+
+async function revokeConnector(id, name) {
+  if (!window.confirm(`Revoke connector "${name}"? Its API key stops working immediately.`)) return;
+  try {
+    const res = await fetch(`/admin/connectors/${encodeURIComponent(id)}/revoke`, {
+      method: "POST",
+      headers: { accept: "application/json" },
+    });
+    if (res.ok) loadConnectorsView();
+  } catch {
+    /* ignore — the list simply won't change */
+  }
+}
+
 // ── refresh loop ─────────────────────────────────────────────────────────────
 function createRefreshLoop({ fetchSnapshot, onSnapshot, onError, intervalMs }) {
   const tick = () => {
@@ -322,10 +383,76 @@ function renderChainTabs() {
   selectChain(CHAINS[0].id);
 }
 
-// ── connectors loader + hero pill ───────────────────────────────────────────
-async function loadConnectors() {
+// ── auth / session (site-wide) ───────────────────────────────────────────────
+let authState = { authenticated: false, roles: [], name: null };
+
+function isAncient() {
+  return authState.authenticated && authState.roles.includes("ancient");
+}
+
+function renderAuthbox() {
+  const box = document.getElementById("authbox");
+  if (!box) return;
+  box.textContent = "";
+  if (authState.authenticated) {
+    const who = document.createElement("span");
+    who.className = "who";
+    const nm = document.createElement("b");
+    nm.textContent = authState.name || "user";
+    who.append("Signed in as ", nm);
+    if (authState.roles.length) {
+      const role = document.createElement("span");
+      role.className = "role";
+      role.textContent = authState.roles[0];
+      who.append(" · ", role);
+    }
+    const out = document.createElement("a");
+    out.className = "btn btn--ghost btn--small";
+    out.href = "/admin/logout";
+    out.textContent = "Log out";
+    box.append(who, out);
+  } else {
+    const login = document.createElement("a");
+    login.className = "btn btn--small";
+    login.href = "/admin/login";
+    login.textContent = "Log in";
+    box.appendChild(login);
+  }
+}
+
+async function loadMe() {
+  try {
+    const res = await fetch("/api/me", { headers: { accept: "application/json" } });
+    const body = await res.json();
+    authState = {
+      authenticated: !!body.authenticated,
+      roles: Array.isArray(body.roles) ? body.roles : [],
+      name: body.name || null,
+    };
+  } catch {
+    authState = { authenticated: false, roles: [], name: null };
+  }
+  renderAuthbox();
+  updateAddConnectorControl();
+  loadConnectorsView();
+}
+
+// ── connectors loader (public list, or admin list for ancient) ───────────────
+async function loadConnectorsView() {
   const container = document.getElementById("connectors");
   if (!container) return;
+  if (isAncient()) {
+    try {
+      const res = await fetch("/admin/connectors", { headers: { accept: "application/json" } });
+      if (res.ok) {
+        const body = await res.json();
+        renderAdminConnectors(container, body.connectors ?? []);
+        return;
+      }
+    } catch {
+      /* fall through to the public view */
+    }
+  }
   try {
     const res = await fetch("/api/v1/connectors", { headers: { accept: "application/json" } });
     const body = await res.json();
@@ -333,6 +460,97 @@ async function loadConnectors() {
   } catch {
     /* leave the empty-state message */
   }
+}
+
+function updateAddConnectorControl() {
+  const btn = document.getElementById("add-connector-btn");
+  const hint = document.getElementById("add-connector-hint");
+  if (!btn) return;
+  const allowed = isAncient();
+  btn.disabled = !allowed;
+  if (hint) {
+    hint.textContent = allowed
+      ? ""
+      : authState.authenticated
+        ? "Your role can't add connectors — the ancient role is required."
+        : "Sign in as an ancient admin to add connectors.";
+  }
+}
+
+function showNewKey(panel, connector, apiKey) {
+  panel.textContent = "";
+  panel.hidden = false;
+  const head = document.createElement("p");
+  head.className = "nk-head";
+  head.textContent = `API key for ${connector.name} — copy it now, it will not be shown again:`;
+  const row = document.createElement("div");
+  row.className = "nk-key";
+  const code = document.createElement("code");
+  code.textContent = apiKey;
+  const copy = document.createElement("button");
+  copy.className = "btn btn--small";
+  copy.type = "button";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(apiKey);
+    copy.textContent = "Copied";
+  });
+  row.append(code, copy);
+  const note = document.createElement("p");
+  note.className = "nk-note";
+  note.textContent = "The connector sends this as the x-pythia-key header on every request.";
+  panel.append(head, row, note);
+}
+
+function wireAddConnector() {
+  const btn = document.getElementById("add-connector-btn");
+  const form = document.getElementById("add-connector-form");
+  const cancel = document.getElementById("add-connector-cancel");
+  const err = document.getElementById("add-connector-error");
+  const keyPanel = document.getElementById("new-key-panel");
+  if (!btn || !form || !keyPanel) return;
+
+  btn.addEventListener("click", () => {
+    form.hidden = false;
+    keyPanel.hidden = true;
+  });
+  if (cancel) cancel.addEventListener("click", () => { form.hidden = true; });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (err) err.hidden = true;
+    const data = new FormData(form);
+    const payload = {
+      name: (data.get("name") || "").toString().trim(),
+      url: (data.get("url") || "").toString().trim(),
+      logo: (data.get("logo") || "").toString().trim(),
+      isPublic: data.get("isPublic") === "on",
+    };
+    try {
+      const res = await fetch("/admin/connectors", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (err) {
+          err.textContent = body.error || "Could not create the connector.";
+          err.hidden = false;
+        }
+        return;
+      }
+      form.reset();
+      form.hidden = true;
+      showNewKey(keyPanel, body.connector, body.apiKey);
+      loadConnectorsView();
+    } catch {
+      if (err) {
+        err.textContent = "Network error creating the connector.";
+        err.hidden = false;
+      }
+    }
+  });
 }
 
 function startHealthPill() {
@@ -530,8 +748,9 @@ function wireTabs() {
 
 // ── init ─────────────────────────────────────────────────────────────────────
 wireTabs();
+wireAddConnector();
 renderChainTabs();
 startHealthPill();
-loadConnectors();
+loadMe(); // /api/me → renders the header + loads the right connectors view
 loadStats();
 showTab("chains");

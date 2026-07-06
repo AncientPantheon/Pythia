@@ -18,6 +18,11 @@
     <div class="starfield" aria-hidden="true"></div>
 
     <main class="shell">
+      <!-- ── TOP BAR (site-wide login state) ───────────────────── -->
+      <div class="topbar">
+        <div id="authbox" class="authbox" aria-live="polite"></div>
+      </div>
+
       <!-- ── HERO ─────────────────────────────────────────────── -->
       <header class="hero">
         <div class="hero-copy">
@@ -41,7 +46,6 @@
             <a class="btn" href="#" data-tab="activity">Activity</a>
             <a class="btn" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
             <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a class="btn btn--ghost" href="/admin/login">Admin sign-in</a>
             <a class="btn btn--ghost" href="/healthz">/healthz</a>
           </div>
         </div>
@@ -112,6 +116,22 @@
           <h2 id="conn-h">Connectors</h2>
           <p class="panel-note">Ecosystem apps that read through Pythia.</p>
         </div>
+        <div class="conn-toolbar">
+          <button id="add-connector-btn" class="btn btn--primary" type="button" disabled>Add a new Connector</button>
+          <span id="add-connector-hint" class="conn-hint">Sign in as an ancient admin to add connectors.</span>
+        </div>
+        <form id="add-connector-form" class="conn-form" hidden>
+          <label class="conn-field">Name<input name="name" type="text" required placeholder="OuronetUI" /></label>
+          <label class="conn-field">URL<input name="url" type="url" required placeholder="https://app.example" /></label>
+          <label class="conn-field">Logo URL (optional)<input name="logo" type="url" placeholder="https://…/logo.png" /></label>
+          <label class="conn-check"><input name="isPublic" type="checkbox" /> Show on this public Connectors tab</label>
+          <div class="conn-actions">
+            <button type="submit" class="btn btn--primary">Create connector</button>
+            <button type="button" id="add-connector-cancel" class="btn btn--ghost">Cancel</button>
+          </div>
+          <p class="conn-error" id="add-connector-error" hidden></p>
+        </form>
+        <div id="new-key-panel" class="conn-newkey" hidden></div>
         <div id="connectors" class="connectors">
           <p class="empty">No connectors listed yet.</p>
         </div>
@@ -126,8 +146,6 @@
         <a href="/healthz">/healthz</a>
         <span class="foot-sep">·</span>
         <a href="/stats">/stats</a>
-        <span class="foot-sep">·</span>
-        <a href="/admin/login">Admin</a>
       </footer>
     </main>
 

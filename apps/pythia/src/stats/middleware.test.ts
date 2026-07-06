@@ -19,7 +19,9 @@ function scratchStore(): { store: StatsStore; cleanup: () => void } {
 /** A Hono app that mounts the middleware then answers read/send/poll + others. */
 function appWith(store: StatsStore, consumerMap: Map<string, string>): Hono {
   const app = new Hono();
-  app.use("*", statsMiddleware(store, consumerMap));
+  const resolve = (key?: string): string =>
+    (key !== undefined ? consumerMap.get(key) : undefined) ?? "direct";
+  app.use("*", statsMiddleware(store, resolve));
   app.post("/stoachain/read", (c) => c.json({ ok: true }));
   app.post("/stoachain/send", (c) => c.json({ ok: true }, 400));
   app.post("/stoachain/poll", (c) => c.json({ ok: true }));

@@ -222,7 +222,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   border-top: 1px solid var(--line);
 }
 .foot-mark { color: var(--gold); font-weight: 700; letter-spacing: .01em; }
-.foot-version { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: .4rem; }
+.foot-version { color: var(--ink-mute); font-variant-numeric: tabular-nums; margin-left: .4rem; }
 .foot-sep { color: var(--line); }
 .foot a { color: var(--ink-soft); text-decoration: none; }
 .foot a:hover { color: var(--gold); }
@@ -360,3 +360,39 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .chain-grid { grid-template-columns: 1fr; }
   .stat-cards { grid-template-columns: 1fr 1fr; }
 }
+
+/* ── top bar: site-wide login state ─────────────────────────────────────── */
+.topbar { display: flex; justify-content: flex-end; align-items: center; min-height: 2rem; margin-bottom: .5rem; }
+.authbox { display: flex; align-items: center; gap: .6rem; }
+.authbox .who { color: var(--ink-soft); font-size: .9rem; }
+.authbox .who b { color: var(--ink); }
+.authbox .role { color: var(--gold); font-weight: 700; text-transform: lowercase; letter-spacing: .02em; }
+.btn--small { padding: .3rem .7rem; font-size: .82rem; }
+
+/* ── connectors: admin toolbar + add form ───────────────────────────────── */
+.conn-toolbar { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.conn-hint { color: var(--ink-mute); font-size: .85rem; }
+.conn-form { display: flex; flex-direction: column; gap: .8rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem; margin-bottom: 1rem; max-width: 34rem; }
+.conn-field { display: flex; flex-direction: column; gap: .3rem; color: var(--ink-soft); font-size: .85rem; }
+.conn-field input { padding: .5rem .6rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; }
+.conn-field input:focus { outline: none; border-color: var(--gold-dim); }
+.conn-check { display: flex; align-items: center; gap: .5rem; color: var(--ink-soft); font-size: .85rem; }
+.conn-actions { display: flex; gap: .6rem; }
+.conn-error { color: var(--red); font-size: .85rem; margin: 0; }
+
+/* ── connectors: shown-once key panel ───────────────────────────────────── */
+.conn-newkey { background: rgba(245,197,66,.08); border: 1px solid var(--gold-dim); border-radius: var(--radius); padding: 1rem 1.1rem; margin-bottom: 1rem; }
+.nk-head { margin: 0 0 .6rem; color: var(--gold); font-size: .9rem; font-weight: 600; }
+.nk-key { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.nk-key code { flex: 1; min-width: 12rem; padding: .5rem .6rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--cyan); word-break: break-all; }
+.nk-note { margin: .6rem 0 0; color: var(--ink-mute); font-size: .8rem; }
+
+/* ── connectors: admin list rows ────────────────────────────────────────── */
+.connector-admin { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .3rem 1rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem; margin-bottom: .6rem; }
+.ca-head { display: flex; align-items: center; gap: .5rem; }
+.ca-head b { color: var(--ink); }
+.ca-badge { font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--green); border: 1px solid var(--green); border-radius: 6px; padding: 0 .35rem; }
+.ca-url { grid-column: 1; color: var(--ink-soft); font-size: .82rem; text-decoration: none; word-break: break-all; }
+.ca-url:hover { color: var(--cyan); }
+.ca-key { grid-column: 1; color: var(--ink-mute); font-size: .8rem; }
+.ca-revoke { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
