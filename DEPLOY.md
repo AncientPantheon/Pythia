@@ -32,6 +32,17 @@ stack, an ingress), update this section to match it.
 | `NODE_ENV` | no | `production` (set in the image) | Standard Node environment flag. |
 | `STATS_FILE` | no | `./pythia-stats.json` | Path to the aggregate usage-stats JSON snapshot. **Point this at a mounted volume** (e.g. `/data/stats.json`) so counts survive container recreation. Aggregates only — never per-request rows. |
 | `PYTHIA_API_KEYS` | no | `[]` | JSON `Array<{name,key}>` mapping connector API keys → names for per-consumer usage attribution. **Kept OUT of the public repo** — set at deploy. A request's `x-pythia-key` header is matched here; unmatched/absent → `direct`. |
+| `PYTHIA_OIDC_CLIENT_ID` | no* | — | Pythia's confidential client id, issued by the AncientHoldings hub OIDC IdP at registration. Delivered out-of-band. |
+| `PYTHIA_OIDC_CLIENT_SECRET` | no* | — | The one-time confidential client secret. **Server-side only, kept OUT of the public repo.** |
+| `PYTHIA_SESSION_SECRET` | no* | — | ≥32-char random secret Pythia uses to sign its own admin session + login-state cookies (HS256). Generate at deploy, e.g. `openssl rand -hex 32`. |
+| `PYTHIA_OIDC_ISSUER` | no | `https://ancientholdings.eu` | The IdP issuer / discovery base. Override only for a non-prod hub. |
+| `PYTHIA_OIDC_REDIRECT_URI` | no | `https://pythia.ancientholdings.eu/admin/callback` | Must match the URI registered with the hub **byte-for-byte**. |
+
+\* The `/admin` connector-manager SSO gate is **optional**: it is wired only when all
+three of `PYTHIA_OIDC_CLIENT_ID`, `PYTHIA_OIDC_CLIENT_SECRET`, and
+`PYTHIA_SESSION_SECRET` are present. Absent any of them, the `/admin/*` routes are
+not registered and the public keyless gateway boots unchanged. The client secret and
+session secret are deploy-time secrets — never commit them (the repo is public).
 
 The two upstream StoaChain node URLs (primary + fallback) are **not** env vars —
 they live in the checked-in config `apps/pythia/config/pythia.config.json`, which

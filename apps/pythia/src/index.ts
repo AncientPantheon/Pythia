@@ -9,6 +9,8 @@ import { registerPoll } from "./routes/poll.js";
 import { registerConnectors } from "./routes/connectors.js";
 import { registerStats } from "./routes/stats.js";
 import { corsMiddleware } from "./middleware/cors.js";
+import { loadOidcConfig } from "./admin/oidcConfig.js";
+import { registerAdmin } from "./admin/routes.js";
 import { loadConfigFromDisk } from "./config/index.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
@@ -68,6 +70,13 @@ registerSend(app);
 registerPoll(app);
 registerConnectors(app);
 registerStats(app, statsStore);
+
+// The human admin surface (connector manager) is gated on the AncientHoldings
+// hub OIDC IdP. It is OPTIONAL: only wired when the deploy-time OIDC secrets are
+// present, so the public keyless gateway boots unchanged with no SSO configured.
+// Registered before the static catch-all so `/admin/*` is not shadowed.
+const oidcConfig = loadOidcConfig();
+if (oidcConfig) registerAdmin(app, oidcConfig);
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves
 // the same regardless of where the process was started from.

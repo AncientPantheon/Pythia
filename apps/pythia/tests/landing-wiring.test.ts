@@ -16,7 +16,7 @@ describe("landing wiring in the app", () => {
     // is the modular per-chain layout, so it carries the Chains section anchor
     // (the old flat `id="sources"` list was refactored into per-chain modules).
     expect(html).toContain("<title>Pythia");
-    expect(html).toContain('id="chains"');
+    expect(html).toContain('data-panel="chains"');
   });
 
   it("serves the static app.js asset (the client script resolves)", async () => {
