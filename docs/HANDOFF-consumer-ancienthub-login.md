@@ -70,18 +70,27 @@ from it. Current reality:
 
 These cost us real debugging time. Bake them in from the start.
 
-### 3a. The hub 308-redirects to a trailing slash — it breaks POST token exchange
-The hub runs Next.js with `trailingSlash: true`, so `POST /api/oidc/token`
-**308-redirects to `/api/oidc/token/`**. Node's `fetch` auto-follows the 308 but
-**drops the POST body + Authorization header** across it → the hub gets an empty
-request → "token exchange rejected" (it may even surface as a 500). **GET redirects
-(discovery, jwks, authorize) are fine** — only the POST loses its body.
+### 3a. Don't let a trailing-slash redirect eat your POST body
+**Hub status:** the hub is being fixed to serve its OIDC endpoints at the URLs
+discovery advertises (no trailing slash) **without** redirecting POSTs — so a normal
+`fetch` to `POST /api/oidc/token` returns the real response directly. Once that fix
+is confirmed live for your flow, no workaround is strictly needed.
 
-**Fix:** follow the redirect **manually**, re-issuing the POST (method + body + auth
-intact). This exact helper is what made it work:
+**Why this section still exists:** historically `POST /api/oidc/token`
+**308-redirected to `/api/oidc/token/`** (Next.js `trailingSlash: true`), and Node's
+`fetch` auto-follows the 308 but **drops the POST body + Authorization header**
+across it → empty request → "token exchange rejected" (it even surfaced as a 500).
+**GET redirects (discovery, jwks, authorize) are harmless** — only a POST loses its
+body.
+
+**Recommendation: keep a defensive same-origin redirect-follow anyway.** It is a
+no-op when there is no redirect, and it protects you if the fix hasn't reached your
+environment yet, or if any *other* POST endpoint (now or future) redirects. This is
+the helper that made it work when the redirect was live:
 
 ```js
 // Follow same-origin redirects manually so method/body/auth survive a 307/308.
+// A no-op when the endpoint doesn't redirect.
 async function postForm(url, headers, body) {
   let target = url, res;
   for (let hop = 0; hop < 3; hop++) {
@@ -95,7 +104,7 @@ async function postForm(url, headers, body) {
 ```
 
 (If your stack isn't Node/undici, verify your HTTP client preserves the body across
-307/308 — many don't. When in doubt, POST straight to the trailing-slash URL.)
+307/308 — many don't.)
 
 ### 3b. Verify EVERY pin — a partial verify is an auth bypass
 Use a real JOSE library (Pythia uses `jose`). Non-negotiable:
