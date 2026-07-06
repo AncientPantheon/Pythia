@@ -124,6 +124,7 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
   const gate = createAdminGate(cfg);
 
   app.get("/admin/login", async (c) => {
+    console.log("pythia admin: login start");
     const { discovery } = await getDiscovery(cfg.issuer);
     const challenge = createLoginChallenge();
 
@@ -160,10 +161,18 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
     const login = await readLoginState(getCookie(c, LOGIN_COOKIE), cfg.sessionSecret);
     deleteCookie(c, LOGIN_COOKIE, COOKIE_BASE);
 
+    console.log(
+      `pythia admin: callback received (code=${!!code} state=${!!returnedState} login-cookie=${!!login})`,
+    );
+
     if (!code || !returnedState || !login) {
+      console.error(
+        `pythia admin: callback missing ${!code ? "code " : ""}${!returnedState ? "state " : ""}${!login ? "login-cookie" : ""}`.trim(),
+      );
       return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>Missing or expired login request. <a href=\"/admin/login\">Try again</a>.</p>"), 400);
     }
     if (returnedState !== login.state) {
+      console.error("pythia admin: callback state mismatch");
       return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>State mismatch. <a href=\"/admin/login\">Try again</a>.</p>"), 400);
     }
 
@@ -208,8 +217,10 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
     }
     const tokens = (await tokenRes.json()) as { id_token?: string };
     if (!tokens.id_token) {
+      console.error("pythia admin: token response carried no id_token");
       return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>No id_token returned. <a href=\"/admin/login\">Try again</a>.</p>"), 502);
     }
+    console.log("pythia admin: token exchange ok — verifying id_token");
 
     let identity;
     try {
@@ -219,9 +230,15 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
         clientId: cfg.clientId,
         expectedNonce: login.nonce,
       });
-    } catch {
+    } catch (err) {
+      console.error(
+        `pythia admin: id_token verification failed — ${err instanceof Error ? err.message : String(err)}`,
+      );
       return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>Token verification failed. <a href=\"/admin/login\">Try again</a>.</p>"), 401);
     }
+    console.log(
+      `pythia admin: login ok sub=${identity.sub} roles=[${identity.roles.join(",")}]`,
+    );
 
     setCookie(
       c,
