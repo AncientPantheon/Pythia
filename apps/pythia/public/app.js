@@ -84,6 +84,11 @@ function updateLivePill(snapshot) {
   }
   pill.className = `livepill ${mod}`;
   text.textContent = msg;
+
+  // Surface the running service version in the footer so a deploy is verifiable
+  // at a glance. /healthz carries it; render it once it's known.
+  const ver = document.getElementById("version");
+  if (ver && snapshot.version) ver.textContent = `v${snapshot.version}`;
 }
 
 function pillError() {

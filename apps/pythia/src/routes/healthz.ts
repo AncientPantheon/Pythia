@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { loadConfigFromDisk, type PythiaConfig } from "../config/index.js";
 import { resolveHealth, type HealthSnapshot } from "../health/index.js";
+import { PYTHIA_VERSION } from "../version.js";
 
 export interface HealthzDeps {
   /** Resolve the current health snapshot. Injectable so tests avoid the network;
@@ -29,6 +30,7 @@ export function registerHealthz(app: Hono, deps: HealthzDeps = {}): void {
     return c.json(
       {
         service: "ok",
+        version: PYTHIA_VERSION,
         active: snapshot.active,
         routing: snapshot.routing,
         sources: snapshot.sources,

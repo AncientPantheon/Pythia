@@ -222,6 +222,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   border-top: 1px solid var(--line);
 }
 .foot-mark { color: var(--gold); font-weight: 700; letter-spacing: .01em; }
+.foot-version { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: .4rem; }
 .foot-sep { color: var(--line); }
 .foot a { color: var(--ink-soft); text-decoration: none; }
 .foot a:hover { color: var(--gold); }

@@ -31,6 +31,30 @@ const COOKIE_BASE = {
   sameSite: "Lax",
 } as const;
 
+/**
+ * POST a form, manually following same-origin redirects so the method, body, and
+ * Authorization header SURVIVE. The hub runs Next.js with `trailingSlash: true`,
+ * so `POST /api/oidc/token` gets a 308 to `/api/oidc/token/` — and Node's
+ * auto-follow drops the body + auth across a 307/308, which the IdP then rejects.
+ * Re-issuing the POST to the redirect target ourselves keeps them intact.
+ */
+export async function postForm(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<Response> {
+  let target = url;
+  let res!: Response;
+  for (let hop = 0; hop < 3; hop++) {
+    res = await fetch(target, { method: "POST", headers, body, redirect: "manual" });
+    const location =
+      res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) break;
+    target = new URL(location, target).toString();
+  }
+  return res;
+}
+
 function esc(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -148,21 +172,26 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
     // Confidential token exchange, server-to-server. client_secret_basic auth;
     // the PKCE code_verifier proves this is the same agent that began the login.
     const basic = Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString("base64");
-    const tokenRes = await fetch(discovery.token_endpoint, {
-      method: "POST",
-      headers: {
+    const tokenBody = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: cfg.redirectUri,
+      code_verifier: login.codeVerifier,
+    }).toString();
+    const tokenRes = await postForm(
+      discovery.token_endpoint,
+      {
         "content-type": "application/x-www-form-urlencoded",
         authorization: `Basic ${basic}`,
         accept: "application/json",
       },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: cfg.redirectUri,
-        code_verifier: login.codeVerifier,
-      }),
-    });
+      tokenBody,
+    );
     if (!tokenRes.ok) {
+      const detail = await tokenRes.text().catch(() => "");
+      console.error(
+        `pythia admin: token exchange failed (${tokenRes.status}) ${detail.slice(0, 200)}`,
+      );
       return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>Token exchange rejected. <a href=\"/admin/login\">Try again</a>.</p>"), 502);
     }
     const tokens = (await tokenRes.json()) as { id_token?: string };
