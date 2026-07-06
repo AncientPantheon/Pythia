@@ -1,0 +1,37 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pythia">
+  <defs>
+    <radialGradient id="iris" cx="50%" cy="42%" r="62%">
+      <stop offset="0%" stop-color="#f6dc93"/>
+      <stop offset="55%" stop-color="#e6be6a"/>
+      <stop offset="100%" stop-color="#b8912f"/>
+    </radialGradient>
+    <radialGradient id="tile" cx="50%" cy="32%" r="85%">
+      <stop offset="0%" stop-color="#1a2140"/>
+      <stop offset="100%" stop-color="#0b0f1e"/>
+    </radialGradient>
+  </defs>
+
+  <!-- dark rounded tile (reads on light or dark browser chrome) -->
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tile)" stroke="#24304f" stroke-width="1.5"/>
+
+  <!-- radiant rays: the all-seeing oracle -->
+  <g stroke="#e6be6a" stroke-width="2.3" stroke-linecap="round" opacity="0.5">
+    <line x1="32" y1="8.5" x2="32" y2="14.5"/>
+    <line x1="32" y1="49.5" x2="32" y2="55.5"/>
+    <line x1="11.5" y1="17.5" x2="15.8" y2="21.8"/>
+    <line x1="52.5" y1="17.5" x2="48.2" y2="21.8"/>
+    <line x1="11.5" y1="46.5" x2="15.8" y2="42.2"/>
+    <line x1="52.5" y1="46.5" x2="48.2" y2="42.2"/>
+  </g>
+
+  <!-- eye almond -->
+  <path d="M11 32 Q32 11 53 32 Q32 53 11 32 Z" fill="#0a0e1c" stroke="#e6be6a" stroke-width="2.6"/>
+
+  <!-- iris + cyan energy ring -->
+  <circle cx="32" cy="32" r="8.6" fill="url(#iris)"/>
+  <circle cx="32" cy="32" r="8.6" fill="none" stroke="#58c9e8" stroke-width="1.1" opacity="0.85"/>
+
+  <!-- pupil + highlight -->
+  <circle cx="32" cy="32" r="3.8" fill="#070a14"/>
+  <circle cx="29" cy="29" r="1.7" fill="#eaf6ff" opacity="0.92"/>
+</svg>
