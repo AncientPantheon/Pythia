@@ -192,7 +192,19 @@ export function registerAdmin(app: Hono, cfg: OidcConfig): void {
       console.error(
         `pythia admin: token exchange failed (${tokenRes.status}) ${detail.slice(0, 200)}`,
       );
-      return c.html(page("Pythia Admin — login failed", "<h1>Login failed</h1><p>Token exchange rejected. <a href=\"/admin/login\">Try again</a>.</p>"), 502);
+      // A 5xx means the hub's own token endpoint errored while issuing the token;
+      // Pythia's request was well-formed. Name it so the failure is actionable.
+      const msg =
+        tokenRes.status >= 500
+          ? `The AncientHoldings hub's token endpoint returned HTTP ${tokenRes.status} while issuing the token. This is a hub-side error, not Pythia — the hub logs for /api/oidc/token hold the cause.`
+          : `Token exchange rejected (HTTP ${tokenRes.status}).`;
+      return c.html(
+        page(
+          "Pythia Admin — login failed",
+          `<h1>Login failed</h1><p>${esc(msg)}</p><p><a href="/admin/login">Try again</a></p>`,
+        ),
+        502,
+      );
     }
     const tokens = (await tokenRes.json()) as { id_token?: string };
     if (!tokens.id_token) {

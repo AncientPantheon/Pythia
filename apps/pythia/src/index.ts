@@ -79,7 +79,19 @@ const oidcConfig = loadOidcConfig();
 if (oidcConfig) registerAdmin(app, oidcConfig);
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves
-// the same regardless of where the process was started from.
-app.use("/*", serveStatic({ root: PUBLIC_DIR, index: "index.html" }));
+// the same regardless of where the process was started from. `onFound` stamps
+// `Cache-Control: no-cache` on every served asset so the browser REVALIDATES each
+// load (via last-modified) — a fresh deploy is visible on a normal refresh
+// instead of the browser silently serving a stale index.html/app.js.
+app.use(
+  "/*",
+  serveStatic({
+    root: PUBLIC_DIR,
+    index: "index.html",
+    onFound: (_path, c) => {
+      c.header("Cache-Control", "no-cache");
+    },
+  }),
+);
 
 export default app;
