@@ -42,6 +42,11 @@ to bake into a public/permaweb bundle.
   **Ouronet account** — it does NOT require the Apollo private key. Anyone can bring
   an (inactive) key on-chain.
 - The Apollo **public** key is baked into the consumer build (permaweb-safe).
+- The Apollo Account's **seed lives in the operator's Codex** — the Codex is a key
+  collection, the natural vault for an operator's many API-key seeds. Only the
+  **public** key ships in the consumer bundle; the seed never leaves the Codex.
+- **No per-account key limit.** Abuse is deterred economically instead (see §3b):
+  activation costs **250 STOA**.
 
 ### 3b. Activate — prove Apollo ownership → Automaton flips `true`
 
@@ -70,6 +75,18 @@ to bake into a public/permaweb bundle.
   does ED25519/WebAuthn). So an off-chain verifier that has Dalos is *required*, and
   the Automaton bridges the verified result on-chain. (Registration is an ED25519
   Ouronet-account tx the chain *can* do; activation needs the off-chain Apollo proof.)
+- **The signing handshake reuses a PROVEN mechanism.** Redirecting to Ouronet to sign
+  is exactly how the HUB already verifies Ouronet Accounts — so this is not new
+  infrastructure, it's that pattern applied to the Apollo key. Signing is **always** in
+  Ouronet/Codex (where the seed lives); Pythia never receives a seed.
+- **Activation is paywalled at 250 STOA (anti-abuse).** To flip a key to `active`, the
+  user pays **250 STOA** from their Ouronet account during the handshake; the Automaton
+  flips `activated = true` only after BOTH the Apollo-ownership proof (off-chain) AND
+  the payment (on-chain). This gates *live* keys behind a cost so abusers can't flood
+  the chain with activated keys nobody uses — replacing any per-account limit. Pythia
+  stays fund-less (the payment is a user→treasury on-chain tx the module verifies; it
+  never flows through Pythia). 250 STOA is a governance-adjustable knob;
+  registration-inactive stays cheap/free since inactive keys are never served.
 
 ### 3c. Use (per request — for everyone)
 - The consumer (carrying its baked public key) calls Pythia; Pythia checks the
@@ -154,7 +171,9 @@ drifted), and confirm the Apollo string used is the Apollo Account `₱./Π.` ke
   public key at build time.
 - **Codex:** read the consumer's baked public key and send it as the Pythia key header
   (one field on the injected connection config; `createPythiaConnection` already
-  exists). Optionally: a `signChallenge(nonce)` callback for the signing lane.
+  exists). The Codex also **stores the operator's Apollo API-key seeds** (it is already
+  a key vault) and **signs the activation challenge** during the Ouronet redirect.
+  Optionally: a `signChallenge(nonce)` callback for the per-request signing lane.
 - **Pythia:** a cached on-chain registry **mirror** (read-only, `/local`, ~60s,
   fail-open); the **grant check** as the first branch of `resolveConsumer` (verify
   activated → map to lane, else fall through to store→env→direct); the **public
@@ -178,16 +197,18 @@ separation, but Pythia-verifies is legitimate. Pick deliberately.
 ## 9. Resolved vs open
 
 **Resolved:** the key is an **Apollo Account** (`₱./Π.`); register-inactive is
-separate from activate-on-proof; sign-where-keys-live (never send the seed); Pythia
-stays keyless and reads a cached, fail-open mirror; no per-request on-chain counting;
-this **coexists** with the current shared-secret store (opt-in third lane, env-gated).
+separate from activate-on-proof; **seeds live in the operator's Codex**; signing is
+**always** the Ouronet redirect handshake (reusing the HUB's proven Ouronet-account
+verification), never the seed sent to Pythia; **no per-account key limit — a 250 STOA
+activation paywall** deters abuse instead; Pythia stays keyless + fund-less and reads
+a cached, fail-open mirror; no per-request on-chain counting; this **coexists** with
+the current shared-secret store (opt-in third lane, env-gated).
 
-**Open:** feasibility/timeline of the GOV module upgrade; keys-per-account (each
-Apollo Account is naturally one identity — confirm whether one operator wants several
-named lanes, e.g. prod/dev/local, = several Apollo Accounts); revocation-lag SLA +
-denylist override; verifier location (§8); origin-binding scope; empirically confirm
-the Dalos `generateFromSeedWords → sign → verify` round trip before shipping the
-signing lane.
+**Open:** feasibility/timeline of the GOV module upgrade; the **exact tx mechanics
+coupling the 250 STOA payment with the Automaton activation** (escrow/pending-activation
+vs verify-then-flip); revocation-lag SLA + denylist override; verifier location (§8);
+origin-binding scope; empirically confirm the Dalos `generateFromSeedWords → sign →
+verify` round trip before shipping the signing lane.
 
 ## 10. Phased plan
 
