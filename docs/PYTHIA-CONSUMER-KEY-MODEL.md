@@ -135,6 +135,8 @@ to bake into a public/permaweb bundle.
 
 ## 6. On-chain registry (Pact sketch — needs a GOV/Demiurgoi module upgrade)
 
+> The schema below is an illustrative sketch. The **grounded, house-style** Pact surface (module APIARY, C_DeployApolloPythiaApiKey, A_TurnApiOn/Off, UR_ reads) and all cross-component interfaces are settled in HANDOFF-consumer-key-INTERFACES.md - that ICD is authoritative.
+
 ```lisp
 (defschema pythia-consumer-key
   @doc "One Pythia API key = an Apollo Account public key. Inert until activated. \
