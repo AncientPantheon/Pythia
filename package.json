@@ -12,6 +12,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "node scripts/localhost-dev.mjs",
     "build": "npm run build --workspace=@ancientpantheon/pythia-client && npm run build --workspace=@ancientpantheon/pythia",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspaces",

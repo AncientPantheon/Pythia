@@ -45,3 +45,6 @@ playwright-report/
 # Source/working art (large iteration PNGs); the optimized web asset lives in
 # apps/pythia/public/ and IS tracked.
 .media/
+
+# Generated runtime stats
+pythia-stats.json
