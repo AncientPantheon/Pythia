@@ -28,9 +28,13 @@ declare module "hono" {
 // protection: cross-site POSTs don't send the session).
 const SECURE_COOKIE = { httpOnly: true, secure: true, sameSite: "Lax" } as const;
 // Login-state is only needed under /admin (set at /admin/login, read at callback).
-const LOGIN_COOKIE_OPTS = { ...SECURE_COOKIE, path: "/admin" } as const;
+// `maxAge` so the cookie self-expires with its token (no lingering stale cookie).
+const LOGIN_COOKIE_OPTS = { ...SECURE_COOKIE, path: "/admin", maxAge: 10 * 60 } as const;
 // The session is read SITE-WIDE (header + gated APIs), so it lives at the root.
-const SESSION_COOKIE_OPTS = { ...SECURE_COOKIE, path: "/" } as const;
+const SESSION_COOKIE_OPTS = { ...SECURE_COOKIE, path: "/", maxAge: 8 * 60 * 60 } as const;
+// A legacy build set the session cookie at path=/admin; it now collides with the
+// path-/ session on /admin/* requests. Clear it on every login/logout.
+const LEGACY_SESSION_PATH = "/admin";
 
 /**
  * POST a form, manually following same-origin redirects so the method, body, and
@@ -275,12 +279,15 @@ export function registerAdmin(
       ),
       SESSION_COOKIE_OPTS,
     );
+    // Clear the legacy path-/admin session cookie so it can't shadow this one.
+    deleteCookie(c, SESSION_COOKIE, { path: LEGACY_SESSION_PATH });
     // Back to the site — the header now reflects the logged-in identity.
     return c.redirect("/", 302);
   });
 
   app.get("/admin/logout", (c) => {
     deleteCookie(c, SESSION_COOKIE, SESSION_COOKIE_OPTS);
+    deleteCookie(c, SESSION_COOKIE, { path: LEGACY_SESSION_PATH });
     return c.redirect("/", 302);
   });
 
