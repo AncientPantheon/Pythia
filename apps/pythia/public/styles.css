@@ -422,3 +422,32 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 /* seed-node badge — permanent, gold to distinguish from the grey "disabled" */
 .ca-badge--seed { color: var(--gold); border-color: var(--gold-dim); }
+
+/* hub-feed sub-tabs (Observation Pool | Upload Pool) */
+.subtabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; }
+.subtab {
+  padding: 8px 14px; border-radius: 10px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.03);
+  color: var(--ink-soft); font: inherit; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; transition: border-color .15s, background .15s, color .15s;
+}
+.subtab:hover { border-color: var(--gold-dim); color: var(--ink); }
+.subtab--active { border-color: var(--gold-dim); background: rgba(230,190,106,.1); color: var(--ink); }
+.subpanel[hidden] { display: none; }
+.bulk-add { margin-top: 1rem; }
+.bulk-add summary { cursor: pointer; color: var(--ink-soft); font-size: 13.5px; font-weight: 600; }
+.bulk-add summary:hover { color: var(--gold); }
+.bulk-add textarea {
+  width: 100%; resize: vertical; font: inherit; font-size: 13.5px;
+  padding: 9px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--ink);
+}
+
+/* two-pool summary on the public Chains tab */
+.pool-block { margin-bottom: 16px; }
+.pool-block:last-child { margin-bottom: 0; }
+.pool-title { font-size: 13.5px; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+.pool-sub { color: var(--ink-mute); font-weight: 500; }
+.pool-summary { display: flex; align-items: center; gap: .5rem; font-size: 14px; color: var(--ink-soft); }
+.pool-summary .dot { width: 10px; height: 10px; }
+.pool-count { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-mute); }

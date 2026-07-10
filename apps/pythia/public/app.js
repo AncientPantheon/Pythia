@@ -265,6 +265,46 @@ function chainIdOptions(chain) {
   return out;
 }
 
+// Observation Pool summary (public): a health dot + node count, no URLs.
+function renderObservation(el, obs) {
+  el.textContent = "";
+  const dot = document.createElement("span");
+  dot.className = "dot";
+  let color = "grey";
+  let text = "hub feed off";
+  if (obs) {
+    if (obs.configured && obs.ok && obs.count > 0) {
+      color = "green";
+      text = `${obs.count} hub node${obs.count === 1 ? "" : "s"} live`;
+    } else if (obs.configured && obs.ok) {
+      color = "amber";
+      text = "feed reachable · 0 nodes";
+    } else if (obs.configured) {
+      color = "red";
+      text = "feed error";
+    }
+  }
+  dot.setAttribute("data-color", color);
+  const span = document.createElement("span");
+  span.className = "source-label";
+  span.textContent = text;
+  el.append(dot, span);
+}
+
+// Upload Pool count (public): the seed nodes are listed above; this notes how
+// many more (admin-added) senders exist, without exposing their URLs.
+function renderUploadCount(el, upload) {
+  if (!upload) {
+    el.textContent = "";
+    return;
+  }
+  const extra = upload.count - upload.seeds.length;
+  el.textContent =
+    extra > 0
+      ? `+ ${extra} more sender${extra === 1 ? "" : "s"} · ${upload.count} enabled total`
+      : `${upload.count} enabled`;
+}
+
 function renderChainModule(chain) {
   if (stopChainHealth) {
     stopChainHealth();
@@ -291,15 +331,18 @@ function renderChainModule(chain) {
 
     <div class="chain-grid">
       <div class="sub">
-        <div class="sub-head"><h4>Node pool</h4><span class="sub-note"><code>/healthz</code> · 15s</span></div>
-        <div class="sources" data-role="sources" aria-live="polite">
-          <div class="source-row"><span class="dot" data-color="grey"></span><span class="source-label">checking…</span></div>
+        <div class="sub-head"><h4>Node pools</h4><span class="sub-note"><code>/api/pools</code></span></div>
+        <div class="pool-block">
+          <div class="pool-title">Observation Pool <span class="pool-sub">· hub-fed reads</span></div>
+          <div class="pool-summary" data-role="observation"><span class="dot" data-color="grey"></span><span class="source-label">checking…</span></div>
         </div>
-        <p class="legend">
-          <span class="key"><span class="dot" data-color="green"></span> primary</span>
-          <span class="key"><span class="dot" data-color="amber"></span> fallback</span>
-          <span class="key"><span class="dot" data-color="red"></span> down</span>
-        </p>
+        <div class="pool-block">
+          <div class="pool-title">Upload Pool <span class="pool-sub">· signed-tx senders</span></div>
+          <div class="sources" data-role="upload-seeds" aria-live="polite">
+            <div class="source-row"><span class="dot" data-color="grey"></span><span class="source-label">checking…</span></div>
+          </div>
+          <p class="pool-count" data-role="upload-count"></p>
+        </div>
       </div>
 
       <div class="sub">
@@ -331,12 +374,21 @@ function renderChainModule(chain) {
   const code = mod.querySelector('[data-role="code"]');
   if (code) code.placeholder = chain.readExample || "";
 
-  // this chain's node-pool health poll
-  const sources = mod.querySelector('[data-role="sources"]');
+  // this chain's node-pool health poll: /healthz for seed reachability +
+  // /api/pools for the two-pool sizes.
+  const uploadSeeds = mod.querySelector('[data-role="upload-seeds"]');
+  const observation = mod.querySelector('[data-role="observation"]');
+  const uploadCount = mod.querySelector('[data-role="upload-count"]');
   stopChainHealth = createRefreshLoop({
-    fetchSnapshot: () => fetch(chain.health, { headers: { accept: "application/json" } }).then((r) => r.json()),
-    onSnapshot: (snap) => {
-      if (sources) renderSources(sources, snap.sources, snap.routing);
+    fetchSnapshot: () =>
+      Promise.all([
+        fetch(chain.health, { headers: { accept: "application/json" } }).then((r) => r.json()).catch(() => null),
+        fetch("/api/pools", { headers: { accept: "application/json" } }).then((r) => r.json()).catch(() => null),
+      ]),
+    onSnapshot: ([snap, pools]) => {
+      if (uploadSeeds && snap) renderSources(uploadSeeds, snap.sources, snap.routing);
+      if (observation && pools) renderObservation(observation, pools.observation);
+      if (uploadCount && pools) renderUploadCount(uploadCount, pools.upload);
     },
     onError: () => {},
     intervalMs: POLL_INTERVAL_MS,
@@ -628,6 +680,64 @@ function wireTxSenderForm() {
       loadTxSenders();
     } catch {
       if (err) { err.textContent = "Network error adding the node."; err.hidden = false; }
+    }
+  });
+}
+
+// The Hub-feed panel is split into two sub-tabs (Observation | Upload). Clicking
+// a sub-tab shows its sub-panel and hides the other.
+function wireHubSubtabs() {
+  const nav = document.getElementById("hub-subtabs");
+  if (!nav) return;
+  const buttons = Array.from(nav.querySelectorAll("[data-subtab]"));
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.subtab;
+      buttons.forEach((b) => b.classList.toggle("subtab--active", b === btn));
+      document.querySelectorAll("[data-subpanel]").forEach((p) => {
+        p.hidden = p.dataset.subpanel !== name;
+      });
+    });
+  });
+}
+
+// Bulk-add Upload senders: one URL per line, POSTed one-by-one (reusing the
+// single-add endpoint) so each is validated + deduped server-side.
+function wireTxSenderBulk() {
+  const form = document.getElementById("txsender-bulk-form");
+  const err = document.getElementById("txsender-bulk-error");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (err) err.hidden = true;
+    const raw = (new FormData(form).get("urls") || "").toString();
+    const urls = raw
+      .split(/\r?\n/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if (!urls.length) return;
+    let added = 0;
+    let failed = 0;
+    for (const url of urls) {
+      try {
+        const res = await fetch("/admin/tx-senders", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ url, label: "" }),
+        });
+        if (res.ok) added += 1;
+        else failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    form.reset();
+    loadTxSenders();
+    if (err) {
+      err.textContent = failed
+        ? `${added} added · ${failed} failed (bad URL or duplicate).`
+        : `${added} added.`;
+      err.hidden = false;
     }
   });
 }
@@ -1053,6 +1163,8 @@ wireTabs();
 wireAddConnector();
 wireHubConfig();
 wireTxSenderForm();
+wireHubSubtabs();
+wireTxSenderBulk();
 renderChainTabs();
 startHealthPill();
 loadMe(); // /api/me → renders the header + loads the right connectors view

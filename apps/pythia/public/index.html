@@ -144,35 +144,53 @@
       <section class="panel tabpanel" data-panel="hubfeed" aria-labelledby="hub-h" hidden>
         <div class="panel-head">
           <h2 id="hub-h">Hub feed</h2>
-          <p class="panel-note">Activate the AncientHub node-pool feed so reads fan out across the hub's StoaChain fleet. Ancient admin only.</p>
+          <p class="panel-note">The two node pools behind Pythia. Ancient admin only.</p>
         </div>
-        <div id="hub-status" class="hub-status"></div>
-        <form id="hub-config-form" class="conn-form">
-          <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
-          <div class="conn-field">
-            <label for="hub-secret-input">HMAC service secret</label>
-            <span class="secret-input">
-              <input id="hub-secret-input" name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" />
-              <button type="button" id="hub-secret-toggle" class="secret-toggle" aria-label="Show or hide the secret">show</button>
-            </span>
-          </div>
-          <div id="hub-secret-current" class="secret-current" hidden></div>
-          <div class="conn-actions">
-            <button type="submit" class="btn btn--primary">Save &amp; activate</button>
-            <button type="button" id="hub-refresh" class="btn btn--ghost">Refresh now</button>
-          </div>
-          <p class="conn-error" id="hub-config-error" hidden></p>
-        </form>
 
-        <h3 class="sub-h">Upload pool — signed-transaction senders</h3>
-        <p class="panel-note">Sends (<code>/stoachain/send</code>) go only to these nodes, tried in order. They earn no PythXP. The two <b>seed nodes</b> are baked in from config and can't be removed — they keep Pythia serving from deployment (sends, and reads when the hub feed is off). Add your own dedicated senders on top.</p>
-        <div id="txsenders" class="txsenders"></div>
-        <form id="txsender-form" class="conn-form">
-          <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
-          <label class="conn-field">Label (optional)<input name="label" type="text" placeholder="upload-1" /></label>
-          <div class="conn-actions"><button type="submit" class="btn btn--primary">Add sender</button></div>
-          <p class="conn-error" id="txsender-error" hidden></p>
-        </form>
+        <nav class="subtabs" id="hub-subtabs" role="tablist" aria-label="Pools">
+          <button class="subtab subtab--active" data-subtab="observation" role="tab" type="button">Observation Pool</button>
+          <button class="subtab" data-subtab="upload" role="tab" type="button">Upload Pool</button>
+        </nav>
+
+        <div class="subpanel" data-subpanel="observation">
+          <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP).</p>
+          <div id="hub-status" class="hub-status"></div>
+          <form id="hub-config-form" class="conn-form">
+            <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
+            <div class="conn-field">
+              <label for="hub-secret-input">HMAC service secret</label>
+              <span class="secret-input">
+                <input id="hub-secret-input" name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" />
+                <button type="button" id="hub-secret-toggle" class="secret-toggle" aria-label="Show or hide the secret">show</button>
+              </span>
+            </div>
+            <div id="hub-secret-current" class="secret-current" hidden></div>
+            <div class="conn-actions">
+              <button type="submit" class="btn btn--primary">Save &amp; activate</button>
+              <button type="button" id="hub-refresh" class="btn btn--ghost">Refresh now</button>
+            </div>
+            <p class="conn-error" id="hub-config-error" hidden></p>
+          </form>
+        </div>
+
+        <div class="subpanel" data-subpanel="upload" hidden>
+          <p class="panel-note">Signed-tx senders. Sends (<code>/stoachain/send</code>) go only here, in order (no PythXP), and also serve reads when the hub feed is off. The two <b>seed nodes</b> are baked in and can't be removed; add your own on top.</p>
+          <div id="txsenders" class="txsenders"></div>
+          <form id="txsender-form" class="conn-form">
+            <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
+            <label class="conn-field">Label (optional)<input name="label" type="text" placeholder="upload-1" /></label>
+            <div class="conn-actions"><button type="submit" class="btn btn--primary">Add sender</button></div>
+            <p class="conn-error" id="txsender-error" hidden></p>
+          </form>
+          <details class="bulk-add">
+            <summary>Add multiple at once</summary>
+            <form id="txsender-bulk-form" class="conn-form">
+              <label class="conn-field">Node URLs — one per line<textarea name="urls" rows="4" placeholder="https://1.2.3.4:1848&#10;https://5.6.7.8:1848"></textarea></label>
+              <div class="conn-actions"><button type="submit" class="btn btn--primary">Add all</button></div>
+              <p class="conn-error" id="txsender-bulk-error" hidden></p>
+            </form>
+          </details>
+        </div>
       </section>
 
       <footer class="foot">
