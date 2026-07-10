@@ -458,7 +458,7 @@ function renderHubStatus(el, s) {
   const dot = document.createElement("span");
   dot.className = "dot";
   let color = "grey";
-  let text = "Feed off — serving seed-only";
+  let text = "Feed off — reads use the Upload Pool";
   if (s.secretSet) {
     if (s.feedOk && (s.slots ?? 0) > 0) {
       color = "green";

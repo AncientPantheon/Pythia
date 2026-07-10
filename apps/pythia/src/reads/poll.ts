@@ -3,8 +3,8 @@ import {
   dial,
   STOA_NETWORK,
   type FetchImpl,
+  type DialNode,
 } from "../dial/index.js";
-import type { SourceConfig } from "../config/index.js";
 import { readJson } from "./readJson.js";
 
 export interface PollInput {
@@ -17,8 +17,8 @@ export interface PollInput {
 }
 
 export interface PollDeps {
-  primary: SourceConfig;
-  fallback: SourceConfig;
+  primary: DialNode;
+  fallback: DialNode;
   fetchImpl?: FetchImpl;
 }
 

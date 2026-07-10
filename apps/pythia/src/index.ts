@@ -77,29 +77,30 @@ export const settingsStore = new SettingsStore({
   filePath: process.env.SETTINGS_FILE || "./pythia-settings.json",
 });
 
-// The read node-pool: the hub's advertised StoaChain fleet (polled ~60s over the
-// signed HMAC feed) enlarges the READ pool, with the checked-in seed nodes as the
-// always-present fallback. OPTIONAL: only polls when a hub HMAC secret is present
-// (admin settings win over the `PYTHIA_HUB_HMAC_SECRET` env) — absent it, the pool
-// is seed-only (today's two-host behavior, zero change). SEND stays on the seeds
-// and is never hub-fed. Exported so the server stops the poller on shutdown.
+// The Upload Pool: dedicated, ancient-managed nodes for signed-tx `/send` ONLY.
+// Seeded on first run with the checked-in seed nodes so sends keep working until
+// the admin curates dedicated senders. Persisted on the `/data` volume. It is
+// ALSO the read fallback (below) when the hub feed is off/down.
+export const txSenderStore = new TxSenderStore({
+  filePath: process.env.TXSENDERS_FILE || "./pythia-txsenders.json",
+  defaults: loadConfigFromDisk().sources.map((s) => ({ url: s.url, label: s.id })),
+});
+
+// The read node-pool (Observation): the hub's advertised StoaChain fleet (polled
+// ~60s over the signed HMAC feed) enlarges the READ pool. When the feed is off or
+// down, reads are REDIRECTED to the Upload Pool (the operator's dedicated nodes),
+// with the checked-in seeds as the absolute last resort. OPTIONAL feed: only polls
+// when a hub HMAC secret is present (admin settings win over the env). SEND stays
+// on the Upload Pool only. Exported so the server stops the poller on shutdown.
 function currentHubConfig() {
   return settingsStore.hubConfig() ?? loadHubConfig();
 }
 export const nodePool = new NodePool({
-  seeds: loadConfigFromDisk().sources,
   client: (() => {
     const cfg = currentHubConfig();
     return cfg ? new HubServiceClient(cfg) : null;
   })(),
-});
-
-// The Upload Pool: dedicated, ancient-managed nodes for signed-tx `/send` ONLY.
-// Seeded on first run with the checked-in seed nodes so sends keep working until
-// the admin curates dedicated senders. Persisted on the `/data` volume.
-export const txSenderStore = new TxSenderStore({
-  filePath: process.env.TXSENDERS_FILE || "./pythia-txsenders.json",
-  defaults: loadConfigFromDisk().sources.map((s) => ({ url: s.url, label: s.id })),
+  uploadNodes: () => txSenderStore.enabledNodes(),
 });
 
 // Detect Pythia's public egress IP (the hub allowlist target) at boot; refreshed

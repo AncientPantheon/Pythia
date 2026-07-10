@@ -35,8 +35,8 @@ export interface DialRequest {
 }
 
 export interface DialDeps {
-  primary: SourceConfig;
-  fallback: SourceConfig;
+  primary: DialNode;
+  fallback: DialNode;
   fetchImpl?: FetchImpl;
   /** Per-attempt abort timeout in ms. Defaults to {@link DEFAULT_DIAL_TIMEOUT_MS}. */
   timeoutMs?: number;

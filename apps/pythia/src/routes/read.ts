@@ -99,7 +99,19 @@ export function registerRead(app: Hono, deps: ReadDeps = {}): void {
         ...(parsed.data !== undefined ? { data: parsed.data } : {}),
         ...(parsed.sender !== undefined ? { sender: parsed.sender } : {}),
       });
-      const { primary, fallback } = resolveReadPair(deps);
+      const pair = resolveReadPair(deps);
+      if (!pair) {
+        // No hub feed and an empty Upload Pool → nothing to read from.
+        return c.json(
+          {
+            code: "pythia_no_read_node",
+            error:
+              "no read node available — the hub feed is off/down and the Upload Pool is empty",
+          },
+          503,
+        );
+      }
+      const { primary, fallback } = pair;
 
       try {
         const response = await dial(

@@ -3,6 +3,7 @@ import {
   PythiaPoolExhaustedError,
   PythiaValidationError,
   type FetchImpl,
+  type DialNode,
 } from "../dial/index.js";
 import { PythiaUpstreamError } from "../reads/index.js";
 import { loadConfigFromDisk, type SourceConfig } from "../config/index.js";
@@ -49,12 +50,11 @@ export function resolveSources(deps: RelayDeps): {
  * the single seam that enlarges reads across the hub fleet — the dial itself is
  * unchanged. SEND does NOT call this (it stays on {@link resolveSources}).
  */
-export function resolveReadPair(deps: RelayDeps): {
-  primary: SourceConfig;
-  fallback: SourceConfig;
-} {
+export function resolveReadPair(
+  deps: RelayDeps,
+): { primary: DialNode; fallback: DialNode } | null {
   if (deps.sources) return deps.sources;
-  if (deps.pool) return deps.pool.pickReadPair();
+  if (deps.pool) return deps.pool.pickReadPair(); // null when no nodes to serve
   return resolveSources(deps);
 }
 

@@ -1,11 +1,11 @@
 import type { SourceConfig } from "../config/index.js";
-import { STOA_NETWORK } from "../dial/index.js";
+import { STOA_NETWORK, type DialNode } from "../dial/index.js";
 import type { HubServiceClient, HubSlot } from "../hub/serviceClient.js";
 
 /** The {primary, fallback} pair the two-host dial consumes for one read. */
 export interface ReadPair {
-  primary: SourceConfig;
-  fallback: SourceConfig;
+  primary: DialNode;
+  fallback: DialNode;
 }
 
 /**
@@ -23,14 +23,14 @@ function slotToSource(slot: HubSlot): SourceConfig {
 }
 
 /**
- * The live read-node pool: the hub's advertised usable slots (refreshed on a
- * ~60s poll) with Pythia's checked-in seed nodes as the always-present fallback.
+ * The live read-node pool (the Observation Pool): the hub's advertised usable
+ * slots (refreshed on a ~60s poll), with the **Upload Pool** as the fallback.
  *
  * `pickReadPair()` rotates the PRIMARY leg across the hub fleet so reads spread
- * the load, and always sets the FALLBACK leg to a SEED so every read has a
- * known-good backstop even if the picked hub node just died (the dial's transport
- * failover then serves the seed). With no hub slots known (feed off, empty, or
- * unreachable) it degrades to rotating the two seeds — exactly today's behavior.
+ * the load, and sets the FALLBACK leg to an Upload-Pool node so a dead hub node
+ * fails over to a known-good operator node. When the hub feed is off/down (no
+ * slots), reads are REDIRECTED entirely to the Upload Pool. There is no separate
+ * config-seed tier — the Upload Pool is seeded from the config on first run.
  *
  * Keyless: this only selects which hosts to dial; it never signs or holds keys.
  */
@@ -40,21 +40,25 @@ export class NodePool {
   private lastRefreshOk = false;
   private lastRefreshError: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private readonly seeds: SourceConfig[];
   private client: HubServiceClient | null;
   private readonly refreshMs: number;
+  private readonly uploadNodes: () => DialNode[];
 
   constructor(opts: {
-    seeds: SourceConfig[];
     client?: HubServiceClient | null;
     refreshMs?: number;
+    /** The Upload Pool's enabled nodes. This is the read pool's fallback and,
+     * when the hub feed is off/down, the read pool ITSELF — there is no separate
+     * config-seed tier (the Upload Pool is seeded from the config on first run). */
+    uploadNodes?: () => DialNode[];
   }) {
-    this.seeds = opts.seeds;
     this.client = opts.client ?? null;
     this.refreshMs = opts.refreshMs ?? 60_000;
+    this.uploadNodes = opts.uploadNodes ?? (() => []);
   }
 
-  /** Begin polling the hub feed. No-op when no client is configured (seed-only). */
+  /** Begin polling the hub feed. No-op when no client is configured (the read
+   * pool then serves from the Upload Pool). */
   start(): void {
     if (!this.client || this.timer) return;
     void this.refreshNow();
@@ -126,20 +130,38 @@ export class NodePool {
   }
 
   /**
-   * Choose the {primary, fallback} for one read. Primary rotates across the hub
-   * fleet; fallback is always a seed. No hub slots → rotate the seeds.
+   * Choose the {primary, fallback} for one read, or `null` when there is nothing
+   * to serve reads from (no hub slots AND an empty Upload Pool → the caller
+   * returns 503).
+   *
+   * - **Hub feed live** (has slots): primary rotates across the hub fleet to
+   *   spread load; fallback is an Upload-Pool node (or another hub slot if the
+   *   Upload Pool is empty).
+   * - **Hub feed off/down** (no slots): reads are REDIRECTED to the Upload Pool —
+   *   both legs rotate across it.
    */
-  pickReadPair(): ReadPair {
-    const seeds = this.seeds;
-    const n = this.hubSlots.length;
+  pickReadPair(): ReadPair | null {
+    const upload = this.uploadNodes();
+    const hub = this.hubSlots;
     const r = this.rot++;
-    if (n === 0) {
-      const primary = seeds[r % seeds.length];
-      const fallback = seeds.length > 1 ? seeds[(r + 1) % seeds.length] : seeds[0];
+
+    if (hub.length > 0) {
+      const primary = hub[r % hub.length];
+      const fallback =
+        upload.length > 0
+          ? upload[r % upload.length]
+          : hub.length > 1
+            ? hub[(r + 1) % hub.length]
+            : hub[0];
       return { primary, fallback };
     }
-    const primary = this.hubSlots[r % n];
-    const fallback = seeds[r % seeds.length];
-    return { primary, fallback };
+    // Feed off/down → serve reads from the Upload Pool.
+    if (upload.length > 0) {
+      const primary = upload[r % upload.length];
+      const fallback =
+        upload.length > 1 ? upload[(r + 1) % upload.length] : upload[0];
+      return { primary, fallback };
+    }
+    return null;
   }
 }

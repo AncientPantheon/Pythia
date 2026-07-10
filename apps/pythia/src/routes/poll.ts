@@ -73,7 +73,18 @@ export function registerPoll(app: Hono, deps: PollRouteDeps = {}): void {
         return respondRelayError(c, err);
       }
 
-      const { primary, fallback } = resolveReadPair(deps);
+      const pair = resolveReadPair(deps);
+      if (!pair) {
+        return c.json(
+          {
+            code: "pythia_no_read_node",
+            error:
+              "no read node available — the hub feed is off/down and the Upload Pool is empty",
+          },
+          503,
+        );
+      }
+      const { primary, fallback } = pair;
       try {
         const results = await pollConfirmations(
           {

@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { NodePool } from "./nodePool.js";
 import type { HubServiceClient, NodesFeed } from "../hub/serviceClient.js";
-import type { SourceConfig } from "../config/index.js";
+import type { DialNode } from "../dial/index.js";
 
-const SEEDS: SourceConfig[] = [
-  { id: "seed-a", url: "https://a.seed", role: "primary", chain: "stoa" },
-  { id: "seed-b", url: "https://b.seed", role: "fallback", chain: "stoa" },
+// The Upload Pool is the operator's node list — the read fallback and, when the
+// hub feed is off/down, the read pool itself. There is no separate config-seed tier.
+const UPLOAD: DialNode[] = [
+  { id: "up-a", url: "https://a.up" },
+  { id: "up-b", url: "https://b.up" },
 ];
 
 function stubClient(feed: NodesFeed | (() => Promise<NodesFeed>)): HubServiceClient {
@@ -13,57 +15,80 @@ function stubClient(feed: NodesFeed | (() => Promise<NodesFeed>)): HubServiceCli
   return { fetchNodes } as unknown as HubServiceClient;
 }
 
+function hubFeed(ids: string[]): NodesFeed {
+  return {
+    slots: ids.map((id) => ({
+      id,
+      url: `https://${id}:1848`,
+      networkId: "stoa",
+      operator: null,
+      atTip: true,
+      height: 1,
+    })),
+    refreshAfter: 60,
+  };
+}
+
 describe("NodePool.pickReadPair", () => {
-  it("with no hub slots, rotates the two seeds (today's behavior)", () => {
-    const pool = new NodePool({ seeds: SEEDS });
-    expect(pool.pickReadPair()).toEqual({ primary: SEEDS[0], fallback: SEEDS[1] });
-    expect(pool.pickReadPair()).toEqual({ primary: SEEDS[1], fallback: SEEDS[0] });
+  it("returns null with no feed AND an empty Upload Pool (→ read 503)", () => {
+    expect(new NodePool({ uploadNodes: () => [] }).pickReadPair()).toBeNull();
   });
 
-  it("with hub slots, rotates PRIMARY across the fleet and keeps a SEED fallback", async () => {
+  it("with the feed off, serves reads from the Upload Pool (rotating)", () => {
+    const pool = new NodePool({ uploadNodes: () => UPLOAD });
+    expect(pool.pickReadPair()?.primary.id).toBe("up-a");
+    expect(pool.pickReadPair()?.primary.id).toBe("up-b");
+    expect(pool.pickReadPair()?.primary.id).toBe("up-a"); // wraps
+  });
+
+  it("with hub slots, rotates PRIMARY across the fleet and uses an Upload node as fallback", async () => {
     const pool = new NodePool({
-      seeds: SEEDS,
-      client: stubClient({
-        slots: [
-          { id: "10.0.0.1", url: "https://10.0.0.1:1848", networkId: "stoa", operator: "k:x", atTip: true, height: 9 },
-          { id: "10.0.0.2", url: "https://10.0.0.2:1848", networkId: "stoa", operator: "k:y", atTip: true, height: 9 },
-        ],
-        refreshAfter: 60,
-      }),
+      uploadNodes: () => UPLOAD,
+      client: stubClient(hubFeed(["10.0.0.1", "10.0.0.2"])),
     });
     await pool.refreshNow();
-    expect(pool.hubSlotCount()).toBe(2);
-
-    const p0 = pool.pickReadPair();
-    const p1 = pool.pickReadPair();
-    const p2 = pool.pickReadPair();
-    expect(p0.primary.id).toBe("10.0.0.1"); // rotates across hub slots
+    const p0 = pool.pickReadPair()!;
+    const p1 = pool.pickReadPair()!;
+    expect(p0.primary.id).toBe("10.0.0.1");
     expect(p1.primary.id).toBe("10.0.0.2");
-    expect(p2.primary.id).toBe("10.0.0.1"); // wraps
-    // fallback is ALWAYS a seed — a dead hub node fails over to a known-good seed.
-    for (const p of [p0, p1, p2]) {
-      expect(SEEDS.map((s) => s.id)).toContain(p.fallback.id);
+    for (const p of [p0, p1]) {
+      expect(UPLOAD.map((u) => u.id)).toContain(p.fallback.id);
     }
   });
 
-  it("keeps last-good slots when a refresh fails (never drops to zero on a blip)", async () => {
+  it("with hub slots but an empty Upload Pool, the fallback is another hub slot", async () => {
+    const pool = new NodePool({
+      uploadNodes: () => [],
+      client: stubClient(hubFeed(["10.0.0.1", "10.0.0.2"])),
+    });
+    await pool.refreshNow();
+    const p = pool.pickReadPair()!;
+    expect(p.primary.id).toBe("10.0.0.1");
+    expect(p.fallback.id).toBe("10.0.0.2");
+  });
+
+  it("keeps last-good slots when a refresh fails (feed blip)", async () => {
     let call = 0;
     const pool = new NodePool({
-      seeds: SEEDS,
+      uploadNodes: () => UPLOAD,
       client: stubClient(async () => {
         call += 1;
-        if (call === 1) {
-          return {
-            slots: [{ id: "10.0.0.1", url: "https://10.0.0.1:1848", networkId: "stoa", operator: null, atTip: true, height: 1 }],
-            refreshAfter: 60,
-          };
-        }
+        if (call === 1) return hubFeed(["10.0.0.1"]);
         throw new Error("hub /nodes 503");
       }),
     });
     await pool.refreshNow(); // ok → 1 slot
     await pool.refreshNow(); // throws → keeps last-good
     expect(pool.hubSlotCount()).toBe(1);
-    expect(pool.pickReadPair().primary.id).toBe("10.0.0.1");
+    expect(pool.pickReadPair()?.primary.id).toBe("10.0.0.1");
+  });
+
+  it("feedHealth reflects configured / ok / slot count", async () => {
+    const pool = new NodePool({
+      uploadNodes: () => UPLOAD,
+      client: stubClient(hubFeed(["10.0.0.1"])),
+    });
+    await pool.refreshNow();
+    expect(pool.feedHealth()).toMatchObject({ configured: true, ok: true, slots: 1 });
   });
 });
