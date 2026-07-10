@@ -403,3 +403,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .hub-stat b { color: var(--ink); font-weight: 500; }
 .hub-stat .ok { color: var(--green); }
 .hub-stat .muted { color: var(--ink-mute); }
+
+/* ── hub feed: secret field show/hide + set display ─────────────────────── */
+.secret-input { display: flex; gap: .5rem; align-items: stretch; }
+.secret-input input { flex: 1; }
+.secret-toggle { padding: 0 .7rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink-soft); font: inherit; font-size: .82rem; cursor: pointer; }
+.secret-toggle:hover { border-color: var(--gold-dim); color: var(--ink); }
+.secret-current { display: flex; align-items: center; gap: .7rem; margin: -.3rem 0 .2rem; }
+.secret-label { color: var(--green); font-size: .85rem; font-variant-numeric: tabular-nums; }

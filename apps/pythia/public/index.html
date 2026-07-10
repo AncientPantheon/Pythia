@@ -149,7 +149,14 @@
         <div id="hub-status" class="hub-status"></div>
         <form id="hub-config-form" class="conn-form">
           <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
-          <label class="conn-field">HMAC service secret<input name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" /></label>
+          <div class="conn-field">
+            <label for="hub-secret-input">HMAC service secret</label>
+            <span class="secret-input">
+              <input id="hub-secret-input" name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" />
+              <button type="button" id="hub-secret-toggle" class="secret-toggle" aria-label="Show or hide the secret">show</button>
+            </span>
+          </div>
+          <div id="hub-secret-current" class="secret-current" hidden></div>
           <div class="conn-actions">
             <button type="submit" class="btn btn--primary">Save &amp; activate</button>
             <button type="button" id="hub-refresh" class="btn btn--ghost">Refresh now</button>

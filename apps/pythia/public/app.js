@@ -463,6 +463,42 @@ function renderHubStatus(el, s) {
     line("Hub slots in pool", String(s.slots ?? 0)),
     line("Secret source", s.fromSettings ? "admin UI" : s.secretSet ? "deploy env" : "—", "muted"),
   );
+  renderHubSecret(s);
+}
+
+// When a secret is set, show it (masked) beneath the field with a Copy button
+// that fetches the full value on demand (ancient-gated reveal).
+function renderHubSecret(s) {
+  const box = document.getElementById("hub-secret-current");
+  if (!box) return;
+  box.textContent = "";
+  if (!s || !s.secretSet) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const label = document.createElement("span");
+  label.className = "secret-label";
+  label.textContent = `Secret set · ${s.secretMask || "••••"}`;
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "btn btn--small";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", async () => {
+    try {
+      const res = await fetch("/admin/hub-config/secret", { headers: { accept: "application/json" } });
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body.secret && navigator.clipboard) {
+        await navigator.clipboard.writeText(body.secret);
+        copy.textContent = "Copied";
+        setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+      }
+    } catch {
+      /* ignore */
+    }
+  });
+  box.append(label, copy);
 }
 
 async function loadHubStatus() {
@@ -487,6 +523,17 @@ function wireHubConfig() {
   const err = document.getElementById("hub-config-error");
   const status = document.getElementById("hub-status");
   if (!form) return;
+
+  // Show/hide toggle for the secret field.
+  const toggle = document.getElementById("hub-secret-toggle");
+  const secretInput = form.querySelector('[name="hmacSecret"]');
+  if (toggle && secretInput) {
+    toggle.addEventListener("click", () => {
+      const reveal = secretInput.type === "password";
+      secretInput.type = reveal ? "text" : "password";
+      toggle.textContent = reveal ? "hide" : "show";
+    });
+  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

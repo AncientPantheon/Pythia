@@ -77,9 +77,18 @@ function page(title: string, body: string): string {
  */
 export function createAdminGate(cfg: OidcConfig): MiddlewareHandler {
   return async (c, next) => {
-    const session = await readSession(getCookie(c, SESSION_COOKIE), cfg.sessionSecret);
-    if (!session) return c.json({ error: "authentication required" }, 401);
+    const rawCookie = getCookie(c, SESSION_COOKIE);
+    const session = await readSession(rawCookie, cfg.sessionSecret);
+    if (!session) {
+      console.error(
+        `pythia admin: gate 401 ${c.req.method} ${c.req.path} — session cookie ${rawCookie ? "present but invalid/expired" : "absent"}`,
+      );
+      return c.json({ error: "authentication required" }, 401);
+    }
     if (!hasAncientRole(session.roles)) {
+      console.error(
+        `pythia admin: gate 403 ${c.req.path} — roles=[${session.roles.join(",")}]`,
+      );
       return c.json({ error: "the ancient role is required" }, 403);
     }
     c.set("adminSession", session);
@@ -110,6 +119,9 @@ export interface HubAdminStatus {
   secretSet: boolean;
   fromSettings: boolean;
   slots: number;
+  /** A short masked hint of the set secret (e.g. `…a1b2`) for confirmation. Empty
+   * when no secret is set. Never the full value. */
+  secretMask: string;
 }
 
 /** The runtime controls the `ancient`-gated "Hub feed" admin panel drives. */
@@ -120,6 +132,8 @@ export interface HubAdminControls {
     hmacSecret: string | undefined,
   ): Promise<HubAdminStatus>;
   refresh(): Promise<HubAdminStatus>;
+  /** The full secret, for the ancient admin's explicit copy action, or null. */
+  revealSecret(): string | null;
 }
 
 export function registerAdmin(
@@ -260,6 +274,9 @@ export function registerAdmin(
   // state of the "Add a new Connector" control. No secrets, just identity+roles.
   app.get("/api/me", async (c) => {
     const session = await readSession(getCookie(c, SESSION_COOKIE), cfg.sessionSecret);
+    // Never cache the auth state — a stale cached "authenticated" would show the
+    // UI as logged-in while the live session is already gone (phantom login).
+    c.header("Cache-Control", "no-store");
     if (!session) return c.json({ authenticated: false });
     return c.json({
       authenticated: true,
@@ -316,5 +333,12 @@ export function registerAdmin(
     app.post("/admin/hub-config/refresh", gate, async (c) =>
       c.json(await hubAdmin.refresh()),
     );
+
+    // Explicit reveal for the admin's copy button — the FULL secret, only on an
+    // ancient-gated request (never returned by the default status GET).
+    app.get("/admin/hub-config/secret", gate, (c) => {
+      c.header("Cache-Control", "no-store");
+      return c.json({ secret: hubAdmin.revealSecret() });
+    });
   }
 }

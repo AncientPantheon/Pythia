@@ -95,12 +95,17 @@ export const nodePool = new NodePool({
 // The control surface the admin UI drives: read status, set the feed config (then
 // hot-reconfigure the pool + poll immediately), or force a refresh. The HMAC
 // secret is never returned — only whether one is set.
+function secretMask(): string {
+  const secret = currentHubConfig()?.secret;
+  return secret ? `…${secret.slice(-4)}` : "";
+}
 const hubAdmin: HubAdminControls = {
   status: () => ({
     hubBaseUrl: settingsStore.hubBaseUrl(),
     secretSet: currentHubConfig() !== null,
     fromSettings: settingsStore.hasSecret(),
     slots: nodePool.hubSlotCount(),
+    secretMask: secretMask(),
   }),
   setConfig: async (hubBaseUrl, hmacSecret) => {
     settingsStore.setHubConfig({ hubBaseUrl, hmacSecret });
@@ -113,6 +118,7 @@ const hubAdmin: HubAdminControls = {
     await nodePool.refreshNow();
     return hubAdmin.status();
   },
+  revealSecret: () => currentHubConfig()?.secret ?? null,
 };
 
 // The hand-written static landing assets, resolved relative to this module so
