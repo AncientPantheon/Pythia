@@ -419,3 +419,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .txsenders { display: flex; flex-direction: column; gap: .5rem; margin: .8rem 0; }
 .txsender--off { opacity: .55; }
 .txsender-actions { grid-column: 2; grid-row: 1 / span 3; align-self: center; display: flex; gap: .4rem; }
+
+/* seed-node badge — permanent, gold to distinguish from the grey "disabled" */
+.ca-badge--seed { color: var(--gold); border-color: var(--gold-dim); }

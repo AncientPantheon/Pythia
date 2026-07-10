@@ -20,8 +20,15 @@ export interface TxSender {
   url: string;
   label: string;
   enabled: boolean;
+  /** A baked-in SEED node (from the checked-in config). Always present, cannot be
+   * removed by the admin — it guarantees Pythia works from deployment (serving
+   * sends and read-fallback), even before the admin curates anything. */
+  seed: boolean;
   addedAt: string;
 }
+
+/** Outcome of a remove() — distinguishes a protected seed node from a miss. */
+export type RemoveResult = "removed" | "protected" | "not-found";
 
 export class TxSenderStore {
   private senders: TxSender[] = [];
@@ -29,23 +36,49 @@ export class TxSenderStore {
 
   constructor(opts: {
     filePath: string;
-    /** Seed the pool on first run (empty file) so sends work before curation. */
-    defaults?: Array<{ url: string; label: string }>;
+    /** The baked-in seed nodes (from config). Reconciled on EVERY boot: ensured
+     * present and tagged `seed`, so they can never be lost or removed. */
+    seeds?: Array<{ url: string; label: string }>;
   }) {
     this.filePath = opts.filePath;
     this.load();
-    if (this.senders.length === 0 && opts.defaults && opts.defaults.length > 0) {
-      for (const d of opts.defaults) this.insert(d.url, d.label);
-    }
+    this.reconcileSeeds(opts.seeds ?? []);
   }
 
   private load(): void {
     try {
       const parsed = JSON.parse(readFileSync(this.filePath, "utf8"));
-      if (Array.isArray(parsed)) this.senders = parsed as TxSender[];
+      if (Array.isArray(parsed)) {
+        this.senders = (parsed as TxSender[]).map((s) => ({ ...s, seed: !!s.seed }));
+      }
     } catch {
-      // Absent/invalid → empty; the defaults (if any) then seed it.
+      // Absent/invalid → empty; reconcileSeeds then bakes the seeds in.
     }
+  }
+
+  /** Ensure every configured seed exists and is tagged `seed` (permanent). */
+  private reconcileSeeds(seeds: Array<{ url: string; label: string }>): void {
+    let changed = false;
+    for (const s of seeds) {
+      const existing = this.senders.find((x) => x.url === s.url);
+      if (existing) {
+        if (!existing.seed) {
+          existing.seed = true;
+          changed = true;
+        }
+      } else {
+        this.senders.push({
+          id: randomUUID(),
+          url: s.url,
+          label: s.label || s.url,
+          enabled: true,
+          seed: true,
+          addedAt: new Date().toISOString(),
+        });
+        changed = true;
+      }
+    }
+    if (changed) this.persist();
   }
 
   private persist(): void {
@@ -55,12 +88,21 @@ export class TxSenderStore {
     renameSync(tmp, this.filePath);
   }
 
-  private insert(url: string, label: string): TxSender {
+  /** All senders (admin view). Seeds first, then admin-added newest-first. */
+  list(): TxSender[] {
+    const seeds = this.senders.filter((s) => s.seed);
+    const added = this.senders.filter((s) => !s.seed).reverse();
+    return [...seeds, ...added];
+  }
+
+  /** Add an admin sender (enabled, not a seed). */
+  add(input: { url: string; label: string }): TxSender {
     const sender: TxSender = {
       id: randomUUID(),
-      url,
-      label: label || url,
+      url: input.url,
+      label: input.label || input.url,
       enabled: true,
+      seed: false,
       addedAt: new Date().toISOString(),
     };
     this.senders.push(sender);
@@ -68,23 +110,14 @@ export class TxSenderStore {
     return sender;
   }
 
-  /** All senders (admin view), newest first. */
-  list(): TxSender[] {
-    return [...this.senders].reverse();
-  }
-
-  /** Add a sender (enabled). */
-  add(input: { url: string; label: string }): TxSender {
-    return this.insert(input.url, input.label);
-  }
-
-  /** Remove a sender by id. Returns whether one was removed. */
-  remove(id: string): boolean {
-    const before = this.senders.length;
+  /** Remove a sender by id. SEED nodes are protected (cannot be removed). */
+  remove(id: string): RemoveResult {
+    const sender = this.senders.find((s) => s.id === id);
+    if (!sender) return "not-found";
+    if (sender.seed) return "protected";
     this.senders = this.senders.filter((s) => s.id !== id);
-    if (this.senders.length === before) return false;
     this.persist();
-    return true;
+    return "removed";
   }
 
   /** Enable/disable a sender. Returns whether one was updated. */

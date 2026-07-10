@@ -381,8 +381,12 @@ export function registerAdmin(
     });
 
     app.delete("/admin/tx-senders/:id", gate, (c) => {
-      const ok = txSenders.remove(c.req.param("id"));
-      return c.json({ ok }, ok ? 200 : 404);
+      const result = txSenders.remove(c.req.param("id"));
+      if (result === "removed") return c.json({ ok: true });
+      if (result === "protected") {
+        return c.json({ ok: false, error: "seed nodes cannot be removed" }, 403);
+      }
+      return c.json({ ok: false }, 404);
     });
   }
 }

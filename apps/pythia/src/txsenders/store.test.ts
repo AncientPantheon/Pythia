@@ -13,46 +13,53 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("TxSenderStore (Upload Pool)", () => {
-  it("seeds defaults on first run so sends work before curation", () => {
+  it("bakes in the seed nodes (present + tagged) so sends/reads work from deployment", () => {
     const s = new TxSenderStore({
       filePath: path(),
-      defaults: [
-        { url: "https://a", label: "a" },
-        { url: "https://b", label: "b" },
+      seeds: [
+        { url: "https://a", label: "node-a" },
+        { url: "https://b", label: "node-b" },
       ],
     });
+    const list = s.list();
+    expect(list.map((x) => x.url)).toEqual(["https://a", "https://b"]);
+    expect(list.every((x) => x.seed)).toBe(true);
     expect(s.enabledNodes().map((n) => n.url)).toEqual(["https://a", "https://b"]);
   });
 
-  it("does NOT re-seed once populated", () => {
-    new TxSenderStore({ filePath: path(), defaults: [{ url: "https://a", label: "a" }] });
+  it("reconciles seeds on EVERY boot — tags a pre-existing plain node as a seed", () => {
+    new TxSenderStore({ filePath: path() }).add({ url: "https://a", label: "was-plain" });
     const reloaded = new TxSenderStore({
       filePath: path(),
-      defaults: [{ url: "https://x", label: "x" }],
+      seeds: [{ url: "https://a", label: "seed-a" }],
     });
-    expect(reloaded.enabledNodes().map((n) => n.url)).toEqual(["https://a"]);
+    expect(reloaded.list().find((x) => x.url === "https://a")?.seed).toBe(true);
   });
 
-  it("tries enabled senders in ADD order; disabled ones drop out", () => {
-    const s = new TxSenderStore({ filePath: path() });
-    const a = s.add({ url: "https://a", label: "a" });
-    s.add({ url: "https://b", label: "b" });
-    expect(s.enabledNodes().map((n) => n.url)).toEqual(["https://a", "https://b"]);
-    s.setEnabled(a.id, false);
-    expect(s.enabledNodes().map((n) => n.url)).toEqual(["https://b"]);
+  it("lets the admin add + remove their OWN nodes, but NOT seed nodes", () => {
+    const s = new TxSenderStore({ filePath: path(), seeds: [{ url: "https://seed", label: "seed" }] });
+    const added = s.add({ url: "https://added", label: "mine" });
+    const seed = s.list().find((x) => x.seed)!;
+
+    expect(s.remove(added.id)).toBe("removed");
+    expect(s.remove(seed.id)).toBe("protected"); // seed is permanent
+    expect(s.remove("nope")).toBe("not-found");
+    expect(s.list().some((x) => x.seed)).toBe(true); // seed survives
   });
 
-  it("removes by id (idempotent), and an empty pool yields no nodes (→ 503 on send)", () => {
-    const s = new TxSenderStore({ filePath: path() });
-    const a = s.add({ url: "https://a", label: "a" });
-    expect(s.remove(a.id)).toBe(true);
-    expect(s.remove(a.id)).toBe(false);
+  it("enable/disable works on any node; disabled nodes drop out of the dial", () => {
+    const s = new TxSenderStore({ filePath: path(), seeds: [{ url: "https://seed", label: "seed" }] });
+    const seed = s.list().find((x) => x.seed)!;
+    s.setEnabled(seed.id, false);
     expect(s.enabledNodes()).toEqual([]);
+    s.setEnabled(seed.id, true);
+    expect(s.enabledNodes().map((n) => n.url)).toEqual(["https://seed"]);
   });
 
-  it("persists across reload", () => {
-    new TxSenderStore({ filePath: path() }).add({ url: "https://a", label: "keep" });
-    const reloaded = new TxSenderStore({ filePath: path() });
-    expect(reloaded.list().map((s) => s.url)).toEqual(["https://a"]);
+  it("persists admin nodes + seeds across reload", () => {
+    const s = new TxSenderStore({ filePath: path(), seeds: [{ url: "https://seed", label: "seed" }] });
+    s.add({ url: "https://added", label: "mine" });
+    const reloaded = new TxSenderStore({ filePath: path(), seeds: [{ url: "https://seed", label: "seed" }] });
+    expect(reloaded.list().map((x) => x.url).sort()).toEqual(["https://added", "https://seed"]);
   });
 });

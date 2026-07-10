@@ -165,7 +165,7 @@
         </form>
 
         <h3 class="sub-h">Upload pool — signed-transaction senders</h3>
-        <p class="panel-note">Sends (<code>/stoachain/send</code>) go only to these nodes, tried in order. They earn no PythXP. An empty pool blocks sends (503) rather than routing a signed transaction to a read node.</p>
+        <p class="panel-note">Sends (<code>/stoachain/send</code>) go only to these nodes, tried in order. They earn no PythXP. The two <b>seed nodes</b> are baked in from config and can't be removed — they keep Pythia serving from deployment (sends, and reads when the hub feed is off). Add your own dedicated senders on top.</p>
         <div id="txsenders" class="txsenders"></div>
         <form id="txsender-form" class="conn-form">
           <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>

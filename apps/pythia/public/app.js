@@ -533,6 +533,12 @@ function renderTxSenders(container, senders) {
     const nm = document.createElement("b");
     nm.textContent = s.label || s.url;
     head.appendChild(nm);
+    if (s.seed) {
+      const badge = document.createElement("span");
+      badge.className = "ca-badge ca-badge--seed";
+      badge.textContent = "seed node";
+      head.appendChild(badge);
+    }
     if (!s.enabled) {
       const badge = document.createElement("span");
       badge.className = "ca-badge";
@@ -550,15 +556,18 @@ function renderTxSenders(container, senders) {
     toggle.textContent = s.enabled ? "Disable" : "Enable";
     toggle.addEventListener("click", () => setTxSenderEnabled(s.id, !s.enabled));
 
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "btn btn--ghost btn--small";
-    remove.textContent = "Remove";
-    remove.addEventListener("click", () => removeTxSender(s.id, s.label || s.url));
-
     const actions = document.createElement("span");
     actions.className = "txsender-actions";
-    actions.append(toggle, remove);
+    actions.append(toggle);
+    // Seed nodes are permanent — no Remove button.
+    if (!s.seed) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn--ghost btn--small";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => removeTxSender(s.id, s.label || s.url));
+      actions.append(remove);
+    }
 
     card.append(head, url, actions);
     container.appendChild(card);

@@ -83,7 +83,7 @@ export const settingsStore = new SettingsStore({
 // ALSO the read fallback (below) when the hub feed is off/down.
 export const txSenderStore = new TxSenderStore({
   filePath: process.env.TXSENDERS_FILE || "./pythia-txsenders.json",
-  defaults: loadConfigFromDisk().sources.map((s) => ({ url: s.url, label: s.id })),
+  seeds: loadConfigFromDisk().sources.map((s) => ({ url: s.url, label: s.id })),
 });
 
 // The read node-pool (Observation): the hub's advertised StoaChain fleet (polled
