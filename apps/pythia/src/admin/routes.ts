@@ -103,10 +103,30 @@ export function createAdminGate(cfg: OidcConfig): MiddlewareHandler {
  * connector-mutation routes. Only wired when {@link OidcConfig} is present, so
  * the public gateway boots unchanged with no SSO configured.
  */
+/** Status of the AncientHub read-node feed, surfaced to the admin UI. Never
+ * carries the HMAC secret — only whether one is set. */
+export interface HubAdminStatus {
+  hubBaseUrl: string;
+  secretSet: boolean;
+  fromSettings: boolean;
+  slots: number;
+}
+
+/** The runtime controls the `ancient`-gated "Hub feed" admin panel drives. */
+export interface HubAdminControls {
+  status(): HubAdminStatus;
+  setConfig(
+    hubBaseUrl: string | undefined,
+    hmacSecret: string | undefined,
+  ): Promise<HubAdminStatus>;
+  refresh(): Promise<HubAdminStatus>;
+}
+
 export function registerAdmin(
   app: Hono,
   cfg: OidcConfig,
   store: ConnectorStore,
+  hubAdmin?: HubAdminControls,
 ): void {
   const gate = createAdminGate(cfg);
 
@@ -276,4 +296,25 @@ export function registerAdmin(
     const ok = store.revoke(c.req.param("id"));
     return c.json({ ok }, ok ? 200 : 404);
   });
+
+  // ── ancient-gated hub-feed config (activate the node-pool feed from the UI) ──
+  if (hubAdmin) {
+    app.get("/admin/hub-config", gate, (c) => c.json(hubAdmin.status()));
+
+    app.post("/admin/hub-config", gate, async (c) => {
+      const body = (await c.req.json().catch(() => null)) as
+        | { hubBaseUrl?: unknown; hmacSecret?: unknown }
+        | null;
+      const hubBaseUrl =
+        typeof body?.hubBaseUrl === "string" ? body.hubBaseUrl : undefined;
+      // The secret is write-only: accepted here, never returned by the GET.
+      const hmacSecret =
+        typeof body?.hmacSecret === "string" ? body.hmacSecret : undefined;
+      return c.json(await hubAdmin.setConfig(hubBaseUrl, hmacSecret));
+    });
+
+    app.post("/admin/hub-config/refresh", gate, async (c) =>
+      c.json(await hubAdmin.refresh()),
+    );
+  }
 }

@@ -12,9 +12,11 @@ import { corsMiddleware } from "./middleware/cors.js";
 import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
+import { SettingsStore } from "./admin/settingsStore.js";
 import { loadConfigFromDisk } from "./config/index.js";
 import { loadHubConfig, HubServiceClient } from "./hub/serviceClient.js";
 import { NodePool } from "./pool/nodePool.js";
+import type { HubAdminControls } from "./admin/routes.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
 import { statsMiddleware } from "./stats/middleware.js";
@@ -66,18 +68,52 @@ function resolveConsumer(key?: string): string {
   return "direct";
 }
 
+// Runtime admin settings (the hub feed URL + HMAC secret), set from the
+// `ancient`-gated admin UI so the operator activates the feed from the website
+// rather than editing env over SSH. Persisted on the `/data` volume.
+export const settingsStore = new SettingsStore({
+  filePath: process.env.SETTINGS_FILE || "./pythia-settings.json",
+});
+
 // The read node-pool: the hub's advertised StoaChain fleet (polled ~60s over the
 // signed HMAC feed) enlarges the READ pool, with the checked-in seed nodes as the
-// always-present fallback. OPTIONAL: only polls when `PYTHIA_HUB_HMAC_SECRET` is
-// set — absent it, the pool is seed-only (today's two-host behavior, zero change).
-// SEND stays on the seeds and is never hub-fed. Exported so the server stops the
-// poller on shutdown.
-const hubConfig = loadHubConfig();
-const hubClient = hubConfig ? new HubServiceClient(hubConfig) : null;
+// always-present fallback. OPTIONAL: only polls when a hub HMAC secret is present
+// (admin settings win over the `PYTHIA_HUB_HMAC_SECRET` env) — absent it, the pool
+// is seed-only (today's two-host behavior, zero change). SEND stays on the seeds
+// and is never hub-fed. Exported so the server stops the poller on shutdown.
+function currentHubConfig() {
+  return settingsStore.hubConfig() ?? loadHubConfig();
+}
 export const nodePool = new NodePool({
   seeds: loadConfigFromDisk().sources,
-  client: hubClient,
+  client: (() => {
+    const cfg = currentHubConfig();
+    return cfg ? new HubServiceClient(cfg) : null;
+  })(),
 });
+
+// The control surface the admin UI drives: read status, set the feed config (then
+// hot-reconfigure the pool + poll immediately), or force a refresh. The HMAC
+// secret is never returned — only whether one is set.
+const hubAdmin: HubAdminControls = {
+  status: () => ({
+    hubBaseUrl: settingsStore.hubBaseUrl(),
+    secretSet: currentHubConfig() !== null,
+    fromSettings: settingsStore.hasSecret(),
+    slots: nodePool.hubSlotCount(),
+  }),
+  setConfig: async (hubBaseUrl, hmacSecret) => {
+    settingsStore.setHubConfig({ hubBaseUrl, hmacSecret });
+    const cfg = currentHubConfig();
+    nodePool.reconfigure(cfg ? new HubServiceClient(cfg) : null);
+    await nodePool.refreshNow();
+    return hubAdmin.status();
+  },
+  refresh: async () => {
+    await nodePool.refreshNow();
+    return hubAdmin.status();
+  },
+};
 
 // The hand-written static landing assets, resolved relative to this module so
 // serving is independent of the process CWD (container runs from /app, local
@@ -114,7 +150,7 @@ nodePool.start();
 // present, so the public keyless gateway boots unchanged with no SSO configured.
 // Registered before the static catch-all so `/admin/*` is not shadowed.
 const oidcConfig = loadOidcConfig();
-if (oidcConfig) registerAdmin(app, oidcConfig, connectorStore);
+if (oidcConfig) registerAdmin(app, oidcConfig, connectorStore, hubAdmin);
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves
 // the same regardless of where the process was started from. `onFound` stamps

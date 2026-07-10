@@ -39,7 +39,7 @@ export class NodePool {
   private rot = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly seeds: SourceConfig[];
-  private readonly client: HubServiceClient | null;
+  private client: HubServiceClient | null;
   private readonly refreshMs: number;
 
   constructor(opts: {
@@ -64,6 +64,19 @@ export class NodePool {
       clearInterval(this.timer);
       this.timer = null;
     }
+  }
+
+  /**
+   * Swap the hub client at runtime (the admin set/cleared the feed config in the
+   * UI). Stops the current poller; if a client is given, starts polling again and
+   * clears any stale slots so the next poll repopulates; if `null`, disables the
+   * feed and drops to seed-only immediately.
+   */
+  reconfigure(client: HubServiceClient | null): void {
+    this.stop();
+    this.client = client;
+    this.hubSlots = [];
+    if (client) this.start();
   }
 
   /**

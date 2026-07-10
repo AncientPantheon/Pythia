@@ -396,3 +396,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .ca-url:hover { color: var(--cyan); }
 .ca-key { grid-column: 1; color: var(--ink-mute); font-size: .8rem; }
 .ca-revoke { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+
+/* ── hub feed (ancient-only) status ─────────────────────────────────────── */
+.hub-status { margin-bottom: 1rem; }
+.hub-stat { margin: .25rem 0; font-size: .9rem; color: var(--ink-soft); }
+.hub-stat b { color: var(--ink); font-weight: 500; }
+.hub-stat .ok { color: var(--green); }
+.hub-stat .muted { color: var(--ink-mute); }

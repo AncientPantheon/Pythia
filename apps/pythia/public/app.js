@@ -434,7 +434,96 @@ async function loadMe() {
   }
   renderAuthbox();
   updateAddConnectorControl();
+  updateHubFeedTab();
   loadConnectorsView();
+}
+
+// ── hub feed (ancient-only): activate the node-pool feed from the UI ──────────
+function updateHubFeedTab() {
+  const tabBtn = document.querySelector('[data-tab="hubfeed"]');
+  if (tabBtn) tabBtn.hidden = !isAncient();
+  if (isAncient()) loadHubStatus();
+}
+
+function renderHubStatus(el, s) {
+  el.textContent = "";
+  const line = (label, value, cls) => {
+    const p = document.createElement("p");
+    p.className = "hub-stat";
+    const b = document.createElement("b");
+    b.textContent = `${label}: `;
+    const v = document.createElement("span");
+    if (cls) v.className = cls;
+    v.textContent = value;
+    p.append(b, v);
+    return p;
+  };
+  el.append(
+    line("Feed", s.secretSet ? "configured" : "not configured — seed-only", s.secretSet ? "ok" : "muted"),
+    line("Hub slots in pool", String(s.slots ?? 0)),
+    line("Secret source", s.fromSettings ? "admin UI" : s.secretSet ? "deploy env" : "—", "muted"),
+  );
+}
+
+async function loadHubStatus() {
+  const el = document.getElementById("hub-status");
+  const form = document.getElementById("hub-config-form");
+  if (!el) return;
+  try {
+    const res = await fetch("/admin/hub-config", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    const s = await res.json();
+    renderHubStatus(el, s);
+    const urlInput = form && form.querySelector('[name="hubBaseUrl"]');
+    if (urlInput && !urlInput.value) urlInput.value = s.hubBaseUrl || "";
+  } catch {
+    /* leave empty */
+  }
+}
+
+function wireHubConfig() {
+  const form = document.getElementById("hub-config-form");
+  const refresh = document.getElementById("hub-refresh");
+  const err = document.getElementById("hub-config-error");
+  const status = document.getElementById("hub-status");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (err) err.hidden = true;
+    const data = new FormData(form);
+    const payload = { hubBaseUrl: (data.get("hubBaseUrl") || "").toString().trim() };
+    const secret = (data.get("hmacSecret") || "").toString();
+    if (secret) payload.hmacSecret = secret; // write-only: only sent when provided
+    try {
+      const res = await fetch("/admin/hub-config", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const s = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (err) { err.textContent = s.error || "Could not save the hub config."; err.hidden = false; }
+        return;
+      }
+      const secretInput = form.querySelector('[name="hmacSecret"]');
+      if (secretInput) secretInput.value = "";
+      if (status) renderHubStatus(status, s);
+    } catch {
+      if (err) { err.textContent = "Network error saving the hub config."; err.hidden = false; }
+    }
+  });
+
+  if (refresh) {
+    refresh.addEventListener("click", async () => {
+      try {
+        const res = await fetch("/admin/hub-config/refresh", { method: "POST", headers: { accept: "application/json" } });
+        if (res.ok && status) renderHubStatus(status, await res.json());
+      } catch {
+        /* ignore */
+      }
+    });
+  }
 }
 
 // ── connectors loader (public list, or admin list for ancient) ───────────────
@@ -749,6 +838,7 @@ function wireTabs() {
 // ── init ─────────────────────────────────────────────────────────────────────
 wireTabs();
 wireAddConnector();
+wireHubConfig();
 renderChainTabs();
 startHealthPill();
 loadMe(); // /api/me → renders the header + loads the right connectors view

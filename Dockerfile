@@ -48,6 +48,9 @@ ENV STATS_FILE=/data/stats.json
 # Runtime connector registry (admin-managed) — also on the /data volume so
 # registered connectors + their key hashes survive redeploys.
 ENV CONNECTORS_FILE=/data/connectors.json
+# Admin-managed runtime settings (hub feed URL + HMAC secret) — on the /data
+# volume so an admin-activated feed survives redeploys.
+ENV SETTINGS_FILE=/data/settings.json
 
 WORKDIR /app
 

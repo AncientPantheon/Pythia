@@ -63,6 +63,7 @@
         <button class="tab" data-tab="activity" role="tab" aria-selected="false" type="button">Activity</button>
         <button class="tab" data-tab="developers" role="tab" aria-selected="false" type="button">For developers</button>
         <button class="tab" data-tab="connectors" role="tab" aria-selected="false" type="button">Connectors</button>
+        <button class="tab" data-tab="hubfeed" role="tab" aria-selected="false" type="button" hidden>Hub feed</button>
       </nav>
 
       <!-- ── CHAINS ───────────────────────────────────────────── -->
@@ -137,6 +138,24 @@
         <div id="connectors" class="connectors">
           <p class="empty">No connectors listed yet.</p>
         </div>
+      </section>
+
+      <!-- ── HUB FEED (ancient admin only) ────────────────────── -->
+      <section class="panel tabpanel" data-panel="hubfeed" aria-labelledby="hub-h" hidden>
+        <div class="panel-head">
+          <h2 id="hub-h">Hub feed</h2>
+          <p class="panel-note">Activate the AncientHub node-pool feed so reads fan out across the hub's StoaChain fleet. Ancient admin only.</p>
+        </div>
+        <div id="hub-status" class="hub-status"></div>
+        <form id="hub-config-form" class="conn-form">
+          <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
+          <label class="conn-field">HMAC service secret<input name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" /></label>
+          <div class="conn-actions">
+            <button type="submit" class="btn btn--primary">Save &amp; activate</button>
+            <button type="button" id="hub-refresh" class="btn btn--ghost">Refresh now</button>
+          </div>
+          <p class="conn-error" id="hub-config-error" hidden></p>
+        </form>
       </section>
 
       <footer class="foot">
