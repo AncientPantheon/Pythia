@@ -32,6 +32,8 @@ stack, an ingress), update this section to match it.
 | `NODE_ENV` | no | `production` (set in the image) | Standard Node environment flag. |
 | `STATS_FILE` | no | `./pythia-stats.json` | Path to the aggregate usage-stats JSON snapshot. **Point this at a mounted volume** (e.g. `/data/stats.json`) so counts survive container recreation. Aggregates only — never per-request rows. |
 | `CONNECTORS_FILE` | no | `/data/connectors.json` (image default) | Path to the admin-managed connector registry (names, URLs, key **hashes**). On the `/data` volume so registered connectors survive redeploys. Raw API keys are never stored. |
+| `PYTHIA_HUB_HMAC_SECRET` | no | — | 64-hex M2M secret for the AncientHub read-node feed (`POST /api/pythia/nodes/`). Generated on the hub's `/hub/pythia-admin`, handed over out-of-band. **Absent → the hub feed is OFF and reads serve seed-only** (no regression). NOT the OIDC secret; never commit it. Calls must egress from the allowlisted VPS IP. |
+| `HUB_BASE_URL` | no | `https://ancientholdings.eu` | AncientHub base URL for the node-pool feed. |
 | `PYTHIA_API_KEYS` | no | `[]` | JSON `Array<{name,key}>` mapping connector API keys → names for per-consumer usage attribution. **Kept OUT of the public repo** — set at deploy. A request's `x-pythia-key` header is matched here; unmatched/absent → `direct`. |
 | `PYTHIA_OIDC_CLIENT_ID` | no* | — | Pythia's confidential client id, issued by the AncientHoldings hub OIDC IdP at registration. Delivered out-of-band. |
 | `PYTHIA_OIDC_CLIENT_SECRET` | no* | — | The one-time confidential client secret. **Server-side only, kept OUT of the public repo.** |

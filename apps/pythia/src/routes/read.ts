@@ -11,7 +11,7 @@ import { loadConfigFromDisk } from "../config/index.js";
 import {
   MAX_RELAY_BODY_BYTES,
   passthrough,
-  resolveSources,
+  resolveReadPair,
   respondRelayError,
   type RelayDeps,
 } from "./relay.js";
@@ -99,7 +99,7 @@ export function registerRead(app: Hono, deps: ReadDeps = {}): void {
         ...(parsed.data !== undefined ? { data: parsed.data } : {}),
         ...(parsed.sender !== undefined ? { sender: parsed.sender } : {}),
       });
-      const { primary, fallback } = resolveSources(deps);
+      const { primary, fallback } = resolveReadPair(deps);
 
       try {
         const response = await dial(

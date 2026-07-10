@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { app, statsStore } from "./index.js";
+import { app, statsStore, nodePool } from "./index.js";
 import { resolvePort } from "./port.js";
 
 const port = resolvePort();
@@ -17,6 +17,7 @@ function shutdown(signal: string): void {
   console.log(`pythia received ${signal} — flushing stats and exiting`);
   statsStore.flush();
   statsStore.stop();
+  nodePool.stop();
   process.exit(0);
 }
 

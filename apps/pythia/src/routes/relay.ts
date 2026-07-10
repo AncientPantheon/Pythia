@@ -6,6 +6,7 @@ import {
 } from "../dial/index.js";
 import { PythiaUpstreamError } from "../reads/index.js";
 import { loadConfigFromDisk, type SourceConfig } from "../config/index.js";
+import type { NodePool } from "../pool/nodePool.js";
 import {
   PYTHIA_POOL_EXHAUSTED,
   PYTHIA_UPSTREAM,
@@ -18,6 +19,11 @@ export interface RelayDeps {
   sources?: { primary: SourceConfig; fallback: SourceConfig };
   /** Injected fetch. Defaults to the global. */
   fetchImpl?: FetchImpl;
+  /** The live read-node pool. When present (and no explicit `sources`), READ and
+   * POLL draw a rotating {primary, fallback} pair from the hub fleet via
+   * {@link resolveReadPair}. SEND deliberately does NOT use it — signed txs stay
+   * on the seed nodes (later: a dedicated tx-sender list). */
+  pool?: NodePool;
 }
 
 /** Maximum relay body size. A signed Pact command is small (well under a KB);
@@ -34,6 +40,22 @@ export function resolveSources(deps: RelayDeps): {
   const primary = config.sources.find((s) => s.role === "primary")!;
   const fallback = config.sources.find((s) => s.role === "fallback")!;
   return { primary, fallback };
+}
+
+/**
+ * Resolve the {primary, fallback} pair for a READ or POLL. Explicit `sources`
+ * (tests) win; otherwise a live {@link NodePool} yields a rotating hub-fleet
+ * primary + seed fallback; absent both, it degrades to the seed roles. This is
+ * the single seam that enlarges reads across the hub fleet — the dial itself is
+ * unchanged. SEND does NOT call this (it stays on {@link resolveSources}).
+ */
+export function resolveReadPair(deps: RelayDeps): {
+  primary: SourceConfig;
+  fallback: SourceConfig;
+} {
+  if (deps.sources) return deps.sources;
+  if (deps.pool) return deps.pool.pickReadPair();
+  return resolveSources(deps);
 }
 
 /**

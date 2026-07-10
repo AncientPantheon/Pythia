@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { PythiaValidationError, type FetchImpl } from "../dial/index.js";
 import { pollConfirmations } from "../reads/index.js";
+import type { NodePool } from "../pool/nodePool.js";
 import {
   DEFAULT_FINALITY_DEPTH,
   loadConfigFromDisk,
@@ -9,7 +10,7 @@ import {
 } from "../config/index.js";
 import {
   MAX_RELAY_BODY_BYTES,
-  resolveSources,
+  resolveReadPair,
   respondRelayError,
 } from "./relay.js";
 
@@ -18,6 +19,8 @@ export interface PollRouteDeps {
   fetchImpl?: FetchImpl;
   /** Confirmation depth for finality. Injectable; defaults to the config value. */
   finalityDepth?: number;
+  /** The live read-node pool; poll (a read) draws a rotating pair from it. */
+  pool?: NodePool;
 }
 
 function resolveFinalityDepth(deps: PollRouteDeps): number {
@@ -70,7 +73,7 @@ export function registerPoll(app: Hono, deps: PollRouteDeps = {}): void {
         return respondRelayError(c, err);
       }
 
-      const { primary, fallback } = resolveSources(deps);
+      const { primary, fallback } = resolveReadPair(deps);
       try {
         const results = await pollConfirmations(
           {

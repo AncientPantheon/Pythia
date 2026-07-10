@@ -13,6 +13,8 @@ import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
 import { loadConfigFromDisk } from "./config/index.js";
+import { loadHubConfig, HubServiceClient } from "./hub/serviceClient.js";
+import { NodePool } from "./pool/nodePool.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
 import { statsMiddleware } from "./stats/middleware.js";
@@ -64,6 +66,19 @@ function resolveConsumer(key?: string): string {
   return "direct";
 }
 
+// The read node-pool: the hub's advertised StoaChain fleet (polled ~60s over the
+// signed HMAC feed) enlarges the READ pool, with the checked-in seed nodes as the
+// always-present fallback. OPTIONAL: only polls when `PYTHIA_HUB_HMAC_SECRET` is
+// set — absent it, the pool is seed-only (today's two-host behavior, zero change).
+// SEND stays on the seeds and is never hub-fed. Exported so the server stops the
+// poller on shutdown.
+const hubConfig = loadHubConfig();
+const hubClient = hubConfig ? new HubServiceClient(hubConfig) : null;
+export const nodePool = new NodePool({
+  seeds: loadConfigFromDisk().sources,
+  client: hubClient,
+});
+
 // The hand-written static landing assets, resolved relative to this module so
 // serving is independent of the process CWD (container runs from /app, local
 // `npm start` runs from apps/pythia). dist layout mirrors src, so from
@@ -85,11 +100,14 @@ app.use("*", statsMiddleware(statsStore, resolveConsumer));
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
 registerHealthz(app);
-registerRead(app);
+registerRead(app, { pool: nodePool });
 registerSend(app);
-registerPoll(app);
+registerPoll(app, { pool: nodePool });
 registerConnectors(app, { store: connectorStore });
 registerStats(app, statsStore);
+
+// Begin polling the hub feed (no-op when the HMAC secret is unset → seed-only).
+nodePool.start();
 
 // The human admin surface (connector manager) is gated on the AncientHoldings
 // hub OIDC IdP. It is OPTIONAL: only wired when the deploy-time OIDC secrets are
