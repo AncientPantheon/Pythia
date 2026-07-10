@@ -47,13 +47,22 @@ describe("TxSenderStore (Upload Pool)", () => {
     expect(s.list().some((x) => x.seed)).toBe(true); // seed survives
   });
 
-  it("enable/disable works on any node; disabled nodes drop out of the dial", () => {
+  it("enable/disable works on admin nodes; seed nodes are permanently enabled", () => {
     const s = new TxSenderStore({ filePath: path(), seeds: [{ url: "https://seed", label: "seed" }] });
     const seed = s.list().find((x) => x.seed)!;
-    s.setEnabled(seed.id, false);
-    expect(s.enabledNodes()).toEqual([]);
-    s.setEnabled(seed.id, true);
+    const added = s.add({ url: "https://added", label: "mine" });
+
+    // A seed can never be switched off — it keeps the baseline serving guarantee.
+    expect(s.setEnabled(seed.id, false)).toBe("protected");
+    expect(s.list().find((x) => x.seed)!.enabled).toBe(true);
+
+    // Admin nodes toggle freely and drop out of the dial when disabled.
+    expect(s.setEnabled(added.id, false)).toBe("updated");
     expect(s.enabledNodes().map((n) => n.url)).toEqual(["https://seed"]);
+    expect(s.setEnabled(added.id, true)).toBe("updated");
+    expect(s.enabledNodes().map((n) => n.url).sort()).toEqual(["https://added", "https://seed"]);
+
+    expect(s.setEnabled("nope", false)).toBe("not-found");
   });
 
   it("persists admin nodes + seeds across reload", () => {

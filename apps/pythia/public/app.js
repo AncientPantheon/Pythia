@@ -653,14 +653,21 @@ function renderTxSenders(container, senders) {
     const actions = document.createElement("span");
     actions.className = "txrow-actions";
 
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "btn btn--ghost btn--small";
-    toggle.textContent = s.enabled ? "Disable" : "Enable";
-    toggle.addEventListener("click", () => setTxSenderEnabled(s.id, !s.enabled));
-    actions.appendChild(toggle);
+    // Seed nodes are permanent AND permanently enabled — no Disable, no Remove.
+    // They show only as fixed baseline entries. Admin nodes get both controls.
+    if (s.seed) {
+      const fixed = document.createElement("span");
+      fixed.className = "txrow-fixed";
+      fixed.textContent = "baked in";
+      actions.appendChild(fixed);
+    } else {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "btn btn--ghost btn--small";
+      toggle.textContent = s.enabled ? "Disable" : "Enable";
+      toggle.addEventListener("click", () => setTxSenderEnabled(s.id, !s.enabled));
+      actions.appendChild(toggle);
 
-    if (!s.seed) {
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "btn btn--ghost btn--small btn--danger";

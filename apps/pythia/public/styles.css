@@ -432,7 +432,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .txrow-main .dot { flex: none; width: 9px; height: 9px; }
 .txrow-label { font-size: 13.5px; color: var(--ink); flex: none; }
 .txrow-url { color: var(--ink-mute); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.txrow-actions { display: flex; gap: .4rem; flex: none; }
+.txrow-actions { display: flex; align-items: center; gap: .4rem; flex: none; }
+.txrow-fixed { font-size: 11px; color: var(--ink-mute); font-style: italic; }
 .btn--danger { color: #e88; }
 .btn--danger:hover { border-color: #e88; color: #f5a5a5; }
 .conn-form--add { margin-top: .6rem; }

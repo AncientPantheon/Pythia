@@ -421,8 +421,12 @@ export function registerAdmin(
       const body = (await c.req.json().catch(() => null)) as
         | { enabled?: unknown }
         | null;
-      const ok = txSenders.setEnabled(c.req.param("id"), body?.enabled === true);
-      return c.json({ ok }, ok ? 200 : 404);
+      const result = txSenders.setEnabled(c.req.param("id"), body?.enabled === true);
+      if (result === "updated") return c.json({ ok: true });
+      if (result === "protected") {
+        return c.json({ ok: false, error: "seed nodes are always enabled" }, 403);
+      }
+      return c.json({ ok: false }, 404);
     });
 
     app.delete("/admin/tx-senders/:id", gate, (c) => {

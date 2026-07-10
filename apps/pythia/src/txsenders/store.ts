@@ -30,6 +30,11 @@ export interface TxSender {
 /** Outcome of a remove() — distinguishes a protected seed node from a miss. */
 export type RemoveResult = "removed" | "protected" | "not-found";
 
+/** Outcome of a setEnabled() — seeds are permanent AND permanently enabled, so
+ * any toggle on a seed is `protected` (refused), keeping the baseline serving
+ * guarantee intact. */
+export type SetEnabledResult = "updated" | "protected" | "not-found";
+
 export class TxSenderStore {
   private senders: TxSender[] = [];
   private readonly filePath: string;
@@ -120,13 +125,18 @@ export class TxSenderStore {
     return "removed";
   }
 
-  /** Enable/disable a sender. Returns whether one was updated. */
-  setEnabled(id: string, enabled: boolean): boolean {
+  /**
+   * Enable/disable an ADMIN sender. SEED nodes are permanently enabled and
+   * cannot be toggled (`protected`) — they guarantee Pythia keeps serving sends
+   * and read-fallback from deployment, so they must never be switched off.
+   */
+  setEnabled(id: string, enabled: boolean): SetEnabledResult {
     const sender = this.senders.find((s) => s.id === id);
-    if (!sender) return false;
+    if (!sender) return "not-found";
+    if (sender.seed) return "protected";
     sender.enabled = enabled;
     this.persist();
-    return true;
+    return "updated";
   }
 
   /**
