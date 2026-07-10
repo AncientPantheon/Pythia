@@ -37,6 +37,8 @@ function slotToSource(slot: HubSlot): SourceConfig {
 export class NodePool {
   private hubSlots: SourceConfig[] = [];
   private rot = 0;
+  private lastRefreshOk = false;
+  private lastRefreshError: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly seeds: SourceConfig[];
   private client: HubServiceClient | null;
@@ -85,20 +87,42 @@ export class NodePool {
    * because the hub feed did.
    */
   async refreshNow(): Promise<void> {
-    if (!this.client) return;
+    if (!this.client) {
+      this.lastRefreshOk = false;
+      this.lastRefreshError = null;
+      return;
+    }
     try {
       const feed = await this.client.fetchNodes();
       this.hubSlots = feed.slots.map(slotToSource);
+      this.lastRefreshOk = true;
+      this.lastRefreshError = null;
     } catch (err) {
-      console.error(
-        `pythia pool: hub feed refresh failed — ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.lastRefreshOk = false;
+      this.lastRefreshError = err instanceof Error ? err.message : String(err);
+      console.error(`pythia pool: hub feed refresh failed — ${this.lastRefreshError}`);
     }
   }
 
   /** Count of hub slots currently in the pool (for boot logs / future directory). */
   hubSlotCount(): number {
     return this.hubSlots.length;
+  }
+
+  /** Feed health for the admin bullet: whether a client is configured, whether
+   * the last poll succeeded, its error (if any), and the live slot count. */
+  feedHealth(): {
+    configured: boolean;
+    ok: boolean;
+    error: string | null;
+    slots: number;
+  } {
+    return {
+      configured: this.client !== null,
+      ok: this.lastRefreshOk,
+      error: this.lastRefreshError,
+      slots: this.hubSlots.length,
+    };
   }
 
   /**

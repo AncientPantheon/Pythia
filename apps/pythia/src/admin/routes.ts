@@ -14,6 +14,7 @@ import {
   type SessionState,
 } from "./session.js";
 import type { ConnectorStore } from "../connectors/store.js";
+import type { TxSenderStore } from "../txsenders/store.js";
 
 // The verified admin session is exposed to gated handlers via the Hono context.
 declare module "hono" {
@@ -122,6 +123,12 @@ export interface HubAdminStatus {
   /** A short masked hint of the set secret (e.g. `…a1b2`) for confirmation. Empty
    * when no secret is set. Never the full value. */
   secretMask: string;
+  /** Feed liveness for the green/red bullet: did the last poll succeed? */
+  feedOk: boolean;
+  /** Last feed error (null when ok / unconfigured) — shown on the red bullet. */
+  feedError: string | null;
+  /** Pythia's public egress IP (to allowlist on the hub), or null until detected. */
+  egressIp: string | null;
 }
 
 /** The runtime controls the `ancient`-gated "Hub feed" admin panel drives. */
@@ -136,13 +143,20 @@ export interface HubAdminControls {
   revealSecret(): string | null;
 }
 
+/** Optional admin subsystems wired when present. */
+export interface AdminExtras {
+  hubAdmin?: HubAdminControls;
+  txSenders?: TxSenderStore;
+}
+
 export function registerAdmin(
   app: Hono,
   cfg: OidcConfig,
   store: ConnectorStore,
-  hubAdmin?: HubAdminControls,
+  extras: AdminExtras = {},
 ): void {
   const gate = createAdminGate(cfg);
+  const { hubAdmin, txSenders } = extras;
 
   app.get("/admin/login", async (c) => {
     const { discovery } = await getDiscovery(cfg.issuer);
@@ -339,6 +353,36 @@ export function registerAdmin(
     app.get("/admin/hub-config/secret", gate, (c) => {
       c.header("Cache-Control", "no-store");
       return c.json({ secret: hubAdmin.revealSecret() });
+    });
+  }
+
+  // ── ancient-gated Upload Pool (dedicated signed-tx sender nodes) ─────────────
+  if (txSenders) {
+    app.get("/admin/tx-senders", gate, (c) =>
+      c.json({ senders: txSenders.list() }),
+    );
+
+    app.post("/admin/tx-senders", gate, async (c) => {
+      const body = (await c.req.json().catch(() => null)) as
+        | { url?: unknown; label?: unknown }
+        | null;
+      const url = typeof body?.url === "string" ? body.url.trim() : "";
+      const label = typeof body?.label === "string" ? body.label.trim() : "";
+      if (!url) return c.json({ error: "url is required" }, 400);
+      return c.json({ sender: txSenders.add({ url, label }) }, 201);
+    });
+
+    app.post("/admin/tx-senders/:id/enabled", gate, async (c) => {
+      const body = (await c.req.json().catch(() => null)) as
+        | { enabled?: unknown }
+        | null;
+      const ok = txSenders.setEnabled(c.req.param("id"), body?.enabled === true);
+      return c.json({ ok }, ok ? 200 : 404);
+    });
+
+    app.delete("/admin/tx-senders/:id", gate, (c) => {
+      const ok = txSenders.remove(c.req.param("id"));
+      return c.json({ ok }, ok ? 200 : 404);
     });
   }
 }

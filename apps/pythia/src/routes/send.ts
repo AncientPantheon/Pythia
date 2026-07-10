@@ -2,34 +2,51 @@ import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import {
   assertChainId,
-  dial,
+  dialNodes,
   PythiaValidationError,
   STOA_NETWORK,
+  type DialNode,
+  type FetchImpl,
 } from "../dial/index.js";
+import type { TxSenderStore } from "../txsenders/store.js";
 import {
   MAX_RELAY_BODY_BYTES,
   passthrough,
-  resolveSources,
   respondRelayError,
-  type RelayDeps,
 } from "./relay.js";
 
-export type SendDeps = RelayDeps;
+export interface SendDeps {
+  /** Injected fetch. Defaults to the global. */
+  fetchImpl?: FetchImpl;
+  /** Explicit Upload-Pool nodes (injected for tests). */
+  senders?: DialNode[];
+  /** The Upload-Pool store; its ENABLED senders are tried in order. */
+  store?: TxSenderStore;
+}
 
 /** Build the chainweb /send path for a host + chain. */
 function sendPath(host: string, chainId: number): string {
   return `${host}/chainweb/0.0/${STOA_NETWORK}/chain/${chainId}/pact/api/v1/send`;
 }
 
+/** The ordered Upload-Pool senders for this request. */
+function resolveSenders(deps: SendDeps): DialNode[] {
+  if (deps.senders) return deps.senders;
+  if (deps.store) return deps.store.enabledNodes();
+  return [];
+}
+
 /**
- * Register `POST /stoachain/send` — a keyless broadcast relay. Body:
- * `{ chainId?=0, cmds }` where `cmds` is the chainweb `/send` array of
- * caller-SIGNED commands. Validates the chainId (0-9, default 0 → 400) and a
- * non-empty `cmds` array (→ 400 pythia_validation) BEFORE any network attempt,
- * then relays `{ cmds }` VERBATIM to the node's `/send` path over the dial's
- * failover loop and returns the node response verbatim. Keyless — Pythia adds
- * nothing and signs nothing; this is a plain fetch to the node's /send endpoint,
- * not any signing/broadcast client. Pool exhaustion → 502.
+ * Register `POST /stoachain/send` — a keyless broadcast relay routed EXCLUSIVELY
+ * to the **Upload Pool** (the ancient-managed dedicated tx-sender nodes), tried
+ * "one after the other". Body: `{ chainId?=0, cmds }` (caller-SIGNED). It relays
+ * `{ cmds }` VERBATIM and returns the node response verbatim. Keyless — Pythia
+ * adds nothing and signs nothing.
+ *
+ * Sends NEVER touch the hub-fed read (Observation) pool and are NEVER metered as
+ * usage — Upload-Pool nodes earn no PythXP. An EMPTY/all-disabled Upload Pool
+ * returns **503** rather than falling back to read/seed nodes: predictable tx
+ * delivery is the whole point. Pool exhaustion → 502.
  */
 export function registerSend(app: Hono, deps: SendDeps = {}): void {
   app.post(
@@ -65,13 +82,25 @@ export function registerSend(app: Hono, deps: SendDeps = {}): void {
         return respondRelayError(c, err);
       }
 
+      const senders = resolveSenders(deps);
+      if (senders.length === 0) {
+        // Fail closed — a signed tx is NEVER routed to a read/seed node.
+        return c.json(
+          {
+            code: "pythia_no_tx_sender",
+            error:
+              "no tx-sender configured — add an Upload-Pool node in the admin Hub-feed panel",
+          },
+          503,
+        );
+      }
+
       // Keyless verbatim forward: relay exactly `{ cmds }` — no reshaping, no
       // added fields, no signature, no key material.
       const forwardedBody = JSON.stringify({ cmds });
-      const { primary, fallback } = resolveSources(deps);
 
       try {
-        const response = await dial(
+        const response = await dialNodes(
           {
             chainId,
             buildRequest: (host) => [
@@ -83,7 +112,7 @@ export function registerSend(app: Hono, deps: SendDeps = {}): void {
               },
             ],
           },
-          { primary, fallback, fetchImpl: deps.fetchImpl },
+          { nodes: senders, fetchImpl: deps.fetchImpl },
         );
         return passthrough(response);
       } catch (err) {

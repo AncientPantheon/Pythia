@@ -48,3 +48,8 @@ playwright-report/
 
 # Generated runtime stats
 pythia-stats.json
+
+# generated runtime stores (volume-backed in prod)
+pythia-connectors.json
+pythia-settings.json
+pythia-txsenders.json

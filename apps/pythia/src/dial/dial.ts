@@ -91,15 +91,47 @@ export async function dial(
   req: DialRequest,
   deps: DialDeps,
 ): Promise<Response> {
+  return dialNodes(req, {
+    nodes: [deps.primary, deps.fallback],
+    fetchImpl: deps.fetchImpl,
+    timeoutMs: deps.timeoutMs,
+  });
+}
+
+/** The minimal host shape the dial needs — only `id` (for failure attribution)
+ * and `url` (to build the request). `SourceConfig` and hub slots both satisfy it. */
+export interface DialNode {
+  id: string;
+  url: string;
+}
+
+export interface DialNodesDeps {
+  /** Ordered nodes to try, one after another, until one arrives (transport OK). */
+  nodes: DialNode[];
+  fetchImpl?: FetchImpl;
+  timeoutMs?: number;
+}
+
+/**
+ * The N-node sequential failover core: try each node in order; on a TRANSPORT
+ * failure only, move to the next; on an arrived HTTP response (any status) return
+ * it as-is; when every node fails transport, throw {@link PythiaPoolExhaustedError}
+ * with all per-node failures in attempt order. Used directly for the Upload-Pool
+ * `/send` lane ("one after the other" across the manual senders); {@link dial} is
+ * the two-host `[primary, fallback]` special case over this same loop.
+ */
+export async function dialNodes(
+  req: DialRequest,
+  deps: DialNodesDeps,
+): Promise<Response> {
   const fetchImpl = deps.fetchImpl ?? (globalThis.fetch as FetchImpl);
   const timeoutMs = deps.timeoutMs ?? DEFAULT_DIAL_TIMEOUT_MS;
-  const order = [deps.primary, deps.fallback];
   const failures: SourceFailure[] = [];
 
-  for (const source of order) {
-    const [url, init] = req.buildRequest(source.url);
+  for (const node of deps.nodes) {
+    const [url, init] = req.buildRequest(node.url);
     // Bound each attempt: on timeout the signal aborts → AbortError →
-    // isTransportFailure → the next host is tried. Any caller-supplied signal is
+    // isTransportFailure → the next node is tried. Any caller-supplied signal is
     // merged so neither the caller's cancellation nor the timeout is lost.
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const signal =
@@ -114,7 +146,7 @@ export async function dial(
         // not a pool-health signal; surface it rather than masking it.
         throw cause;
       }
-      failures.push({ sourceId: source.id, url, cause });
+      failures.push({ sourceId: node.id, url, cause });
     }
   }
 

@@ -18,8 +18,9 @@ const fallback: SourceConfig = {
 
 function appWith(fetchImpl: typeof fetch): Hono {
   const app = new Hono();
+  // The Upload Pool is [primary, fallback] here — tried in order (sequential).
   registerSend(app, {
-    sources: { primary, fallback },
+    senders: [primary, fallback],
     fetchImpl: fetchImpl as never,
   });
   return app;
@@ -171,6 +172,19 @@ describe("POST /stoachain/send keyless broadcast", () => {
       "stoachain-primary",
       "stoachain-fallback",
     ]);
+  });
+
+  it("returns 503 when the Upload Pool is empty — a signed tx is NEVER routed to a read/seed node", async () => {
+    const fetchImpl = vi.fn(async () => nodeOk({}));
+    const app = new Hono();
+    registerSend(app, { senders: [], fetchImpl: fetchImpl as never });
+
+    const res = await post(app, { cmds: [SIGNED_CMD] });
+
+    expect(res.status).toBe(503);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe("pythia_no_tx_sender");
   });
 
   it("rejects an over-limit body with HTTP 413 and NO fetch", async () => {

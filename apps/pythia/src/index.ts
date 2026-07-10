@@ -13,8 +13,10 @@ import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
 import { SettingsStore } from "./admin/settingsStore.js";
+import { TxSenderStore } from "./txsenders/store.js";
 import { loadConfigFromDisk } from "./config/index.js";
 import { loadHubConfig, HubServiceClient } from "./hub/serviceClient.js";
+import { detectEgressIp, cachedEgressIp } from "./hub/egressIp.js";
 import { NodePool } from "./pool/nodePool.js";
 import type { HubAdminControls } from "./admin/routes.js";
 import { StatsStore } from "./stats/store.js";
@@ -92,6 +94,18 @@ export const nodePool = new NodePool({
   })(),
 });
 
+// The Upload Pool: dedicated, ancient-managed nodes for signed-tx `/send` ONLY.
+// Seeded on first run with the checked-in seed nodes so sends keep working until
+// the admin curates dedicated senders. Persisted on the `/data` volume.
+export const txSenderStore = new TxSenderStore({
+  filePath: process.env.TXSENDERS_FILE || "./pythia-txsenders.json",
+  defaults: loadConfigFromDisk().sources.map((s) => ({ url: s.url, label: s.id })),
+});
+
+// Detect Pythia's public egress IP (the hub allowlist target) at boot; refreshed
+// on admin refresh. Non-blocking — the value populates shortly after start.
+void detectEgressIp();
+
 // The control surface the admin UI drives: read status, set the feed config (then
 // hot-reconfigure the pool + poll immediately), or force a refresh. The HMAC
 // secret is never returned — only whether one is set.
@@ -100,13 +114,19 @@ function secretMask(): string {
   return secret ? `…${secret.slice(-4)}` : "";
 }
 const hubAdmin: HubAdminControls = {
-  status: () => ({
-    hubBaseUrl: settingsStore.hubBaseUrl(),
-    secretSet: currentHubConfig() !== null,
-    fromSettings: settingsStore.hasSecret(),
-    slots: nodePool.hubSlotCount(),
-    secretMask: secretMask(),
-  }),
+  status: () => {
+    const health = nodePool.feedHealth();
+    return {
+      hubBaseUrl: settingsStore.hubBaseUrl(),
+      secretSet: currentHubConfig() !== null,
+      fromSettings: settingsStore.hasSecret(),
+      slots: health.slots,
+      secretMask: secretMask(),
+      feedOk: health.configured && health.ok,
+      feedError: health.error,
+      egressIp: cachedEgressIp(),
+    };
+  },
   setConfig: async (hubBaseUrl, hmacSecret) => {
     settingsStore.setHubConfig({ hubBaseUrl, hmacSecret });
     const cfg = currentHubConfig();
@@ -115,7 +135,7 @@ const hubAdmin: HubAdminControls = {
     return hubAdmin.status();
   },
   refresh: async () => {
-    await nodePool.refreshNow();
+    await Promise.all([nodePool.refreshNow(), detectEgressIp()]);
     return hubAdmin.status();
   },
   revealSecret: () => currentHubConfig()?.secret ?? null,
@@ -143,7 +163,7 @@ app.use("*", statsMiddleware(statsStore, resolveConsumer));
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
 registerHealthz(app);
 registerRead(app, { pool: nodePool });
-registerSend(app);
+registerSend(app, { store: txSenderStore });
 registerPoll(app, { pool: nodePool });
 registerConnectors(app, { store: connectorStore });
 registerStats(app, statsStore);
@@ -156,7 +176,11 @@ nodePool.start();
 // present, so the public keyless gateway boots unchanged with no SSO configured.
 // Registered before the static catch-all so `/admin/*` is not shadowed.
 const oidcConfig = loadOidcConfig();
-if (oidcConfig) registerAdmin(app, oidcConfig, connectorStore, hubAdmin);
+if (oidcConfig)
+  registerAdmin(app, oidcConfig, connectorStore, {
+    hubAdmin,
+    txSenders: txSenderStore,
+  });
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves
 // the same regardless of where the process was started from. `onFound` stamps

@@ -411,3 +411,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .secret-toggle:hover { border-color: var(--gold-dim); color: var(--ink); }
 .secret-current { display: flex; align-items: center; gap: .7rem; margin: -.3rem 0 .2rem; }
 .secret-label { color: var(--green); font-size: .85rem; font-variant-numeric: tabular-nums; }
+
+/* ── hub feed: health bullet + upload pool ──────────────────────────────── */
+.hub-bullet { display: flex; align-items: center; gap: .55rem; margin-bottom: .6rem; font-size: .95rem; color: var(--ink); }
+.hub-bullet .dot { width: 11px; height: 11px; }
+.sub-h { margin: 1.6rem 0 .2rem; font-size: 16px; font-weight: 700; color: var(--ink); }
+.txsenders { display: flex; flex-direction: column; gap: .5rem; margin: .8rem 0; }
+.txsender--off { opacity: .55; }
+.txsender-actions { grid-column: 2; grid-row: 1 / span 3; align-self: center; display: flex; gap: .4rem; }

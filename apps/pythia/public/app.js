@@ -442,11 +442,41 @@ async function loadMe() {
 function updateHubFeedTab() {
   const tabBtn = document.querySelector('[data-tab="hubfeed"]');
   if (tabBtn) tabBtn.hidden = !isAncient();
-  if (isAncient()) loadHubStatus();
+  if (isAncient()) {
+    loadHubStatus();
+    loadTxSenders();
+  }
 }
 
 function renderHubStatus(el, s) {
   el.textContent = "";
+
+  // Live health bullet: green (live + nodes), amber (reachable, none yet),
+  // red (configured but failing), grey (off).
+  const bullet = document.createElement("div");
+  bullet.className = "hub-bullet";
+  const dot = document.createElement("span");
+  dot.className = "dot";
+  let color = "grey";
+  let text = "Feed off — serving seed-only";
+  if (s.secretSet) {
+    if (s.feedOk && (s.slots ?? 0) > 0) {
+      color = "green";
+      text = `Feed live — ${s.slots} hub node${s.slots === 1 ? "" : "s"} in the pool`;
+    } else if (s.feedOk) {
+      color = "amber";
+      text = "Feed reachable — no nodes advertised yet";
+    } else {
+      color = "red";
+      text = `Feed error — ${s.feedError || "unreachable"}`;
+    }
+  }
+  dot.setAttribute("data-color", color);
+  const btext = document.createElement("span");
+  btext.textContent = text;
+  bullet.append(dot, btext);
+  el.appendChild(bullet);
+
   const line = (label, value, cls) => {
     const p = document.createElement("p");
     p.className = "hub-stat";
@@ -459,11 +489,138 @@ function renderHubStatus(el, s) {
     return p;
   };
   el.append(
-    line("Feed", s.secretSet ? "configured" : "not configured — seed-only", s.secretSet ? "ok" : "muted"),
-    line("Hub slots in pool", String(s.slots ?? 0)),
     line("Secret source", s.fromSettings ? "admin UI" : s.secretSet ? "deploy env" : "—", "muted"),
+    line("Pythia egress IP", s.egressIp || "detecting…", "muted"),
   );
+  const ipNote = document.createElement("p");
+  ipNote.className = "panel-note";
+  ipNote.textContent =
+    "Allowlist this egress IP on the hub (/hub/pythia-admin → IP allowlist), or the feed returns 403.";
+  el.appendChild(ipNote);
+
   renderHubSecret(s);
+}
+
+// ── upload pool (dedicated signed-tx senders) ────────────────────────────────
+async function loadTxSenders() {
+  const container = document.getElementById("txsenders");
+  if (!container) return;
+  try {
+    const res = await fetch("/admin/tx-senders", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    const body = await res.json();
+    renderTxSenders(container, body.senders ?? []);
+  } catch {
+    /* ignore */
+  }
+}
+
+function renderTxSenders(container, senders) {
+  container.textContent = "";
+  if (!senders.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No upload-pool nodes — sends are disabled (503) until you add one.";
+    container.appendChild(empty);
+    return;
+  }
+  for (const s of senders) {
+    const card = document.createElement("div");
+    card.className = "connector-admin" + (s.enabled ? "" : " txsender--off");
+
+    const head = document.createElement("div");
+    head.className = "ca-head";
+    const nm = document.createElement("b");
+    nm.textContent = s.label || s.url;
+    head.appendChild(nm);
+    if (!s.enabled) {
+      const badge = document.createElement("span");
+      badge.className = "ca-badge";
+      badge.textContent = "disabled";
+      head.appendChild(badge);
+    }
+
+    const url = document.createElement("span");
+    url.className = "ca-url";
+    url.textContent = s.url;
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "btn btn--ghost btn--small";
+    toggle.textContent = s.enabled ? "Disable" : "Enable";
+    toggle.addEventListener("click", () => setTxSenderEnabled(s.id, !s.enabled));
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn btn--ghost btn--small";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => removeTxSender(s.id, s.label || s.url));
+
+    const actions = document.createElement("span");
+    actions.className = "txsender-actions";
+    actions.append(toggle, remove);
+
+    card.append(head, url, actions);
+    container.appendChild(card);
+  }
+}
+
+async function setTxSenderEnabled(id, enabled) {
+  try {
+    const res = await fetch(`/admin/tx-senders/${encodeURIComponent(id)}/enabled`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    if (res.ok) loadTxSenders();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function removeTxSender(id, name) {
+  if (!window.confirm(`Remove upload-pool node "${name}"? Sends will stop using it.`)) return;
+  try {
+    const res = await fetch(`/admin/tx-senders/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: { accept: "application/json" },
+    });
+    if (res.ok) loadTxSenders();
+  } catch {
+    /* ignore */
+  }
+}
+
+function wireTxSenderForm() {
+  const form = document.getElementById("txsender-form");
+  const err = document.getElementById("txsender-error");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (err) err.hidden = true;
+    const data = new FormData(form);
+    const payload = {
+      url: (data.get("url") || "").toString().trim(),
+      label: (data.get("label") || "").toString().trim(),
+    };
+    if (!payload.url) return;
+    try {
+      const res = await fetch("/admin/tx-senders", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (err) { err.textContent = body.error || "Could not add the node."; err.hidden = false; }
+        return;
+      }
+      form.reset();
+      loadTxSenders();
+    } catch {
+      if (err) { err.textContent = "Network error adding the node."; err.hidden = false; }
+    }
+  });
 }
 
 // When a secret is set, show it (masked) beneath the field with a Copy button
@@ -886,6 +1043,7 @@ function wireTabs() {
 wireTabs();
 wireAddConnector();
 wireHubConfig();
+wireTxSenderForm();
 renderChainTabs();
 startHealthPill();
 loadMe(); // /api/me → renders the header + loads the right connectors view

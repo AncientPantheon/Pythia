@@ -51,6 +51,9 @@ ENV CONNECTORS_FILE=/data/connectors.json
 # Admin-managed runtime settings (hub feed URL + HMAC secret) — on the /data
 # volume so an admin-activated feed survives redeploys.
 ENV SETTINGS_FILE=/data/settings.json
+# The Upload Pool (dedicated signed-tx sender nodes) — on the /data volume so the
+# admin-curated sender list survives redeploys.
+ENV TXSENDERS_FILE=/data/txsenders.json
 
 WORKDIR /app
 
