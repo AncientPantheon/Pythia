@@ -298,7 +298,8 @@ function renderUploadCount(el, upload) {
     el.textContent = "";
     return;
   }
-  const extra = upload.count - upload.seeds.length;
+  const seeds = Array.isArray(upload.seeds) ? upload.seeds : [];
+  const extra = upload.count - seeds.length;
   el.textContent =
     extra > 0
       ? `+ ${extra} more sender${extra === 1 ? "" : "s"} · ${upload.count} enabled total`
@@ -329,7 +330,13 @@ function renderChainModule(chain) {
       <span class="chain-badge chain-badge--live">Live</span>
     </div>
 
-    <div class="chain-grid">
+    <nav class="subtabs" data-role="chain-subtabs" role="tablist" aria-label="${chain.name} views">
+      <button class="subtab subtab--active" data-subtab="pools" role="tab" type="button">Pools</button>
+      <button class="subtab" data-subtab="endpoints" role="tab" type="button">Endpoints</button>
+      <button class="subtab" data-subtab="read" role="tab" type="button">Dirty Read</button>
+    </nav>
+
+    <div class="subpanel" data-subpanel="pools">
       <div class="sub">
         <div class="sub-head"><h4>Node pools</h4><span class="sub-note"><code>/api/pools</code></span></div>
         <div class="pool-block">
@@ -344,31 +351,39 @@ function renderChainModule(chain) {
           <p class="pool-count" data-role="upload-count"></p>
         </div>
       </div>
+    </div>
 
+    <div class="subpanel" data-subpanel="endpoints" hidden>
       <div class="sub">
-        <div class="sub-head"><h4>Endpoints</h4></div>
+        <div class="sub-head"><h4>Endpoints</h4><span class="sub-note">one keyless surface · same shape every chain</span></div>
         <ul class="endpoints endpoints--compact">
-          <li><span class="verb verb--post">POST</span> <code>${chain.base}/read</code></li>
-          <li><span class="verb verb--post">POST</span> <code>${chain.base}/send</code></li>
-          <li><span class="verb verb--post">POST</span> <code>${chain.base}/poll</code></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/read</code><span class="ep-note">dirty read — caller supplies Pact code</span></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/send</code><span class="ep-note">keyless broadcast — relay caller-signed txs</span></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/poll</code><span class="ep-note">tx status — pending vs final + depth</span></li>
         </ul>
       </div>
     </div>
 
-    <div class="sub">
-      <div class="sub-head"><h4>Try a dirty read</h4><span class="sub-note">read-only Pact code · no keys involved</span></div>
-      <div class="console">
-        <div class="console-controls">
-          <label class="console-chain">Chain
-            <select data-role="chainid" aria-label="Chain id">${chainIdOptions(chain)}</select>
-          </label>
-          <button data-role="run" class="btn btn--primary" type="button">Read</button>
-          <span data-role="status" class="console-status" aria-live="polite"></span>
+    <div class="subpanel" data-subpanel="read" hidden>
+      <div class="sub">
+        <div class="sub-head"><h4>Try a dirty read</h4><span class="sub-note">read-only Pact code · no keys involved</span></div>
+        <div class="console">
+          <div class="console-controls">
+            <label class="console-chain">Chain
+              <select data-role="chainid" aria-label="Chain id">${chainIdOptions(chain)}</select>
+            </label>
+            <button data-role="run" class="btn btn--primary" type="button">Read</button>
+            <span data-role="status" class="console-status" aria-live="polite"></span>
+          </div>
+          <textarea data-role="code" class="console-code" spellcheck="false" rows="4"></textarea>
+          <pre data-role="out" class="console-out" aria-live="polite">// the node's dirty-read result appears here</pre>
         </div>
-        <textarea data-role="code" class="console-code" spellcheck="false" rows="4"></textarea>
-        <pre data-role="out" class="console-out" aria-live="polite">// the node's dirty-read result appears here</pre>
       </div>
     </div>`;
+
+  // Wire the three sub-tabs (Pools | Endpoints | Dirty Read), SCOPED to this
+  // module so it never toggles the Hub-feed sub-panels (also [data-subpanel]).
+  wireSubtabs(mod.querySelector('[data-role="chain-subtabs"]'), mod);
 
   // set the placeholder via property so the example's quotes/newlines are literal
   const code = mod.querySelector('[data-role="code"]');
@@ -559,7 +574,18 @@ async function loadTxSenders() {
   if (!container) return;
   try {
     const res = await fetch("/admin/tx-senders", { headers: { accept: "application/json" } });
-    if (!res.ok) return;
+    if (!res.ok) {
+      // Distinguish "auth lost" from a genuinely empty pool — a blank list must
+      // not read as "no nodes" (the exact confusion the cookie bug caused).
+      if (res.status === 401 || res.status === 403) {
+        container.textContent = "";
+        const p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = "Session expired — reload the page and sign in again to manage the Upload Pool.";
+        container.appendChild(p);
+      }
+      return;
+    }
     const body = await res.json();
     renderTxSenders(container, body.senders ?? []);
   } catch {
@@ -569,6 +595,16 @@ async function loadTxSenders() {
 
 function renderTxSenders(container, senders) {
   container.textContent = "";
+
+  // Live entry count next to the list header.
+  const countEl = document.getElementById("txsenders-count");
+  if (countEl) {
+    const seeds = senders.filter((s) => s.seed).length;
+    countEl.textContent = senders.length
+      ? `${senders.length} node${senders.length === 1 ? "" : "s"} · ${seeds} seed`
+      : "";
+  }
+
   if (!senders.length) {
     const empty = document.createElement("p");
     empty.className = "empty";
@@ -576,53 +612,65 @@ function renderTxSenders(container, senders) {
     container.appendChild(empty);
     return;
   }
-  for (const s of senders) {
-    const card = document.createElement("div");
-    card.className = "connector-admin" + (s.enabled ? "" : " txsender--off");
 
-    const head = document.createElement("div");
-    head.className = "ca-head";
-    const nm = document.createElement("b");
-    nm.textContent = s.label || s.url;
-    head.appendChild(nm);
+  // Explorer-style: one compact row per entry. Seed nodes carry a gold badge and
+  // have NO Remove button (permanent); admin-added nodes can be disabled/removed.
+  for (const s of senders) {
+    const row = document.createElement("div");
+    row.className = "txrow" + (s.enabled ? "" : " txrow--off");
+
+    const main = document.createElement("span");
+    main.className = "txrow-main";
+
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.setAttribute("data-color", s.enabled ? "green" : "grey");
+    main.appendChild(dot);
+
+    const label = document.createElement("b");
+    label.className = "txrow-label";
+    label.textContent = s.label || s.url;
+    main.appendChild(label);
+
     if (s.seed) {
       const badge = document.createElement("span");
       badge.className = "ca-badge ca-badge--seed";
-      badge.textContent = "seed node";
-      head.appendChild(badge);
+      badge.textContent = "seed";
+      main.appendChild(badge);
     }
     if (!s.enabled) {
       const badge = document.createElement("span");
       badge.className = "ca-badge";
       badge.textContent = "disabled";
-      head.appendChild(badge);
+      main.appendChild(badge);
     }
 
     const url = document.createElement("span");
-    url.className = "ca-url";
+    url.className = "txrow-url";
     url.textContent = s.url;
+    main.appendChild(url);
+
+    const actions = document.createElement("span");
+    actions.className = "txrow-actions";
 
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "btn btn--ghost btn--small";
     toggle.textContent = s.enabled ? "Disable" : "Enable";
     toggle.addEventListener("click", () => setTxSenderEnabled(s.id, !s.enabled));
+    actions.appendChild(toggle);
 
-    const actions = document.createElement("span");
-    actions.className = "txsender-actions";
-    actions.append(toggle);
-    // Seed nodes are permanent — no Remove button.
     if (!s.seed) {
       const remove = document.createElement("button");
       remove.type = "button";
-      remove.className = "btn btn--ghost btn--small";
+      remove.className = "btn btn--ghost btn--small btn--danger";
       remove.textContent = "Remove";
       remove.addEventListener("click", () => removeTxSender(s.id, s.label || s.url));
-      actions.append(remove);
+      actions.appendChild(remove);
     }
 
-    card.append(head, url, actions);
-    container.appendChild(card);
+    row.append(main, actions);
+    container.appendChild(row);
   }
 }
 
@@ -684,21 +732,31 @@ function wireTxSenderForm() {
   });
 }
 
-// The Hub-feed panel is split into two sub-tabs (Observation | Upload). Clicking
-// a sub-tab shows its sub-panel and hides the other.
-function wireHubSubtabs() {
-  const nav = document.getElementById("hub-subtabs");
-  if (!nav) return;
+// Generic sub-tab switcher: clicking a [data-subtab] button in `nav` shows the
+// matching [data-subpanel] within `scope` and hides its siblings. `scope` is
+// REQUIRED (not the document) so multiple sub-tab groups on the page — the Hub
+// feed and each chain module both use [data-subpanel] — never toggle each other.
+function wireSubtabs(nav, scope) {
+  if (!nav || !scope) return;
   const buttons = Array.from(nav.querySelectorAll("[data-subtab]"));
+  const panels = Array.from(scope.querySelectorAll("[data-subpanel]"));
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
       const name = btn.dataset.subtab;
       buttons.forEach((b) => b.classList.toggle("subtab--active", b === btn));
-      document.querySelectorAll("[data-subpanel]").forEach((p) => {
+      panels.forEach((p) => {
         p.hidden = p.dataset.subpanel !== name;
       });
     });
   });
+}
+
+// The Hub-feed panel's two sub-tabs (Observation | Upload), scoped to its section.
+function wireHubSubtabs() {
+  wireSubtabs(
+    document.getElementById("hub-subtabs"),
+    document.querySelector('[data-panel="hubfeed"]'),
+  );
 }
 
 // Bulk-add Upload senders: one URL per line, POSTed one-by-one (reusing the

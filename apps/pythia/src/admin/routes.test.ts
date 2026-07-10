@@ -1,8 +1,55 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { postForm } from "./routes.js";
+import { Hono } from "hono";
+import { postForm, createAdminGate } from "./routes.js";
+import { signSession } from "./session.js";
+import type { OidcConfig } from "./oidcConfig.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("createAdminGate — duplicate-cookie tolerance", () => {
+  const secret = "unit-test-session-secret-at-least-32-chars";
+  const gate = createAdminGate({ sessionSecret: secret } as OidcConfig);
+  const app = new Hono();
+  app.get("/admin/thing", gate, (c) => c.json({ ok: true }));
+
+  it("admits when a VALID session cookie trails a stale duplicate of the same name", async () => {
+    // The exact production failure: a legacy path=/admin cookie is sent FIRST
+    // (longer path, per RFC 6265), the valid path=/ session SECOND. getCookie
+    // would pick the stale first one and 401; the gate must scan both and admit.
+    const valid = await signSession(
+      { sub: "u1", roles: ["ancient"], name: "Ancient" },
+      secret,
+    );
+    const cookie = `pythia_admin_session=STALE.INVALID.TOKEN; pythia_admin_session=${valid}`;
+    const res = await app.request("/admin/thing", { headers: { cookie } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("401s when only a stale/invalid cookie is present", async () => {
+    const res = await app.request("/admin/thing", {
+      headers: { cookie: "pythia_admin_session=STALE.INVALID.TOKEN" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("401s when no session cookie is present at all", async () => {
+    const res = await app.request("/admin/thing");
+    expect(res.status).toBe(401);
+  });
+
+  it("403s when a valid session lacks the ancient role", async () => {
+    const modern = await signSession(
+      { sub: "u2", roles: ["modern"], name: "Modern" },
+      secret,
+    );
+    const res = await app.request("/admin/thing", {
+      headers: { cookie: `pythia_admin_session=${modern}` },
+    });
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("postForm — token-exchange redirect handling", () => {

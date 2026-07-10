@@ -1,4 +1,4 @@
-import type { Hono, MiddlewareHandler } from "hono";
+import type { Context, Hono, MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { OidcConfig } from "./oidcConfig.js";
 import { getDiscovery } from "./discovery.js";
@@ -75,6 +75,45 @@ function page(title: string, body: string): string {
 }
 
 /**
+ * Read the admin session tolerant of DUPLICATE cookies of the same name.
+ *
+ * A legacy build set `pythia_admin_session` at `path=/admin`. A browser that
+ * still holds it sends BOTH that stale cookie AND the current `path=/` session
+ * on every `/admin/*` request — and per RFC 6265 the longer-path (stale) cookie
+ * comes FIRST. Hono's `getCookie` returns only that first value, so the gate
+ * 401s ("present but invalid") even though a valid session cookie sits right
+ * behind it (which is why `/api/me`, at a path the stale cookie doesn't match,
+ * still sees the user logged in). We instead scan EVERY `pythia_admin_session`
+ * value in the raw Cookie header and admit if ANY verifies. Each candidate must
+ * still pass `jwtVerify` (signature + exp + purpose), so trying several is safe
+ * — a forged or stale cookie can never be admitted, it's just skipped over.
+ */
+export async function readSessionTolerant(
+  c: Context,
+  secret: string,
+): Promise<{ session: SessionState | null; sawCookie: boolean }> {
+  const header = c.req.header("cookie");
+  if (!header) return { session: null, sawCookie: false };
+  let sawCookie = false;
+  for (const pair of header.split(";")) {
+    const eq = pair.indexOf("=");
+    if (eq === -1) continue;
+    if (pair.slice(0, eq).trim() !== SESSION_COOKIE) continue;
+    sawCookie = true;
+    const raw = pair.slice(eq + 1).trim();
+    let value = raw;
+    try {
+      value = decodeURIComponent(raw);
+    } catch {
+      /* not percent-encoded — use as-is */
+    }
+    const session = await readSession(value, secret);
+    if (session) return { session, sawCookie: true };
+  }
+  return { session: null, sawCookie };
+}
+
+/**
  * A reusable JSON gate that admits ONLY an authenticated `ancient` admin — used
  * on the connector-management API. `401` when unauthenticated, `403` when
  * authenticated but not `ancient`. The verified session is stashed on the context
@@ -82,11 +121,10 @@ function page(title: string, body: string): string {
  */
 export function createAdminGate(cfg: OidcConfig): MiddlewareHandler {
   return async (c, next) => {
-    const rawCookie = getCookie(c, SESSION_COOKIE);
-    const session = await readSession(rawCookie, cfg.sessionSecret);
+    const { session, sawCookie } = await readSessionTolerant(c, cfg.sessionSecret);
     if (!session) {
       console.error(
-        `pythia admin: gate 401 ${c.req.method} ${c.req.path} — session cookie ${rawCookie ? "present but invalid/expired" : "absent"}`,
+        `pythia admin: gate 401 ${c.req.method} ${c.req.path} — session cookie ${sawCookie ? "present but invalid/expired" : "absent"}`,
       );
       return c.json({ error: "authentication required" }, 401);
     }
@@ -294,7 +332,7 @@ export function registerAdmin(
   // Public: who (if anyone) is logged in — drives the site header + the enabled
   // state of the "Add a new Connector" control. No secrets, just identity+roles.
   app.get("/api/me", async (c) => {
-    const session = await readSession(getCookie(c, SESSION_COOKIE), cfg.sessionSecret);
+    const { session } = await readSessionTolerant(c, cfg.sessionSecret);
     // Never cache the auth state — a stale cached "authenticated" would show the
     // UI as logged-in while the live session is already gone (phantom login).
     c.header("Cache-Control", "no-store");

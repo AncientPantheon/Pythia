@@ -175,11 +175,10 @@
 
         <div class="subpanel" data-subpanel="upload" hidden>
           <p class="panel-note">Signed-tx senders. Sends (<code>/stoachain/send</code>) go only here, in order (no PythXP), and also serve reads when the hub feed is off. The two <b>seed nodes</b> are baked in and can't be removed; add your own on top.</p>
-          <div id="txsenders" class="txsenders"></div>
-          <form id="txsender-form" class="conn-form">
+          <form id="txsender-form" class="conn-form conn-form--add">
             <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
             <label class="conn-field">Label (optional)<input name="label" type="text" placeholder="upload-1" /></label>
-            <div class="conn-actions"><button type="submit" class="btn btn--primary">Add sender</button></div>
+            <div class="conn-actions"><button type="submit" class="btn btn--primary">Add to Upload Pool</button></div>
             <p class="conn-error" id="txsender-error" hidden></p>
           </form>
           <details class="bulk-add">
@@ -190,6 +189,11 @@
               <p class="conn-error" id="txsender-bulk-error" hidden></p>
             </form>
           </details>
+          <div class="txsenders-head">
+            <span class="txsenders-title">Upload Pool entries</span>
+            <span class="txsenders-count" id="txsenders-count"></span>
+          </div>
+          <div id="txsenders" class="txsenders"></div>
         </div>
       </section>
 
