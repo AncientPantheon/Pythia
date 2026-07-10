@@ -63,11 +63,33 @@ export async function getDiscovery(
 
   const entry: CacheEntry = {
     discovery,
-    jwks: createRemoteJWKSet(new URL(discovery.jwks_uri)),
+    jwks: createRemoteJWKSet(new URL(await resolveJwksUri(discovery.jwks_uri))),
     fetchedAtMs: clock(),
   };
   cacheByIssuer.set(issuer, entry);
   return entry;
+}
+
+/**
+ * Resolve the advertised `jwks_uri` to the URL that actually returns 200.
+ *
+ * jose's `createRemoteJWKSet` fetches JWKS with `redirect: "manual"` (a security
+ * default — it won't chase a key-set to a redirected location), so the hub's
+ * Next.js trailing-slash 308 on `/api/oidc/jwks` → `/api/oidc/jwks/` makes jose
+ * see a non-200 and throw "Expected 200 OK from the JSON Web Key Set". We follow
+ * the redirect ONCE here (same origin) and hand jose the final 200 URL. A no-op
+ * when the endpoint doesn't redirect.
+ */
+async function resolveJwksUri(jwksUri: string): Promise<string> {
+  try {
+    const res = await fetch(jwksUri, { method: "GET", redirect: "follow" });
+    const finalUrl = res.url;
+    await res.text().catch(() => undefined); // drain the body
+    if (res.ok && finalUrl) return finalUrl;
+  } catch {
+    // Fall through to the advertised URL — jose will surface any real failure.
+  }
+  return jwksUri;
 }
 
 /** Drop the memoised discovery/JWKS — test hook so entries don't leak across cases. */
