@@ -203,6 +203,25 @@ function renderPager(elmt, page, pageCount, onGo) {
   elmt.append(arrow("‹", page - 1, page === 0), label, arrow("›", page + 1, page >= pageCount - 1));
 }
 
+// A read of the chain through Pythia can take a few seconds (node /local +
+// failover). Fill the target list with a spinner caption + shimmer skeleton rows
+// so the user sees a read is in flight and the list is about to populate.
+function renderReading(container, rows = 4) {
+  if (!container) return;
+  container.textContent = "";
+  const note = document.createElement("div");
+  note.className = "reading-note";
+  const spin = document.createElement("span");
+  spin.className = "spin";
+  note.append(spin, document.createTextNode("Reading StoaChain…"));
+  container.appendChild(note);
+  for (let i = 0; i < rows; i++) {
+    const sk = document.createElement("div");
+    sk.className = "skeleton-row";
+    container.appendChild(sk);
+  }
+}
+
 // ── sub-tab 1: full API keys (dual-links) ───────────────────────────────────
 let dlState = { filter: "all", search: "", page: 0, rows: [] };
 let dlReqSeq = 0; // guards against a slow earlier fetch clobbering a newer one
@@ -213,6 +232,7 @@ async function loadDualLinks() {
   if (!status || !list) return;
   const seq = ++dlReqSeq;
   status.textContent = "reading chain…";
+  renderReading(list); // visible loading state while the chain read is in flight
   const fn =
     dlState.filter === "active"
       ? "URD_ListActiveDualLinks"
@@ -326,6 +346,9 @@ async function loadHalves() {
   const status = document.getElementById("reg-status");
   const seq = ++halvesReqSeq;
   if (status) status.textContent = "reading chain…";
+  // Show a loading state in BOTH columns immediately (the read can take seconds).
+  renderReading(document.querySelector('[data-role="std-list"]'));
+  renderReading(document.querySelector('[data-role="smart-list"]'));
   try {
     const data = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.URD_ListAllApiKeys)`);
     if (seq !== halvesReqSeq) return; // superseded by a newer reload

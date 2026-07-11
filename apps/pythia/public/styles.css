@@ -510,6 +510,19 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .conn-search:focus { outline: none; border-color: var(--gold-dim); }
 .conn-readstatus { font-size: 12.5px; color: var(--ink-mute); margin: 6px 0; }
 
+/* on-chain read loading state — spinner caption + shimmer skeleton rows */
+.reading-note { display: flex; align-items: center; gap: .5rem; font-size: 12.5px; color: var(--ink-soft); margin: 2px 0 8px; }
+.reading-note .spin { width: 13px; height: 13px; flex: none; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--gold); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.skeleton-row {
+  height: 34px; margin-bottom: .4rem; border-radius: 9px;
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(255,255,255,.02) 25%, rgba(255,255,255,.07) 50%, rgba(255,255,255,.02) 75%);
+  background-size: 200% 100%; animation: shimmer 1.3s ease-in-out infinite;
+}
+.skeleton-row:last-child { margin-bottom: 0; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
 /* segmented All/Active/Inactive filter */
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .seg-btn { padding: 7px 14px; border: 0; background: transparent; color: var(--ink-soft); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
