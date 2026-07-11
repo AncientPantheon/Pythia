@@ -135,10 +135,22 @@ const HALF_PAGE = 12;
 const VERIFY_LOCATIONS = [
   { id: "wallet", label: "OuronetUI · production", base: "https://wallet.ouronetwork.io" },
   { id: "devwallet", label: "OuronetUI · dev", base: "https://devwallet.ouronetwork.io" },
-  { id: "ouronet-local", label: "OuronetUI · localhost", base: "http://localhost:5173" },
-  { id: "codex-local", label: "Standalone Codex · localhost", base: "http://localhost:5174" },
+  // Localhost verifiers: the dev port varies per machine, so it's editable in the
+  // popup (and remembered). `host` + default `port` build the base.
+  { id: "ouronet-local", label: "OuronetUI · localhost", host: "http://localhost", port: 5173 },
+  { id: "codex-local", label: "Standalone Codex · localhost", host: "http://localhost", port: 5174 },
   { id: "mnemosyne", label: "Mnemosyne · codex.ancientholdings.eu", base: "https://codex.ancientholdings.eu" },
 ];
+
+/** The (possibly user-overridden) localhost port for an editable verifier. */
+function verifyLocPort(loc) {
+  const stored = Number(localStorage.getItem(`pythia_verify_port_${loc.id}`));
+  return Number.isInteger(stored) && stored > 0 && stored <= 65535 ? stored : loc.port;
+}
+/** The base URL of a verifier — fixed for hosted ones, host:port for localhost. */
+function verifyLocBase(loc) {
+  return loc.base || `${loc.host}:${verifyLocPort(loc)}`;
+}
 
 // One dirty read through Pythia. Returns the Pact value, or throws with the
 // node's own failure message. chainweb /local shape: { result:{ status, data|error } }.
@@ -571,22 +583,59 @@ function openVerifyPopup() {
     o.textContent = loc.label;
     select.appendChild(o);
   }
+  // Remember the last-picked verifier for next time.
+  const lastLoc = localStorage.getItem("pythia_verify_loc");
+  if (lastLoc && VERIFY_LOCATIONS.some((l) => l.id === lastLoc)) select.value = lastLoc;
   modal.appendChild(select);
+
+  const selectedLoc = () => VERIFY_LOCATIONS.find((l) => l.id === select.value) || VERIFY_LOCATIONS[0];
+
+  // Editable localhost port — shown only for localhost verifiers; persisted.
+  const portRow = el("div", "port-row");
+  portRow.appendChild(el("label", "modal-lbl", "Localhost port"));
+  const portInput = document.createElement("input");
+  portInput.type = "number";
+  portInput.className = "modal-port";
+  portInput.min = "1";
+  portInput.max = "65535";
+  portRow.appendChild(portInput);
+  modal.appendChild(portRow);
 
   const callbackUrl = location.origin + "/connectors/verify/callback";
   const buildUrl = (nonce) => {
-    const loc = VERIFY_LOCATIONS.find((l) => l.id === select.value) || VERIFY_LOCATIONS[0];
+    const loc = selectedLoc();
     return (
-      `${loc.base}/pythia-verify?standard=${encodeURIComponent(std)}` +
+      `${verifyLocBase(loc)}/pythia-verify?standard=${encodeURIComponent(std)}` +
       `&smart=${encodeURIComponent(smart)}` +
       `&challenge=${encodeURIComponent(nonce)}` +
       `&callback=${encodeURIComponent(callbackUrl)}`
     );
   };
   modal.appendChild(el("span", "modal-lbl", "Hand-off link (nonce added on open)"));
-  const preview = el("code", "modal-link", buildUrl("<challenge>"));
-  select.addEventListener("change", () => { preview.textContent = buildUrl("<challenge>"); });
+  const preview = el("code", "modal-link", "");
+
+  function syncLoc() {
+    const loc = selectedLoc();
+    localStorage.setItem("pythia_verify_loc", loc.id);
+    if (loc.host) {
+      portRow.hidden = false;
+      portInput.value = String(verifyLocPort(loc));
+    } else {
+      portRow.hidden = true;
+    }
+    preview.textContent = buildUrl("<challenge>");
+  }
+  select.addEventListener("change", syncLoc);
+  portInput.addEventListener("input", () => {
+    const loc = selectedLoc();
+    const n = parseInt(portInput.value, 10);
+    if (loc.host && Number.isInteger(n) && n > 0 && n <= 65535) {
+      localStorage.setItem(`pythia_verify_port_${loc.id}`, String(n));
+    }
+    preview.textContent = buildUrl("<challenge>");
+  });
   modal.appendChild(preview);
+  syncLoc(); // initial state (port row visibility + preview)
 
   const err = el("p", "conn-error", "");
   err.hidden = true;
