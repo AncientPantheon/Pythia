@@ -28,10 +28,34 @@ if (!existsSync(dist)) {
   process.exit(1);
 }
 
+// Load optional LOCAL dev env (OIDC login wiring etc.) from a gitignored file so
+// the aggregator/`npm run dev` start path wires login without pasting secrets.
+// Absent → boots as the plain public gateway (no admin SSO), unchanged.
+function loadLocalEnv() {
+  const file = resolve(root, "apps/pythia/pythia.local.env");
+  const out = {};
+  try {
+    for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      const eq = t.indexOf("=");
+      if (eq === -1) continue;
+      out[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
+    }
+    if (out.PYTHIA_OIDC_CLIENT_ID) {
+      console.log("pythia dev: loaded apps/pythia/pythia.local.env (OIDC login wired)");
+    }
+  } catch {
+    /* no local env file — run as the public gateway */
+  }
+  return out;
+}
+
 const child = spawn("node", [dist], {
   cwd: root,
   stdio: "inherit",
   shell: true,
-  env: { ...process.env, PORT: String(port()) },
+  // Registry PORT wins over anything in the local env file.
+  env: { ...process.env, ...loadLocalEnv(), PORT: String(port()) },
 });
 child.on("exit", (code) => process.exit(code ?? 0));
