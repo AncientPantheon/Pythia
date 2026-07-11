@@ -144,8 +144,16 @@
         <!-- SUB-PANEL 2 — register: link two unlinked halves into a full key -->
         <div class="subpanel" data-subpanel="register" hidden>
           <div class="reg-head">
-            <p class="panel-note reg-note">Pick one <b>unlinked</b> Standard half (left) and one <b>unlinked</b> Smart half (right). When both are unlinked, <b>Link</b> lights up.</p>
+            <p class="panel-note reg-note">Pick one <b>unlinked</b> Standard half (left) and one <b>unlinked</b> Smart half (right) — click a selected half again to unselect it. <b>Verify ownership</b> unlocks when both are picked; once Pythia confirms the proof, <b>Link</b> lights up.</p>
             <button id="reg-refresh" class="btn btn--ghost btn--small" type="button">Refresh</button>
+          </div>
+          <!-- action bar pinned to the TOP so it stays visible above long lists -->
+          <div class="link-bar">
+            <div class="link-sel" id="link-selection">Select one unlinked half from each side.</div>
+            <div class="link-actions">
+              <button id="verify-btn" class="btn btn--primary" type="button" disabled>Verify ownership</button>
+              <button id="link-btn" class="btn btn--primary" type="button" disabled title="Unlocks once Pythia confirms ownership">Link ✦</button>
+            </div>
           </div>
           <div class="halves">
             <div class="half-col">
@@ -160,10 +168,6 @@
               <div class="half-list" data-role="smart-list"></div>
               <div class="pager" data-role="smart-pager"></div>
             </div>
-          </div>
-          <div class="link-bar">
-            <div class="link-sel" id="link-selection">Select one unlinked half from each side.</div>
-            <button id="link-btn" class="btn btn--primary" type="button" disabled>Link halves</button>
           </div>
           <div id="reg-status" class="conn-readstatus" aria-live="polite">…</div>
         </div>

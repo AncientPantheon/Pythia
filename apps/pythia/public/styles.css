@@ -529,11 +529,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .half-badge--free { color: var(--green); border-color: var(--green); }
 .half-badge--linked { color: var(--ink-mute); border-color: var(--line); }
 
-/* link bar */
-.link-bar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.02); }
+/* link/action bar — pinned to the top of the register panel and sticky so the
+   Verify/Link buttons stay reachable above long half lists */
+.link-bar { position: sticky; top: 8px; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 4px 0 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); box-shadow: 0 6px 18px rgba(4,6,14,.35); }
+.link-actions { display: flex; gap: .5rem; flex: none; }
 .link-sel { font-size: 13.5px; color: var(--ink-soft); }
 .link-pair code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
 .link-warn { color: var(--amber); }
+.link-ok { color: var(--green); }
 
 /* link hand-off modal */
 .modal-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(4,6,14,.72); backdrop-filter: blur(3px); }

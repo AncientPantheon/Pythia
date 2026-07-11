@@ -319,7 +319,7 @@ async function loadHalves() {
     }
     renderHalves("std");
     renderHalves("smart");
-    updateLinkButton();
+    updateActionBar();
   } catch (e) {
     if (seq !== halvesReqSeq) return;
     if (status) status.textContent = `read failed — ${e.message}`;
@@ -386,52 +386,77 @@ function halfRow(h, side, selected) {
   return row;
 }
 
+// Clicking a half toggles it: pick it, or unpick it if it's the current pick.
+// Any selection change invalidates a prior ownership proof (a new pair must be
+// re-verified before the Link step can unlock).
 function selectHalf(side, h) {
-  if (side === "std") regState.selStd = h;
-  else regState.selSmart = h;
+  const cur = side === "std" ? regState.selStd : regState.selSmart;
+  const same = cur && cur["apollo-account"] === h["apollo-account"];
+  const next = same ? null : h;
+  if (side === "std") regState.selStd = next;
+  else regState.selSmart = next;
+  verificationProven = false;
   renderHalves(side);
-  updateLinkButton();
+  updateActionBar();
 }
 
-function updateLinkButton() {
-  const btn = document.getElementById("link-btn");
+// Two-stage flow: (1) VERIFY ownership of both selected unlinked halves — enabled
+// only when two unlinked halves are picked; (2) LINK — stays locked until Pythia
+// confirms the ownership proof, then lights up (its on-chain action is wired
+// later: it will signal the AncientHub DALOS Automaton to submit the link tx).
+let verificationProven = false;
+
+function updateActionBar() {
+  const verifyBtn = document.getElementById("verify-btn");
+  const linkBtn = document.getElementById("link-btn");
   const sel = document.getElementById("link-selection");
-  if (!btn || !sel) return;
+  if (!verifyBtn || !linkBtn || !sel) return;
   const s = regState.selStd;
   const m = regState.selSmart;
+
   sel.textContent = "";
-  if (!s || !m) {
+  if (!s && !m) {
     sel.textContent = "Select one unlinked half from each side.";
-    btn.disabled = true;
-    return;
-  }
-  const sU = isUnlinked(s.counterpart);
-  const mU = isUnlinked(m.counterpart);
-  const pair = document.createElement("span");
-  pair.className = "link-pair";
-  const a = document.createElement("code");
-  a.className = "apollo--std";
-  a.textContent = shortApollo(s["apollo-account"]);
-  const b = document.createElement("code");
-  b.className = "apollo--smart";
-  b.textContent = shortApollo(m["apollo-account"]);
-  pair.append(a, document.createTextNode(" ↔ "), b);
-  sel.appendChild(pair);
-  if (sU && mU) {
-    btn.disabled = false;
   } else {
-    btn.disabled = true;
-    const warn = document.createElement("span");
-    warn.className = "link-warn";
-    warn.textContent = ` — ${!sU && !mU ? "both halves are" : "one half is"} already linked`;
-    sel.appendChild(warn);
+    const pair = document.createElement("span");
+    pair.className = "link-pair";
+    const std = document.createElement("code");
+    std.className = "apollo--std";
+    std.textContent = s ? shortApollo(s["apollo-account"]) : "₱. —";
+    const smart = document.createElement("code");
+    smart.className = "apollo--smart";
+    smart.textContent = m ? shortApollo(m["apollo-account"]) : "Π. —";
+    pair.append(std, document.createTextNode(" ↔ "), smart);
+    sel.appendChild(pair);
+    const warn = [];
+    if (s && !isUnlinked(s.counterpart)) warn.push("Standard half already linked");
+    if (m && !isUnlinked(m.counterpart)) warn.push("Smart half already linked");
+    if (warn.length) {
+      const w = document.createElement("span");
+      w.className = "link-warn";
+      w.textContent = " — " + warn.join("; ");
+      sel.appendChild(w);
+    } else if (verificationProven && s && m) {
+      const ok = document.createElement("span");
+      ok.className = "link-ok";
+      ok.textContent = " — ownership verified";
+      sel.appendChild(ok);
+    }
   }
+
+  const bothUnlinked = !!(s && m && isUnlinked(s.counterpart) && isUnlinked(m.counterpart));
+  verifyBtn.disabled = !bothUnlinked;
+  linkBtn.disabled = !(bothUnlinked && verificationProven);
+  linkBtn.title = verificationProven
+    ? "Submit the on-chain link"
+    : "Unlocks once Pythia confirms ownership";
 }
 
-// The Link hand-off: Pythia is keyless, so it can't sign the link tx. This popup
-// deep-links out to a wallet/Codex that holds the user's DALOS seed, which proves
-// Apollo ownership + submits the link (250 STOA at activation), then returns.
-function openLinkPopup() {
+// Stage 1 — VERIFY ownership. Pythia is keyless, so it can't sign; this popup
+// deep-links out to a wallet/Codex that holds the user's DALOS seed to prove
+// ownership of BOTH halves. Once Pythia confirms the proof, the Link step (stage
+// 2) unlocks. This popup does NOT submit the link itself.
+function openVerifyPopup() {
   const s = regState.selStd;
   const m = regState.selSmart;
   if (!s || !m || !isUnlinked(s.counterpart) || !isUnlinked(m.counterpart)) return;
@@ -456,12 +481,12 @@ function openLinkPopup() {
   modal.className = "modal";
   modal.setAttribute("role", "dialog");
   modal.setAttribute("aria-modal", "true");
-  modal.appendChild(el("h3", "modal-h", "Link halves → full API key"));
+  modal.appendChild(el("h3", "modal-h", "Verify ownership → unlock Link"));
   modal.appendChild(
     el(
       "p",
       "modal-note",
-      "Pythia is keyless — it never signs. To prove you own both Apollo accounts and submit the on-chain link (250 STOA charged at activation), continue in a wallet or Codex that holds your DALOS seed.",
+      "Pythia is keyless — it never signs. Prove you own both Apollo halves in a wallet or Codex that holds your DALOS seed. Once Pythia confirms the proof, the Link step unlocks (linking itself, and the 250 STOA at activation, happens on-chain — not here).",
     ),
   );
 
@@ -504,7 +529,7 @@ function openLinkPopup() {
   const done = document.createElement("button");
   done.className = "btn btn--ghost";
   done.type = "button";
-  done.textContent = "I've linked — refresh";
+  done.textContent = "Done — recheck";
   done.addEventListener("click", () => { close(); loadHalves(); loadDualLinks(); });
   const cancel = document.createElement("button");
   cancel.className = "btn btn--ghost";
@@ -548,8 +573,18 @@ function wireConnectors() {
   if (stdSearch) stdSearch.addEventListener("input", () => { regState.std.search = stdSearch.value; regState.std.page = 0; renderHalves("std"); });
   const smartSearch = panel.querySelector('[data-role="smart-search"]');
   if (smartSearch) smartSearch.addEventListener("input", () => { regState.smart.search = smartSearch.value; regState.smart.page = 0; renderHalves("smart"); });
+  const verifyBtn = document.getElementById("verify-btn");
+  if (verifyBtn) verifyBtn.addEventListener("click", openVerifyPopup);
   const linkBtn = document.getElementById("link-btn");
-  if (linkBtn) linkBtn.addEventListener("click", openLinkPopup);
+  if (linkBtn) {
+    // Stage 2 — deferred. Only reachable once Pythia confirms ownership (the
+    // button is disabled until then). Its real action — signalling the AncientHub
+    // DALOS Automaton to submit the link tx — is wired later.
+    linkBtn.addEventListener("click", () => {
+      const status = document.getElementById("reg-status");
+      if (status) status.textContent = "Link trigger not wired yet — this will signal the AncientHub DALOS Automaton to submit the link transaction.";
+    });
+  }
   const regRefresh = document.getElementById("reg-refresh");
   if (regRefresh) regRefresh.addEventListener("click", loadHalves);
 }
