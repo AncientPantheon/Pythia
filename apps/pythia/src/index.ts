@@ -9,6 +9,7 @@ import { registerPoll } from "./routes/poll.js";
 import { registerConnectors } from "./routes/connectors.js";
 import { registerStats } from "./routes/stats.js";
 import { registerPools } from "./routes/pools.js";
+import { registerConnectorVerify } from "./routes/connectorVerify.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
@@ -170,6 +171,11 @@ registerPoll(app, { pool: nodePool });
 registerConnectors(app, { store: connectorStore });
 registerStats(app, statsStore);
 registerPools(app, { pool: nodePool, txSenders: txSenderStore });
+// Connector-linking ownership verification (keyless Apollo-half proof). Reads the
+// half's on-chain pubkey — preferring the operator's own Upload-Pool nodes as the
+// trust anchor, hub read pool as fallback — and verifies the browser's signature.
+// Pythia never signs. Not admin-gated: anyone links their own keys.
+registerConnectorVerify(app, { pool: nodePool, txSenders: txSenderStore });
 
 // Begin polling the hub feed (no-op when the HMAC secret is unset → seed-only).
 nodePool.start();

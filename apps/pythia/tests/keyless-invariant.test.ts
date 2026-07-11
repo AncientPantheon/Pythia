@@ -20,10 +20,22 @@ const SERVICE_SRC = join(
 
 describe("keyless invariant scanner", () => {
   it("exposes the exact banned broadcast/signing symbol list", () => {
-    // These five are the signing/submit-client surface the keyless gateway must
-    // never reach — Pythia never signs; it relays caller-signed payloads.
+    // The signing/submit-client surface + the dalos-crypto key-GENERATION entry
+    // points. Pythia never signs and never generates a key; it relays caller-signed
+    // payloads and only ever calls the pure-public-data `Apollo.verify`.
     expect([...BANNED_BROADCAST_SYMBOLS].sort()).toEqual(
-      ["createClient", "getFailoverClient", "listen", "pollOne", "submit"].sort(),
+      [
+        "createClient",
+        "generateFromBitString",
+        "generateFromBitmap",
+        "generateFromInteger",
+        "generateFromSeedWords",
+        "generateRandom",
+        "getFailoverClient",
+        "listen",
+        "pollOne",
+        "submit",
+      ].sort(),
     );
   });
 
@@ -131,13 +143,16 @@ describe("keyless invariant scanner", () => {
     ).toEqual([]);
   });
 
-  it("imports NOTHING from any @stoachain/* module — the gateway is self-contained", () => {
-    // The keyless pivot dropped the last @stoachain couplings (the decode-baked
-    // balance reads). Pythia now depends on no sibling package at all; every real
-    // source module must carry zero @stoachain import specifiers. The scanner file
-    // and this invariant test enumerate the names in fixtures/comments, so they
-    // are excluded as the enforcement mechanism, not transport code.
+  it("imports nothing from @stoachain/* except the keyless dalos-crypto verify primitive", () => {
+    // The keyless pivot dropped the sibling couplings. The ONE sanctioned exception
+    // is `@stoachain/dalos-crypto/registry`, used SOLELY for `Apollo.verify` (pure
+    // public-data signature check — no key, no sign; see apolloVerify.ts). Every
+    // OTHER @stoachain specifier stays banned. This catches BOTH static
+    // `from "@stoachain/…"` and dynamic `import("@stoachain/…")` — the latter is how
+    // apolloVerify.ts loads the primitive, so the exception must be real, not a
+    // regex blind spot. The scanner file enumerates names, so it is excluded.
     const ENFORCEMENT_FILES = new Set(["keylessScanner.ts"]);
+    const ALLOWED = new Set(["@stoachain/dalos-crypto/registry"]);
     const files: string[] = [];
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir)) {
@@ -150,9 +165,32 @@ describe("keyless invariant scanner", () => {
       }
     };
     walk(SERVICE_SRC);
-    const offenders = files.filter((f) =>
-      /from\s+["']@stoachain\//.test(readFileSync(f, "utf8")),
-    );
+    const specifier = /(?:from\s+|import\s*\(\s*)["'](@stoachain\/[^"']+)["']/g;
+    const offenders: { file: string; module: string }[] = [];
+    for (const f of files) {
+      const src = readFileSync(f, "utf8");
+      let m: RegExpExecArray | null;
+      specifier.lastIndex = 0;
+      while ((m = specifier.exec(src)) !== null) {
+        if (!ALLOWED.has(m[1])) offenders.push({ file: f, module: m[1] });
+      }
+    }
     expect(offenders).toEqual([]);
+  });
+
+  it("catches a banned module smuggled in via DYNAMIC import()", () => {
+    // The dynamic form (`await import("…")`) previously evaded scanForBannedImports.
+    // Prove it is now caught, so a lazy import of the write-capable network module
+    // can't slip past the boundary.
+    const dir = mkdtempSync(join(tmpdir(), "pythia-dynimport-"));
+    writeFileSync(
+      join(dir, "sneaky.ts"),
+      `export async function x() {\n  const net = await import("@stoachain/stoa-core/network");\n  return net;\n}\n`,
+    );
+    const violations = scanForBannedImports(dir);
+    expect(violations.map((v) => v.importPath)).toContain(
+      "@stoachain/stoa-core/network",
+    );
+    rmSync(dir, { recursive: true, force: true });
   });
 });

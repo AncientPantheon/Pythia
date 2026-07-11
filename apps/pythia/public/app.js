@@ -298,6 +298,7 @@ let regState = {
   smart: { search: "", page: 0 },
   selStd: null,
   selSmart: null,
+  proven: [], // apollo accounts proven this session (server truth)
 };
 let halvesReqSeq = 0;
 
@@ -387,25 +388,28 @@ function halfRow(h, side, selected) {
 }
 
 // Clicking a half toggles it: pick it, or unpick it if it's the current pick.
-// Any selection change invalidates a prior ownership proof (a new pair must be
-// re-verified before the Link step can unlock).
 function selectHalf(side, h) {
   const cur = side === "std" ? regState.selStd : regState.selSmart;
   const same = cur && cur["apollo-account"] === h["apollo-account"];
   const next = same ? null : h;
   if (side === "std") regState.selStd = next;
   else regState.selSmart = next;
-  verificationProven = false;
   renderHalves(side);
   updateActionBar();
 }
 
-// Two-stage flow: (1) VERIFY ownership of both selected unlinked halves — enabled
-// only when two unlinked halves are picked; (2) LINK — stays locked until Pythia
-// confirms the ownership proof, then lights up (its on-chain action is wired
-// later: it will signal the AncientHub DALOS Automaton to submit the link tx).
-let verificationProven = false;
+// `regState.proven` is the SERVER's truth — the set of apollo accounts this
+// browser session has proven ownership of (from /api/connectors/verify/status).
+// A half is "verified" iff its account is in that set; the pair is verified when
+// BOTH selected halves are. Nothing client-side is trusted for unlocking Link.
+function isHalfProven(h) {
+  return !!h && regState.proven.includes(h["apollo-account"]);
+}
 
+// Two-stage flow: (1) VERIFY ownership of both selected unlinked halves — enabled
+// when two unlinked halves are picked; (2) LINK — stays locked until BOTH halves
+// are proven, then lights up (its on-chain action is deferred: it will signal the
+// AncientHub DALOS Automaton to submit the link tx).
 function updateActionBar() {
   const verifyBtn = document.getElementById("verify-btn");
   const linkBtn = document.getElementById("link-btn");
@@ -413,6 +417,8 @@ function updateActionBar() {
   if (!verifyBtn || !linkBtn || !sel) return;
   const s = regState.selStd;
   const m = regState.selSmart;
+  const sProven = isHalfProven(s);
+  const mProven = isHalfProven(m);
 
   sel.textContent = "";
   if (!s && !m) {
@@ -422,10 +428,10 @@ function updateActionBar() {
     pair.className = "link-pair";
     const std = document.createElement("code");
     std.className = "apollo--std";
-    std.textContent = s ? shortApollo(s["apollo-account"]) : "₱. —";
+    std.textContent = (s ? shortApollo(s["apollo-account"]) : "₱. —") + (sProven ? " ✓" : "");
     const smart = document.createElement("code");
     smart.className = "apollo--smart";
-    smart.textContent = m ? shortApollo(m["apollo-account"]) : "Π. —";
+    smart.textContent = (m ? shortApollo(m["apollo-account"]) : "Π. —") + (mProven ? " ✓" : "");
     pair.append(std, document.createTextNode(" ↔ "), smart);
     sel.appendChild(pair);
     const warn = [];
@@ -436,20 +442,34 @@ function updateActionBar() {
       w.className = "link-warn";
       w.textContent = " — " + warn.join("; ");
       sel.appendChild(w);
-    } else if (verificationProven && s && m) {
-      const ok = document.createElement("span");
-      ok.className = "link-ok";
-      ok.textContent = " — ownership verified";
-      sel.appendChild(ok);
+    } else if (s && m) {
+      const note = document.createElement("span");
+      if (sProven && mProven) { note.className = "link-ok"; note.textContent = " — both halves verified"; }
+      else if (sProven || mProven) { note.className = "link-warn"; note.textContent = " — one half verified; verify the other (load the Codex that holds it)"; }
+      sel.appendChild(note);
     }
   }
 
   const bothUnlinked = !!(s && m && isUnlinked(s.counterpart) && isUnlinked(m.counterpart));
   verifyBtn.disabled = !bothUnlinked;
-  linkBtn.disabled = !(bothUnlinked && verificationProven);
-  linkBtn.title = verificationProven
+  linkBtn.disabled = !(bothUnlinked && sProven && mProven);
+  linkBtn.title = sProven && mProven
     ? "Submit the on-chain link"
-    : "Unlocks once Pythia confirms ownership";
+    : "Unlocks once both halves are verified";
+}
+
+// Pull the proven set from the server and refresh the action bar.
+async function loadProven() {
+  try {
+    const res = await fetch("/api/connectors/verify/status", {
+      headers: { accept: "application/json" },
+    });
+    const body = await res.json();
+    regState.proven = Array.isArray(body.proven) ? body.proven : [];
+  } catch {
+    /* keep the last-known set */
+  }
+  updateActionBar();
 }
 
 // Stage 1 — VERIFY ownership. Pythia is keyless, so it can't sign; this popup
@@ -510,27 +530,56 @@ function openVerifyPopup() {
   }
   modal.appendChild(select);
 
-  const buildUrl = () => {
+  const callbackUrl = location.origin + "/connectors/verify/callback";
+  const buildUrl = (nonce) => {
     const loc = VERIFY_LOCATIONS.find((l) => l.id === select.value) || VERIFY_LOCATIONS[0];
-    const ret = location.origin + "/#connectors";
-    return `${loc.base}/pythia-link?standard=${encodeURIComponent(std)}&smart=${encodeURIComponent(smart)}&return=${encodeURIComponent(ret)}`;
+    return (
+      `${loc.base}/pythia-verify?standard=${encodeURIComponent(std)}` +
+      `&smart=${encodeURIComponent(smart)}` +
+      `&challenge=${encodeURIComponent(nonce)}` +
+      `&callback=${encodeURIComponent(callbackUrl)}`
+    );
   };
-  modal.appendChild(el("span", "modal-lbl", "Hand-off link"));
-  const preview = el("code", "modal-link", buildUrl());
-  select.addEventListener("change", () => { preview.textContent = buildUrl(); });
+  modal.appendChild(el("span", "modal-lbl", "Hand-off link (nonce added on open)"));
+  const preview = el("code", "modal-link", buildUrl("<challenge>"));
+  select.addEventListener("change", () => { preview.textContent = buildUrl("<challenge>"); });
   modal.appendChild(preview);
+
+  const err = el("p", "conn-error", "");
+  err.hidden = true;
+  modal.appendChild(err);
 
   const actions = el("div", "modal-actions");
   const go = document.createElement("button");
   go.className = "btn btn--primary";
   go.type = "button";
   go.textContent = "Open verifier ↗";
-  go.addEventListener("click", () => window.open(buildUrl(), "_blank", "noopener,noreferrer"));
+  go.addEventListener("click", async () => {
+    err.hidden = true;
+    go.disabled = true;
+    try {
+      // Mint a nonce bound to this pair + browser session, remember what we're
+      // verifying (survives the round-trip), then hand off to the verifier.
+      const res = await fetch("/api/connectors/verify/start", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ standard: std, smart }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.nonce) throw new Error(body.error || "could not start verification");
+      sessionStorage.setItem("pythia_verify_pending", JSON.stringify({ standard: std, smart }));
+      window.location.href = buildUrl(body.nonce); // same-tab; returns to /#connectors
+    } catch (e) {
+      go.disabled = false;
+      err.textContent = e.message || "could not start verification";
+      err.hidden = false;
+    }
+  });
   const done = document.createElement("button");
   done.className = "btn btn--ghost";
   done.type = "button";
   done.textContent = "Done — recheck";
-  done.addEventListener("click", () => { close(); loadHalves(); loadDualLinks(); });
+  done.addEventListener("click", () => { close(); loadProven(); loadHalves(); loadDualLinks(); });
   const cancel = document.createElement("button");
   cancel.className = "btn btn--ghost";
   cancel.type = "button";
@@ -544,15 +593,51 @@ function openVerifyPopup() {
   go.focus(); // move focus into the dialog for keyboard users
 }
 
+// After returning from a verifier, restore the pair we were proving, reload the
+// halves + proven set, and let updateActionBar light up Link if both verified.
+// The pending flag survives a partial (one-of-two) proof so the user can resume
+// at another Codex; it clears once both halves are proven.
+async function resumePendingVerify() {
+  let pending = null;
+  try {
+    pending = JSON.parse(sessionStorage.getItem("pythia_verify_pending") || "null");
+  } catch {
+    pending = null;
+  }
+  if (!pending || !pending.standard || !pending.smart) return;
+
+  showTab("connectors");
+  const regBtn = document.querySelector('#conn-subtabs [data-subtab="register"]');
+  if (regBtn) regBtn.click(); // switch to the register sub-panel
+  await loadHalves(); // authoritative reload to re-point selection against
+  regState.selStd = regState.halves.find((h) => h["apollo-account"] === pending.standard) || null;
+  regState.selSmart = regState.halves.find((h) => h["apollo-account"] === pending.smart) || null;
+  renderHalves("std");
+  renderHalves("smart");
+  await loadProven();
+  // Clear the resume marker only once BOTH halves are re-selected AND proven — so a
+  // failed halves reload (empty list → null selection) doesn't discard a still-
+  // usable pending state and leave Link un-lit.
+  if (
+    regState.selStd &&
+    regState.selSmart &&
+    regState.proven.includes(pending.standard) &&
+    regState.proven.includes(pending.smart)
+  ) {
+    sessionStorage.removeItem("pythia_verify_pending");
+  }
+}
+
 // Wire the Connectors tab once at boot (elements are static in the panel).
 function wireConnectors() {
   const panel = document.querySelector('[data-panel="connectors"]');
   if (!panel) return;
   wireSubtabs(document.getElementById("conn-subtabs"), panel);
 
-  // Lazy-load the halves the first time the register sub-tab is opened.
+  // Lazy-load the halves the first time the register sub-tab is opened; always
+  // refresh the proven set so returning verifications reflect immediately.
   const regBtn = panel.querySelector('[data-subtab="register"]');
-  if (regBtn) regBtn.addEventListener("click", () => { if (!regState.loaded) loadHalves(); });
+  if (regBtn) regBtn.addEventListener("click", () => { if (!regState.loaded) loadHalves(); loadProven(); });
 
   const filter = document.getElementById("dl-filter");
   if (filter) {
@@ -1496,6 +1581,7 @@ function showTab(name) {
   if (name === "connectors") {
     loadDualLinks(); // default sub-tab; halves load lazily on the register tab
     if (regState.loaded) loadHalves();
+    loadProven(); // refresh which halves are already verified this session
   }
 }
 
@@ -1520,3 +1606,4 @@ startHealthPill();
 loadMe(); // /api/me → renders the header + reveals the ancient-only Hub feed tab
 loadStats();
 showTab("chains");
+resumePendingVerify(); // if we just came back from a verifier, restore + light up Link

@@ -14,6 +14,15 @@ export const BANNED_BROADCAST_SYMBOLS = [
   "pollOne",
   "createClient",
   "getFailoverClient",
+  // Key-GENERATION entry points on any dalos-crypto primitive. Pythia may call
+  // `Apollo.verify` (pure public-data), but it must NEVER generate or hold a key —
+  // banning these prevents an accidental keypair ever existing in Pythia's source,
+  // which is what a `sign` call would require. Unambiguous names (no prose clash).
+  "generateRandom",
+  "generateFromSeedWords",
+  "generateFromBitString",
+  "generateFromInteger",
+  "generateFromBitmap",
 ] as const;
 
 export type BannedSymbol = (typeof BANNED_BROADCAST_SYMBOLS)[number];
@@ -54,12 +63,14 @@ const bannedPattern = new RegExp(
   "g",
 );
 
-// Matches both `import ... from "<mod>"` (incl. bare `import "<mod>"`) and
-// `require("<mod>")` so a CJS interop shim cannot smuggle the module in.
+// Matches every way a module specifier can enter the graph: `... from "<mod>"`,
+// bare `import "<mod>"`, `require("<mod>")`, AND dynamic `import("<mod>")`. The
+// dynamic form is the one a CJS/lazy shim would otherwise smuggle a banned module
+// in through (it evaded the earlier pattern).
 function bannedImportPatternFor(mod: string): RegExp {
   const escaped = mod.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(
-    `(?:from|import|require\\s*\\()\\s*["']${escaped}["']`,
+    `(?:from\\s+|require\\s*\\(\\s*|import\\s*\\(\\s*|import\\s+)["']${escaped}["']`,
   );
 }
 
