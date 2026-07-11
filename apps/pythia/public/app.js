@@ -99,95 +99,459 @@ function pillError() {
   text.textContent = "status unavailable";
 }
 
-// ── connectors ──────────────────────────────────────────────────────────────
-function renderConnectors(container, connectors) {
-  container.textContent = "";
-  if (!connectors || connectors.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "No connectors listed yet.";
-    container.appendChild(empty);
-    return;
+// ── connectors: on-chain consumer API keys (read THROUGH Pythia) ─────────────
+// A consumer key lives in ouronet-ns.PYTHIA as a "dual link": a Standard (₱.)
+// half — the Pythia side — linked to a Smart (Π.) half — the consumer side.
+// This tab reads that state live off StoaChain via Pythia's own /stoachain/read,
+// so it dogfoods the read gateway and stays keyless.
+const PYTHIA_NS = "ouronet-ns";
+const CONN_CHAIN_ID = 0; // ouronet-ns.PYTHIA + DPL-UR live on chain 0.
+const BAR = "|"; // Pact sentinel: an ApiKey half whose counterpart == BAR is UNLINKED.
+const DL_PAGE = 15;
+const HALF_PAGE = 12;
+
+// Verification points that hold the DALOS seed and can prove Apollo ownership +
+// submit the link tx. Pythia never signs — it only deep-links out to one of these.
+const VERIFY_LOCATIONS = [
+  { id: "wallet", label: "OuronetUI · production", base: "https://wallet.ouronetwork.io" },
+  { id: "devwallet", label: "OuronetUI · dev", base: "https://devwallet.ouronetwork.io" },
+  { id: "ouronet-local", label: "OuronetUI · localhost", base: "http://localhost:5173" },
+  { id: "codex-local", label: "Standalone Codex · localhost", base: "http://localhost:5174" },
+  { id: "mnemosyne", label: "Mnemosyne · codex.ancientholdings.eu", base: "https://codex.ancientholdings.eu" },
+];
+
+// One dirty read through Pythia. Returns the Pact value, or throws with the
+// node's own failure message. chainweb /local shape: { result:{ status, data|error } }.
+async function pythiaRead(code) {
+  const res = await fetch("/stoachain/read", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ chainId: CONN_CHAIN_ID, code }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    // Pythia's own error envelope: { code, error } (e.g. pool exhausted / no node).
+    const msg = body && (body.error || body.code);
+    throw new Error(msg ? String(msg) : `HTTP ${res.status}`);
   }
-  for (const connector of connectors) {
-    const link = document.createElement("a");
-    link.className = "connector";
-    link.href = connector.url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    if (connector.logo !== undefined) {
-      const img = document.createElement("img");
-      img.className = "connector-logo";
-      img.src = connector.logo;
-      img.alt = `${connector.name} logo`;
-      link.appendChild(img);
-    }
-    const label = document.createElement("span");
-    label.textContent = connector.name;
-    link.appendChild(label);
-    container.appendChild(link);
+  const result = body && body.result;
+  if (!result) throw new Error("malformed node response");
+  if (result.status !== "success") {
+    // A node failure's `error` can be an object ({message}/{msg}) or a bare string.
+    const err = result.error;
+    const msg = typeof err === "string" ? err : err && (err.message || err.msg);
+    throw new Error(msg || "read rejected by the node");
   }
+  return result.data;
 }
 
-// Admin view of connectors: name, url, key prefix, public badge, revoke.
-function renderAdminConnectors(container, connectors) {
-  container.textContent = "";
-  if (!connectors || connectors.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "No connectors yet. Add one above.";
-    container.appendChild(empty);
-    return;
-  }
-  for (const conn of connectors) {
-    const card = document.createElement("div");
-    card.className = "connector-admin";
+// Apollo halves are distinguished by their account-string prefix: ₱. = Standard
+// (Pythia side), Π. = Smart (consumer side). Match by CODE POINT (₱ = U+20B1,
+// Π = U+03A0) so source/transport encoding can never break the split.
+function isStandardApollo(a) { return typeof a === "string" && a.codePointAt(0) === 0x20b1; }
+function isSmartApollo(a) { return typeof a === "string" && a.codePointAt(0) === 0x03a0; }
+function isUnlinked(counterpart) { return !counterpart || counterpart === BAR; }
 
-    const head = document.createElement("div");
-    head.className = "ca-head";
-    const nm = document.createElement("b");
-    nm.textContent = conn.name;
-    head.appendChild(nm);
-    if (conn.isPublic) {
-      const badge = document.createElement("span");
-      badge.className = "ca-badge";
-      badge.textContent = "public";
-      head.appendChild(badge);
-    }
-
-    const url = document.createElement("a");
-    url.className = "ca-url";
-    url.href = conn.url;
-    url.target = "_blank";
-    url.rel = "noopener noreferrer";
-    url.textContent = conn.url;
-
-    const key = document.createElement("code");
-    key.className = "ca-key";
-    key.textContent = `${conn.keyPrefix}…`;
-
-    const revoke = document.createElement("button");
-    revoke.className = "btn btn--ghost btn--small ca-revoke";
-    revoke.type = "button";
-    revoke.textContent = "Revoke";
-    revoke.addEventListener("click", () => revokeConnector(conn.id, conn.name));
-
-    card.append(head, url, key, revoke);
-    container.appendChild(card);
-  }
+// Pact `time` serializes as {"time":"…"} / {"timep":"…"} / a bare ISO string.
+function fmtTime(v) {
+  const s = typeof v === "string" ? v : v && (v.time || v.timep);
+  if (!s) return "";
+  return String(s).replace("T", " ").replace(/\.\d+/, "").replace("Z", "");
 }
 
-async function revokeConnector(id, name) {
-  if (!window.confirm(`Revoke connector "${name}"? Its API key stops working immediately.`)) return;
+function shortApollo(a) {
+  if (typeof a !== "string") return "—";
+  return a.length > 24 ? `${a.slice(0, 14)}…${a.slice(-6)}` : a;
+}
+
+// Shared ‹ n/N › pager. onGo(pageIndex) re-renders at the chosen page.
+function renderPager(elmt, page, pageCount, onGo) {
+  elmt.textContent = "";
+  if (pageCount <= 1) return;
+  const arrow = (label, target, disabled) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pg-btn";
+    b.textContent = label;
+    b.disabled = disabled;
+    if (!disabled) b.addEventListener("click", () => onGo(target));
+    return b;
+  };
+  const label = document.createElement("span");
+  label.className = "pg-label";
+  label.textContent = `${page + 1} / ${pageCount}`;
+  elmt.append(arrow("‹", page - 1, page === 0), label, arrow("›", page + 1, page >= pageCount - 1));
+}
+
+// ── sub-tab 1: full API keys (dual-links) ───────────────────────────────────
+let dlState = { filter: "all", search: "", page: 0, rows: [] };
+let dlReqSeq = 0; // guards against a slow earlier fetch clobbering a newer one
+
+async function loadDualLinks() {
+  const status = document.getElementById("dl-status");
+  const list = document.getElementById("dl-list");
+  if (!status || !list) return;
+  const seq = ++dlReqSeq;
+  status.textContent = "reading chain…";
+  const fn =
+    dlState.filter === "active"
+      ? "URD_ListActiveDualLinks"
+      : dlState.filter === "inactive"
+        ? "URD_ListInactiveDualLinks"
+        : "URD_ListAllDualLinks";
   try {
-    const res = await fetch(`/admin/connectors/${encodeURIComponent(id)}/revoke`, {
-      method: "POST",
-      headers: { accept: "application/json" },
-    });
-    if (res.ok) loadConnectorsView();
-  } catch {
-    /* ignore — the list simply won't change */
+    const data = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.${fn})`);
+    if (seq !== dlReqSeq) return; // a newer request superseded this one
+    dlState.rows = Array.isArray(data) ? data : [];
+    dlState.page = 0;
+    const n = dlState.rows.length;
+    status.textContent = `${n} full key${n === 1 ? "" : "s"} on chain`;
+    renderDualLinks();
+  } catch (e) {
+    if (seq !== dlReqSeq) return;
+    dlState.rows = [];
+    list.textContent = "";
+    status.textContent = `read failed — ${e.message}`;
+    renderDualLinks();
   }
+}
+
+function filteredDL() {
+  const q = dlState.search.trim().toLowerCase();
+  if (!q) return dlState.rows;
+  return dlState.rows.filter(
+    (r) =>
+      String(r["standard-apollo"] || "").toLowerCase().includes(q) ||
+      String(r["smart-apollo"] || "").toLowerCase().includes(q),
+  );
+}
+
+function renderDualLinks() {
+  const list = document.getElementById("dl-list");
+  const pager = document.getElementById("dl-pager");
+  if (!list) return;
+  const rows = filteredDL();
+  const pageCount = Math.max(1, Math.ceil(rows.length / DL_PAGE));
+  if (dlState.page >= pageCount) dlState.page = pageCount - 1;
+  const slice = rows.slice(dlState.page * DL_PAGE, dlState.page * DL_PAGE + DL_PAGE);
+  list.textContent = "";
+  if (!slice.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = dlState.rows.length ? "No keys match your search." : "No full API keys linked yet.";
+    list.appendChild(p);
+  } else {
+    for (const r of slice) list.appendChild(dualLinkRow(r));
+  }
+  if (pager) renderPager(pager, dlState.page, pageCount, (p) => { dlState.page = p; renderDualLinks(); });
+}
+
+function dualLinkRow(r) {
+  const active = r["iz-active"] === true;
+  const row = document.createElement("div");
+  row.className = "dl-row" + (active ? "" : " dl-row--off");
+
+  const main = document.createElement("div");
+  main.className = "dl-main";
+  const std = document.createElement("code");
+  std.className = "apollo apollo--std";
+  std.textContent = shortApollo(r["standard-apollo"]);
+  std.title = r["standard-apollo"] || "";
+  const arrow = document.createElement("span");
+  arrow.className = "dl-arrow";
+  arrow.textContent = "↔";
+  const smart = document.createElement("code");
+  smart.className = "apollo apollo--smart";
+  smart.textContent = shortApollo(r["smart-apollo"]);
+  smart.title = r["smart-apollo"] || "";
+  main.append(std, arrow, smart);
+
+  const meta = document.createElement("div");
+  meta.className = "dl-meta";
+  const badge = document.createElement("span");
+  badge.className = "dl-badge " + (active ? "dl-badge--on" : "dl-badge--off");
+  badge.textContent = active ? "active" : "inactive";
+  meta.appendChild(badge);
+  if (r["consumer-lane"] && r["consumer-lane"] !== BAR) {
+    const lane = document.createElement("span");
+    lane.className = "dl-lane";
+    lane.textContent = r["consumer-lane"];
+    meta.appendChild(lane);
+  }
+  const when = fmtTime(r["linked-at"]);
+  if (when) {
+    const t = document.createElement("span");
+    t.className = "dl-when";
+    t.textContent = `linked ${when}`;
+    meta.appendChild(t);
+  }
+
+  row.append(main, meta);
+  return row;
+}
+
+// ── sub-tab 2: register — link two unlinked halves ──────────────────────────
+let regState = {
+  halves: [],
+  loaded: false,
+  std: { search: "", page: 0 },
+  smart: { search: "", page: 0 },
+  selStd: null,
+  selSmart: null,
+};
+let halvesReqSeq = 0;
+
+async function loadHalves() {
+  const status = document.getElementById("reg-status");
+  const seq = ++halvesReqSeq;
+  if (status) status.textContent = "reading chain…";
+  try {
+    const data = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.URD_ListAllApiKeys)`);
+    if (seq !== halvesReqSeq) return; // superseded by a newer reload
+    regState.halves = Array.isArray(data) ? data : [];
+    regState.loaded = true;
+    // A prior selection may be stale after a reload — re-point it to the fresh row.
+    regState.selStd = reselect(regState.selStd);
+    regState.selSmart = reselect(regState.selSmart);
+    if (status) {
+      const n = regState.halves.length;
+      status.textContent = `${n} half-key${n === 1 ? "" : "s"} on chain`;
+    }
+    renderHalves("std");
+    renderHalves("smart");
+    updateLinkButton();
+  } catch (e) {
+    if (seq !== halvesReqSeq) return;
+    if (status) status.textContent = `read failed — ${e.message}`;
+  }
+}
+
+function reselect(sel) {
+  if (!sel) return null;
+  return regState.halves.find((h) => h["apollo-account"] === sel["apollo-account"]) || null;
+}
+
+function halvesFor(side) {
+  const pred = side === "std" ? isStandardApollo : isSmartApollo;
+  const q = regState[side].search.trim().toLowerCase();
+  return regState.halves.filter((h) => {
+    const acct = h["apollo-account"];
+    if (!pred(acct)) return false;
+    if (q && !String(acct).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+function renderHalves(side) {
+  const list = document.querySelector(`[data-role="${side}-list"]`);
+  const pager = document.querySelector(`[data-role="${side}-pager"]`);
+  if (!list) return;
+  const rows = halvesFor(side);
+  const pageCount = Math.max(1, Math.ceil(rows.length / HALF_PAGE));
+  if (regState[side].page >= pageCount) regState[side].page = pageCount - 1;
+  const slice = rows.slice(regState[side].page * HALF_PAGE, regState[side].page * HALF_PAGE + HALF_PAGE);
+  list.textContent = "";
+  if (!slice.length) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = regState.halves.length ? "No halves match." : "No halves registered yet.";
+    list.appendChild(p);
+  } else {
+    const selected = side === "std" ? regState.selStd : regState.selSmart;
+    for (const h of slice) list.appendChild(halfRow(h, side, selected));
+  }
+  if (pager) renderPager(pager, regState[side].page, pageCount, (p) => { regState[side].page = p; renderHalves(side); });
+}
+
+function halfRow(h, side, selected) {
+  const acct = h["apollo-account"];
+  const unlinked = isUnlinked(h.counterpart);
+  const isSel = selected && selected["apollo-account"] === acct;
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className =
+    "half-row" + (isSel ? " half-row--sel" : "") + (unlinked ? "" : " half-row--linked");
+
+  const label = document.createElement("code");
+  label.className = "half-acct";
+  label.textContent = shortApollo(acct);
+  label.title = acct || "";
+
+  const badge = document.createElement("span");
+  badge.className = "half-badge " + (unlinked ? "half-badge--free" : "half-badge--linked");
+  badge.textContent = unlinked ? "unlinked" : "linked";
+
+  row.append(label, badge);
+  row.addEventListener("click", () => selectHalf(side, h));
+  return row;
+}
+
+function selectHalf(side, h) {
+  if (side === "std") regState.selStd = h;
+  else regState.selSmart = h;
+  renderHalves(side);
+  updateLinkButton();
+}
+
+function updateLinkButton() {
+  const btn = document.getElementById("link-btn");
+  const sel = document.getElementById("link-selection");
+  if (!btn || !sel) return;
+  const s = regState.selStd;
+  const m = regState.selSmart;
+  sel.textContent = "";
+  if (!s || !m) {
+    sel.textContent = "Select one unlinked half from each side.";
+    btn.disabled = true;
+    return;
+  }
+  const sU = isUnlinked(s.counterpart);
+  const mU = isUnlinked(m.counterpart);
+  const pair = document.createElement("span");
+  pair.className = "link-pair";
+  const a = document.createElement("code");
+  a.className = "apollo--std";
+  a.textContent = shortApollo(s["apollo-account"]);
+  const b = document.createElement("code");
+  b.className = "apollo--smart";
+  b.textContent = shortApollo(m["apollo-account"]);
+  pair.append(a, document.createTextNode(" ↔ "), b);
+  sel.appendChild(pair);
+  if (sU && mU) {
+    btn.disabled = false;
+  } else {
+    btn.disabled = true;
+    const warn = document.createElement("span");
+    warn.className = "link-warn";
+    warn.textContent = ` — ${!sU && !mU ? "both halves are" : "one half is"} already linked`;
+    sel.appendChild(warn);
+  }
+}
+
+// The Link hand-off: Pythia is keyless, so it can't sign the link tx. This popup
+// deep-links out to a wallet/Codex that holds the user's DALOS seed, which proves
+// Apollo ownership + submits the link (250 STOA at activation), then returns.
+function openLinkPopup() {
+  const s = regState.selStd;
+  const m = regState.selSmart;
+  if (!s || !m || !isUnlinked(s.counterpart) || !isUnlinked(m.counterpart)) return;
+  const std = s["apollo-account"];
+  const smart = m["apollo-account"];
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  const prevFocus = document.activeElement;
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  // Single close path so EVERY dismissal (Escape, backdrop, Cancel, refresh)
+  // unbinds the document listener — no per-open handler leak.
+  const close = () => {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+    if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
+  };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", onKey);
+
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.appendChild(el("h3", "modal-h", "Link halves → full API key"));
+  modal.appendChild(
+    el(
+      "p",
+      "modal-note",
+      "Pythia is keyless — it never signs. To prove you own both Apollo accounts and submit the on-chain link (250 STOA charged at activation), continue in a wallet or Codex that holds your DALOS seed.",
+    ),
+  );
+
+  const pair = el("div", "modal-pair");
+  pair.append(
+    el("span", "mp-lbl", "Standard ₱."),
+    el("code", "apollo--std", std),
+    el("span", "mp-lbl", "Smart Π."),
+    el("code", "apollo--smart", smart),
+  );
+  modal.appendChild(pair);
+
+  modal.appendChild(el("label", "modal-lbl", "Verify at"));
+  const select = document.createElement("select");
+  select.className = "modal-select";
+  for (const loc of VERIFY_LOCATIONS) {
+    const o = document.createElement("option");
+    o.value = loc.id;
+    o.textContent = loc.label;
+    select.appendChild(o);
+  }
+  modal.appendChild(select);
+
+  const buildUrl = () => {
+    const loc = VERIFY_LOCATIONS.find((l) => l.id === select.value) || VERIFY_LOCATIONS[0];
+    const ret = location.origin + "/#connectors";
+    return `${loc.base}/pythia-link?standard=${encodeURIComponent(std)}&smart=${encodeURIComponent(smart)}&return=${encodeURIComponent(ret)}`;
+  };
+  modal.appendChild(el("span", "modal-lbl", "Hand-off link"));
+  const preview = el("code", "modal-link", buildUrl());
+  select.addEventListener("change", () => { preview.textContent = buildUrl(); });
+  modal.appendChild(preview);
+
+  const actions = el("div", "modal-actions");
+  const go = document.createElement("button");
+  go.className = "btn btn--primary";
+  go.type = "button";
+  go.textContent = "Open verifier ↗";
+  go.addEventListener("click", () => window.open(buildUrl(), "_blank", "noopener,noreferrer"));
+  const done = document.createElement("button");
+  done.className = "btn btn--ghost";
+  done.type = "button";
+  done.textContent = "I've linked — refresh";
+  done.addEventListener("click", () => { close(); loadHalves(); loadDualLinks(); });
+  const cancel = document.createElement("button");
+  cancel.className = "btn btn--ghost";
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", close);
+  actions.append(go, done, cancel);
+  modal.appendChild(actions);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  go.focus(); // move focus into the dialog for keyboard users
+}
+
+// Wire the Connectors tab once at boot (elements are static in the panel).
+function wireConnectors() {
+  const panel = document.querySelector('[data-panel="connectors"]');
+  if (!panel) return;
+  wireSubtabs(document.getElementById("conn-subtabs"), panel);
+
+  // Lazy-load the halves the first time the register sub-tab is opened.
+  const regBtn = panel.querySelector('[data-subtab="register"]');
+  if (regBtn) regBtn.addEventListener("click", () => { if (!regState.loaded) loadHalves(); });
+
+  const filter = document.getElementById("dl-filter");
+  if (filter) {
+    filter.querySelectorAll("[data-filter]").forEach((b) => {
+      b.addEventListener("click", () => {
+        dlState.filter = b.dataset.filter;
+        filter.querySelectorAll("[data-filter]").forEach((x) => x.classList.toggle("seg-btn--active", x === b));
+        loadDualLinks();
+      });
+    });
+  }
+  const dlSearch = document.getElementById("dl-search");
+  if (dlSearch) dlSearch.addEventListener("input", () => { dlState.search = dlSearch.value; dlState.page = 0; renderDualLinks(); });
+  const dlRefresh = document.getElementById("dl-refresh");
+  if (dlRefresh) dlRefresh.addEventListener("click", loadDualLinks);
+
+  const stdSearch = panel.querySelector('[data-role="std-search"]');
+  if (stdSearch) stdSearch.addEventListener("input", () => { regState.std.search = stdSearch.value; regState.std.page = 0; renderHalves("std"); });
+  const smartSearch = panel.querySelector('[data-role="smart-search"]');
+  if (smartSearch) smartSearch.addEventListener("input", () => { regState.smart.search = smartSearch.value; regState.smart.page = 0; renderHalves("smart"); });
+  const linkBtn = document.getElementById("link-btn");
+  if (linkBtn) linkBtn.addEventListener("click", openLinkPopup);
+  const regRefresh = document.getElementById("reg-refresh");
+  if (regRefresh) regRefresh.addEventListener("click", loadHalves);
 }
 
 // ── refresh loop ─────────────────────────────────────────────────────────────
@@ -500,9 +864,7 @@ async function loadMe() {
     authState = { authenticated: false, roles: [], name: null };
   }
   renderAuthbox();
-  updateAddConnectorControl();
   updateHubFeedTab();
-  loadConnectorsView();
 }
 
 // ── hub feed (ancient-only): activate the node-pool feed from the UI ──────────
@@ -914,122 +1276,6 @@ function wireHubConfig() {
   }
 }
 
-// ── connectors loader (public list, or admin list for ancient) ───────────────
-async function loadConnectorsView() {
-  const container = document.getElementById("connectors");
-  if (!container) return;
-  if (isAncient()) {
-    try {
-      const res = await fetch("/admin/connectors", { headers: { accept: "application/json" } });
-      if (res.ok) {
-        const body = await res.json();
-        renderAdminConnectors(container, body.connectors ?? []);
-        return;
-      }
-    } catch {
-      /* fall through to the public view */
-    }
-  }
-  try {
-    const res = await fetch("/api/v1/connectors", { headers: { accept: "application/json" } });
-    const body = await res.json();
-    renderConnectors(container, body.connectors ?? []);
-  } catch {
-    /* leave the empty-state message */
-  }
-}
-
-function updateAddConnectorControl() {
-  const btn = document.getElementById("add-connector-btn");
-  const hint = document.getElementById("add-connector-hint");
-  if (!btn) return;
-  const allowed = isAncient();
-  btn.disabled = !allowed;
-  if (hint) {
-    hint.textContent = allowed
-      ? ""
-      : authState.authenticated
-        ? "Your role can't add connectors — the ancient role is required."
-        : "Sign in as an ancient admin to add connectors.";
-  }
-}
-
-function showNewKey(panel, connector, apiKey) {
-  panel.textContent = "";
-  panel.hidden = false;
-  const head = document.createElement("p");
-  head.className = "nk-head";
-  head.textContent = `API key for ${connector.name} — copy it now, it will not be shown again:`;
-  const row = document.createElement("div");
-  row.className = "nk-key";
-  const code = document.createElement("code");
-  code.textContent = apiKey;
-  const copy = document.createElement("button");
-  copy.className = "btn btn--small";
-  copy.type = "button";
-  copy.textContent = "Copy";
-  copy.addEventListener("click", () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(apiKey);
-    copy.textContent = "Copied";
-  });
-  row.append(code, copy);
-  const note = document.createElement("p");
-  note.className = "nk-note";
-  note.textContent = "The connector sends this as the x-pythia-key header on every request.";
-  panel.append(head, row, note);
-}
-
-function wireAddConnector() {
-  const btn = document.getElementById("add-connector-btn");
-  const form = document.getElementById("add-connector-form");
-  const cancel = document.getElementById("add-connector-cancel");
-  const err = document.getElementById("add-connector-error");
-  const keyPanel = document.getElementById("new-key-panel");
-  if (!btn || !form || !keyPanel) return;
-
-  btn.addEventListener("click", () => {
-    form.hidden = false;
-    keyPanel.hidden = true;
-  });
-  if (cancel) cancel.addEventListener("click", () => { form.hidden = true; });
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (err) err.hidden = true;
-    const data = new FormData(form);
-    const payload = {
-      name: (data.get("name") || "").toString().trim(),
-      url: (data.get("url") || "").toString().trim(),
-      logo: (data.get("logo") || "").toString().trim(),
-      isPublic: data.get("isPublic") === "on",
-    };
-    try {
-      const res = await fetch("/admin/connectors", {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (err) {
-          err.textContent = body.error || "Could not create the connector.";
-          err.hidden = false;
-        }
-        return;
-      }
-      form.reset();
-      form.hidden = true;
-      showNewKey(keyPanel, body.connector, body.apiKey);
-      loadConnectorsView();
-    } catch {
-      if (err) {
-        err.textContent = "Network error creating the connector.";
-        err.hidden = false;
-      }
-    }
-  });
-}
-
 function startHealthPill() {
   createRefreshLoop({
     fetchSnapshot: fetchHealth,
@@ -1212,6 +1458,10 @@ function showTab(name) {
     p.hidden = p.dataset.panel !== name;
   });
   if (name === "activity") loadStats(); // refresh usage each time it's opened
+  if (name === "connectors") {
+    loadDualLinks(); // default sub-tab; halves load lazily on the register tab
+    if (regState.loaded) loadHalves();
+  }
 }
 
 function wireTabs() {
@@ -1225,13 +1475,13 @@ function wireTabs() {
 
 // ── init ─────────────────────────────────────────────────────────────────────
 wireTabs();
-wireAddConnector();
+wireConnectors();
 wireHubConfig();
 wireTxSenderForm();
 wireHubSubtabs();
 wireTxSenderBulk();
 renderChainTabs();
 startHealthPill();
-loadMe(); // /api/me → renders the header + loads the right connectors view
+loadMe(); // /api/me → renders the header + reveals the ancient-only Hub feed tab
 loadStats();
 showTab("chains");

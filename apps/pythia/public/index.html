@@ -113,30 +113,59 @@
         </p>
       </section>
 
-      <!-- ── CONNECTORS ───────────────────────────────────────── -->
+      <!-- ── CONNECTORS (on-chain consumer API keys) ──────────── -->
       <section class="panel tabpanel" data-panel="connectors" aria-labelledby="conn-h" hidden>
         <div class="panel-head">
           <h2 id="conn-h">Connectors</h2>
-          <p class="panel-note">Ecosystem apps that read through Pythia.</p>
+          <p class="panel-note">Consumer API keys live on-chain in <code>ouronet-ns.PYTHIA</code>. A full key is a Standard (<b>₱.</b>, Pythia side) half linked to a Smart (<b>Π.</b>, consumer side) half. Read live off StoaChain through Pythia itself.</p>
         </div>
-        <div class="conn-toolbar">
-          <button id="add-connector-btn" class="btn btn--primary" type="button" disabled>Add a new Connector</button>
-          <span id="add-connector-hint" class="conn-hint">Sign in as an ancient admin to add connectors.</span>
-        </div>
-        <form id="add-connector-form" class="conn-form" hidden>
-          <label class="conn-field">Name<input name="name" type="text" required placeholder="OuronetUI" /></label>
-          <label class="conn-field">URL<input name="url" type="url" required placeholder="https://app.example" /></label>
-          <label class="conn-field">Logo URL (optional)<input name="logo" type="url" placeholder="https://…/logo.png" /></label>
-          <label class="conn-check"><input name="isPublic" type="checkbox" /> Show on this public Connectors tab</label>
-          <div class="conn-actions">
-            <button type="submit" class="btn btn--primary">Create connector</button>
-            <button type="button" id="add-connector-cancel" class="btn btn--ghost">Cancel</button>
+
+        <nav class="subtabs" id="conn-subtabs" role="tablist" aria-label="Connector views">
+          <button class="subtab subtab--active" data-subtab="apikeys" role="tab" type="button">Full API Keys</button>
+          <button class="subtab" data-subtab="register" role="tab" type="button">Register / Link halves</button>
+        </nav>
+
+        <!-- SUB-PANEL 1 — full (linked) API keys = dual-links -->
+        <div class="subpanel" data-subpanel="apikeys">
+          <div class="conn-toolbar">
+            <div class="seg" id="dl-filter" role="group" aria-label="Filter dual-links">
+              <button class="seg-btn seg-btn--active" data-filter="all" type="button">All</button>
+              <button class="seg-btn" data-filter="active" type="button">Active</button>
+              <button class="seg-btn" data-filter="inactive" type="button">Inactive</button>
+            </div>
+            <input id="dl-search" class="conn-search" type="search" placeholder="filter by ₱. or Π. half…" />
+            <button id="dl-refresh" class="btn btn--ghost btn--small" type="button">Refresh</button>
           </div>
-          <p class="conn-error" id="add-connector-error" hidden></p>
-        </form>
-        <div id="new-key-panel" class="conn-newkey" hidden></div>
-        <div id="connectors" class="connectors">
-          <p class="empty">No connectors listed yet.</p>
+          <div id="dl-status" class="conn-readstatus" aria-live="polite">…</div>
+          <div id="dl-list" class="dl-list"></div>
+          <div class="pager" id="dl-pager"></div>
+        </div>
+
+        <!-- SUB-PANEL 2 — register: link two unlinked halves into a full key -->
+        <div class="subpanel" data-subpanel="register" hidden>
+          <div class="reg-head">
+            <p class="panel-note reg-note">Pick one <b>unlinked</b> Standard half (left) and one <b>unlinked</b> Smart half (right). When both are unlinked, <b>Link</b> lights up.</p>
+            <button id="reg-refresh" class="btn btn--ghost btn--small" type="button">Refresh</button>
+          </div>
+          <div class="halves">
+            <div class="half-col">
+              <div class="half-head"><h4>Standard <span class="apollo--std">₱.</span> <span class="half-sub">· Pythia side</span></h4></div>
+              <input class="conn-search" data-role="std-search" type="search" placeholder="search Standard halves…" />
+              <div class="half-list" data-role="std-list"></div>
+              <div class="pager" data-role="std-pager"></div>
+            </div>
+            <div class="half-col">
+              <div class="half-head"><h4>Smart <span class="apollo--smart">Π.</span> <span class="half-sub">· consumer side</span></h4></div>
+              <input class="conn-search" data-role="smart-search" type="search" placeholder="search Smart halves…" />
+              <div class="half-list" data-role="smart-list"></div>
+              <div class="pager" data-role="smart-pager"></div>
+            </div>
+          </div>
+          <div class="link-bar">
+            <div class="link-sel" id="link-selection">Select one unlinked half from each side.</div>
+            <button id="link-btn" class="btn btn--primary" type="button" disabled>Link halves</button>
+          </div>
+          <div id="reg-status" class="conn-readstatus" aria-live="polite">…</div>
         </div>
       </section>
 
