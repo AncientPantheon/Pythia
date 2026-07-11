@@ -53,3 +53,8 @@ pythia-stats.json
 pythia-connectors.json
 pythia-settings.json
 pythia-txsenders.json
+
+# local dev launcher + env — holds a localhost-only OIDC client; NEVER commit
+# (repo is public). See apps/pythia/dev-start.sh.
+apps/pythia/dev-start.sh
+*.local.env
