@@ -65,38 +65,58 @@ function renderSources(container, sources, routing) {
   }
 }
 
-// ── hero live pill (service-wide, independent of chain selection) ────────────
-function updateLivePill(snapshot) {
-  const pill = document.getElementById("livepill");
-  const text = document.getElementById("livetext");
-  if (!pill || !text) return;
-  const total = snapshot.sources ? snapshot.sources.length : 0;
-  const up = snapshot.sources ? snapshot.sources.filter((s) => s.reachable).length : 0;
+// ── hero medallions (one per chain; StoaChain shows its two live pools) ──────
+// A single "2/2 nodes" pill no longer fits — StoaChain now runs an Observation
+// Pool (hub-fed reads) + an Upload Pool (signed-tx senders). Each chain gets a
+// medallion; the live one shows both pool sizes and colours by read health.
+function renderMedallions(pools, health) {
+  const wrap = document.getElementById("live-medallions");
+  if (!wrap) return;
+  wrap.textContent = "";
+  for (const chain of CHAINS) {
+    const med = document.createElement("div");
+    med.className = "medallion" + (chain.status === "live" ? "" : " medallion--soon");
+    med.dataset.chain = chain.id;
 
-  let mod = "livepill--down";
-  let msg = "nodes unreachable";
-  if (snapshot.routing === "primary") {
-    mod = "livepill--ok";
-    msg = `live · ${up}/${total} nodes reachable`;
-  } else if (snapshot.routing === "fallback") {
-    mod = "livepill--degr";
-    msg = `degraded · on fallback (${up}/${total})`;
+    const dot = document.createElement("span");
+    dot.className = "med-dot";
+    const name = document.createElement("b");
+    name.className = "med-name";
+    name.textContent = chain.name;
+    const badge = document.createElement("span");
+    badge.className = "med-badge " + (chain.status === "live" ? "med-badge--live" : "med-badge--soon");
+    badge.textContent = chain.status === "live" ? "live" : "soon";
+    const detail = document.createElement("span");
+    detail.className = "med-pools";
+
+    if (chain.status !== "live") {
+      dot.dataset.color = "grey";
+      detail.textContent = "next in line";
+    } else if (chain.id === "stoachain") {
+      // The two pools come from /api/pools; colour by whether reads are being
+      // served by the hub feed (green), the Upload Pool fallback (amber), or
+      // nothing (red).
+      const obs = (pools && pools.observation) || {};
+      const up = (pools && pools.upload) || {};
+      const obsCount = obs.count || 0;
+      const upCount = up.count || 0;
+      const obsLive = !!(obs.configured && obs.ok && obsCount > 0);
+      dot.dataset.color = obsLive ? "green" : upCount > 0 ? "amber" : pools ? "red" : "grey";
+      detail.textContent = pools
+        ? `${obsCount} observation · ${upCount} upload`
+        : "checking…";
+    } else {
+      dot.dataset.color = "grey";
+      detail.textContent = "checking…";
+    }
+
+    med.append(dot, name, badge, detail);
+    wrap.appendChild(med);
   }
-  pill.className = `livepill ${mod}`;
-  text.textContent = msg;
 
-  // Surface the running service version in the footer so a deploy is verifiable
-  // at a glance. /healthz carries it; render it once it's known.
+  // Surface the running service version in the footer (verifiable after a deploy).
   const ver = document.getElementById("version");
-  if (ver && snapshot.version) ver.textContent = `v${snapshot.version}`;
-}
-
-function pillError() {
-  const pill = document.getElementById("livepill");
-  const text = document.getElementById("livetext");
-  if (!pill || !text) return;
-  pill.className = "livepill livepill--down";
-  text.textContent = "status unavailable";
+  if (ver && health && health.version) ver.textContent = `v${health.version}`;
 }
 
 // ── connectors: on-chain consumer API keys (read THROUGH Pythia) ─────────────
@@ -1398,9 +1418,13 @@ function wireHubConfig() {
 
 function startHealthPill() {
   createRefreshLoop({
-    fetchSnapshot: fetchHealth,
-    onSnapshot: updateLivePill,
-    onError: pillError,
+    fetchSnapshot: () =>
+      Promise.all([
+        fetch("/api/pools", { headers: { accept: "application/json" } }).then((r) => r.json()).catch(() => null),
+        fetch("/healthz", { headers: { accept: "application/json" } }).then((r) => r.json()).catch(() => null),
+      ]),
+    onSnapshot: ([pools, health]) => renderMedallions(pools, health),
+    onError: () => renderMedallions(null, null),
     intervalMs: POLL_INTERVAL_MS,
   });
 }
