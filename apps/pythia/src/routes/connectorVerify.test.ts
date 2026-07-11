@@ -39,6 +39,11 @@ async function start(app: Hono, pair: { standard: string; smart: string }): Prom
   });
 }
 
+/** Build the generic `proofs` query value from [account, sig] pairs. */
+function proofsQ(pairs: Array<[string, string]>): string {
+  return encodeURIComponent(JSON.stringify(pairs.map(([apollo, sig]) => ({ apollo, sig }))));
+}
+
 describe("connector verify flow", () => {
   it("rejects a pair that isn't one Standard (₱.) + one Smart (Π.)", async () => {
     const res = await start(appWith(), { standard: STD, smart: STD });
@@ -55,7 +60,7 @@ describe("connector verify flow", () => {
     expect(cookie).toMatch(/^pythia_link=/);
 
     const cb = await app.request(
-      `/connectors/verify/callback?challenge=${nonce}&stdSig=good&smartSig=good`,
+      `/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"good"],[SMART,"good"]])}`,
       { headers: { cookie }, redirect: "manual" },
     );
     expect(cb.status).toBe(302);
@@ -73,7 +78,7 @@ describe("connector verify flow", () => {
     const cookie = cookieFrom(s);
 
     // Standard signature is bad, Smart is good → only Smart proven.
-    await app.request(`/connectors/verify/callback?challenge=${nonce}&stdSig=bad&smartSig=good`, {
+    await app.request(`/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"bad"],[SMART,"good"]])}`, {
       headers: { cookie },
       redirect: "manual",
     });
@@ -88,7 +93,7 @@ describe("connector verify flow", () => {
 
     // An attacker-chosen cookie the server never issued must not be accepted as a
     // session: the callback's good sigs prove nothing under it, and /status is empty.
-    await app.request(`/connectors/verify/callback?challenge=${nonce}&stdSig=good&smartSig=good`, {
+    await app.request(`/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"good"],[SMART,"good"]])}`, {
       headers: { cookie: "pythia_link=attacker-chosen.badmac" },
       redirect: "manual",
     });
@@ -105,7 +110,7 @@ describe("connector verify flow", () => {
     const cookie = cookieFrom(s);
 
     const callback = () =>
-      app.request(`/connectors/verify/callback?challenge=${nonce}&stdSig=good&smartSig=good`, {
+      app.request(`/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"good"],[SMART,"good"]])}`, {
         headers: { cookie },
         redirect: "manual",
       });

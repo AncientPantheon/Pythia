@@ -149,18 +149,33 @@ export function registerConnectorVerify(app: Hono, deps: VerifyDeps): void {
     return c.json({ nonce: challenge.nonce, expiresAt: challenge.expiresAt });
   });
 
-  // 2) The verifier redirects the browser back here with whatever it could sign.
-  //    Verifies each present signature, marks the half proven, bounces to the tab.
+  // 2) The verifier redirects the browser back here with a generic `proofs`
+  //    array — [{apollo, sig}, …] for whatever accounts it could sign. Verify
+  //    each proof whose account belongs to THIS challenge's pair, mark it proven,
+  //    then bounce to the tab.
   app.get("/connectors/verify/callback", async (c) => {
     const nonce = c.req.query("challenge") ?? "";
-    const stdSig = c.req.query("stdSig") ?? "";
-    const smartSig = c.req.query("smartSig") ?? "";
     const sid = currentSid(c) ?? "";
     const challenge = verifyStore.get(nonce);
     // Bind: only the session that requested the challenge can complete it.
     if (challenge && sid && challenge.sessionId === sid) {
-      if (stdSig) await verifyHalf(deps, sid, challenge.standard, nonce, stdSig);
-      if (smartSig) await verifyHalf(deps, sid, challenge.smart, nonce, smartSig);
+      let proofs: Array<{ apollo?: unknown; sig?: unknown }> = [];
+      try {
+        const raw = c.req.query("proofs");
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) proofs = parsed;
+      } catch {
+        proofs = [];
+      }
+      for (const p of proofs) {
+        const apollo = typeof p?.apollo === "string" ? p.apollo : "";
+        const sig = typeof p?.sig === "string" ? p.sig : "";
+        // Only accept a proof for an account THIS challenge was issued for — a
+        // verifier can't get an unrelated account marked proven.
+        if (sig && (apollo === challenge.standard || apollo === challenge.smart)) {
+          await verifyHalf(deps, sid, apollo, nonce, sig);
+        }
+      }
     }
     // Always return to the Connectors tab; the UI reads /status to light up Link.
     return c.redirect("/#connectors", 302);

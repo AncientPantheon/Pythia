@@ -237,4 +237,46 @@ The economy (PythXP → level → Stoicism) is **hub-computed and hub-displayed*
 - **First light:** after both sides deploy, the pool should *enlarge in Pythia* as the hub advertises usable slots. Verify with the hub owner (the hub can independently confirm the feed returns slots for `82.165.48.252`).
 
 ---
-*Generated from a live map of this repo + the deployed hub contract. Contract source of truth: the hub's `/docs/hub/pythia-integration` page and `pages/api/pythia/{nodes,usage}/index.ts`.*
+
+## 9. Pythia Api Link — an EXTERNAL codex-transaction trigger (separate concern)
+
+This is a **distinct** integration from the node-pool (§1–8). It lets Pythia **trigger an on-chain codex transaction on the hub** — the `PYTHIA|A_Link` call — by supplying two strings. Pythia does **not** sign anything (it has no codex): the hub's **Dalos Automaton** signs it with a key that satisfies the `ouronet-ns.pythia-cronoton-keyset`. Pythia is only the **external trigger + the source of the two strings.**
+
+### What the hub built (live)
+A new external trigger endpoint that fires a specific, opted-in codex-cronoton with caller-supplied runtime string args. It reuses the **exact same HMAC service credential + IP allowlist** as the node-pool endpoints (§4.1) — so once you've built the HMAC client, this is just one more signed POST.
+
+### The call
+```
+POST ${HUB}/api/pythia/cronoton-fire/
+```
+- **Auth:** the identical signed envelope as `/api/pythia/nodes` and `/api/pythia/usage` (§2.1) — `{ signature, nonce, timestamp, payload }`, HMAC-SHA256 over canonical `{nonce,payload,timestamp}`, ±300s, single-use nonce, from the allowlisted egress IP.
+- **`payload`:**
+  ```jsonc
+  {
+    "cronotonId": "<uuid>",                 // the "Pythia Api Link" cronoton id — the hub owner gives you this out of band
+    "args": {
+      "standard-apollo": "<string>",        // exactly the two declared runtime-arg keys, both strings
+      "smart-apollo":    "<string>"
+    }
+  }
+  ```
+- **Success `200`:** `{ ok: true, fireId, requestKey }` — `requestKey` is the on-chain request key (poll it on chain to confirm the tx landed).
+- **On-chain failure `200`:** `{ ok: false, fireId, error }` (the tx was submitted but failed — a recorded fire, not an auth error).
+- **Errors:** `403 ip_not_allowed`, `503 not_configured`, `400 invalid_shape`/`invalid_args`, `401` (auth), `404` (unknown or not-opted-in cronotonId — the hub only fires cronotons explicitly flagged externally-fireable), `409` (cronoton not active), `429`.
+
+### What you build on the Pythia side
+1. **A trigger caller** — whatever decides "the A_Link needs to run" produces the two strings (`standard-apollo`, `smart-apollo`) and POSTs the signed envelope above. This is a thin addition to the §4.1 HMAC client (a third method alongside `fetchNodes`/`postUsage`).
+2. **Config:** the **`cronotonId`** (owner-provided, store it in the same settings surface as the hub URL + secret), plus your existing HMAC secret + hub URL. No new credential.
+3. **Manual fallback:** none needed on your side — an ancient admin can also fire it from the hub UI by typing the two strings.
+
+### Correctness pins
+- **Same egress IP + HMAC secret** as the node-pool endpoints — a rotated secret or a non-allowlisted IP fails identically.
+- **Nonce is single-use:** a network retry with the SAME envelope → `401 replayed_nonce`; a legitimate re-fire needs a fresh envelope (a fresh nonce/timestamp/signature). Each fresh POST = one on-chain fire, so **de-dupe on your side** if you must not double-fire.
+- **The request can hold up to ~5 min** (it waits for the on-chain result before responding — usually far faster). Use a generous client timeout, or treat a timeout as "in-flight" and reconcile via the `requestKey` on chain.
+- You supply **exactly** the two declared keys as strings; extra/missing/non-string args → `400 invalid_args`.
+
+### Open coordination
+- The hub owner **creates the "Pythia Api Link" cronoton** (pact code `(ouronet-ns.PYTHIA.TS01-C4.PYTHIA|A_Link (read-string "standard-apollo") (read-string "smart-apollo"))`, the Dalos signer, `external_fireable`, `runtime_arg_keys: ["standard-apollo","smart-apollo"]`) and gives you its **`cronotonId`**.
+
+---
+*Generated from a live map of this repo + the deployed hub contract. Contract source of truth: the hub's `/docs/hub/pythia-integration` page and `pages/api/pythia/{nodes,usage,cronoton-fire}/index.ts`.*

@@ -601,13 +601,18 @@ function openVerifyPopup() {
   portRow.appendChild(portInput);
   modal.appendChild(portRow);
 
+  // Generic Apollo-ownership verifier contract: the RP (Pythia) hands the verifier
+  // the accounts to prove, a nonce, its rp id, and where to return. The verifier
+  // signs whichever accounts it holds and posts back proofs.
+  const RP = "pythia.ancientholdings.eu";
   const callbackUrl = location.origin + "/connectors/verify/callback";
   const buildUrl = (nonce) => {
     const loc = selectedLoc();
+    const accounts = `${encodeURIComponent(std)},${encodeURIComponent(smart)}`;
     return (
-      `${verifyLocBase(loc)}/pythia-verify?standard=${encodeURIComponent(std)}` +
-      `&smart=${encodeURIComponent(smart)}` +
+      `${verifyLocBase(loc)}/apollo-verify?accounts=${accounts}` +
       `&challenge=${encodeURIComponent(nonce)}` +
+      `&rp=${encodeURIComponent(RP)}` +
       `&callback=${encodeURIComponent(callbackUrl)}`
     );
   };
