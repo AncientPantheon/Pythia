@@ -130,27 +130,8 @@ const BAR = "|"; // Pact sentinel: an ApiKey half whose counterpart == BAR is UN
 const DL_PAGE = 15;
 const HALF_PAGE = 12;
 
-// Verification points that hold the DALOS seed and can prove Apollo ownership +
-// submit the link tx. Pythia never signs — it only deep-links out to one of these.
-const VERIFY_LOCATIONS = [
-  { id: "wallet", label: "OuronetUI · production", base: "https://wallet.ouronetwork.io" },
-  { id: "devwallet", label: "OuronetUI · dev", base: "https://devwallet.ouronetwork.io" },
-  // Localhost verifiers: the dev port varies per machine, so it's editable in the
-  // popup (and remembered). `host` + default `port` build the base.
-  { id: "ouronet-local", label: "OuronetUI · localhost", host: "http://localhost", port: 5173 },
-  { id: "codex-local", label: "Standalone Codex · localhost", host: "http://localhost", port: 5174 },
-  { id: "mnemosyne", label: "Mnemosyne · codex.ancientholdings.eu", base: "https://codex.ancientholdings.eu" },
-];
-
-/** The (possibly user-overridden) localhost port for an editable verifier. */
-function verifyLocPort(loc) {
-  const stored = Number(localStorage.getItem(`pythia_verify_port_${loc.id}`));
-  return Number.isInteger(stored) && stored > 0 && stored <= 65535 ? stored : loc.port;
-}
-/** The base URL of a verifier — fixed for hosted ones, host:port for localhost. */
-function verifyLocBase(loc) {
-  return loc.base || `${loc.host}:${verifyLocPort(loc)}`;
-}
+// The verifier locations are now admin-curated on-server (GET /api/verifiers),
+// loaded into the Verify popup at open time — no hardcoded list here.
 
 // One dirty read through Pythia. Returns the Pact value, or throws with the
 // node's own failure message. chainweb /local shape: { result:{ status, data|error } }.
@@ -577,70 +558,46 @@ function openVerifyPopup() {
   modal.appendChild(el("label", "modal-lbl", "Verify at"));
   const select = document.createElement("select");
   select.className = "modal-select";
-  for (const loc of VERIFY_LOCATIONS) {
-    const o = document.createElement("option");
-    o.value = loc.id;
-    o.textContent = loc.label;
-    select.appendChild(o);
-  }
-  // Remember the last-picked verifier for next time.
-  const lastLoc = localStorage.getItem("pythia_verify_loc");
-  if (lastLoc && VERIFY_LOCATIONS.some((l) => l.id === lastLoc)) select.value = lastLoc;
+  select.disabled = true;
+  select.appendChild(el("option", null, "loading verifiers…"));
   modal.appendChild(select);
 
-  const selectedLoc = () => VERIFY_LOCATIONS.find((l) => l.id === select.value) || VERIFY_LOCATIONS[0];
-
-  // Editable localhost port — shown only for localhost verifiers; persisted.
-  const portRow = el("div", "port-row");
-  portRow.appendChild(el("label", "modal-lbl", "Localhost port"));
-  const portInput = document.createElement("input");
-  portInput.type = "number";
-  portInput.className = "modal-port";
-  portInput.min = "1";
-  portInput.max = "65535";
-  portRow.appendChild(portInput);
-  modal.appendChild(portRow);
-
-  // Generic Apollo-ownership verifier contract: the RP (Pythia) hands the verifier
-  // the accounts to prove, a nonce, its rp id, and where to return. The verifier
-  // signs whichever accounts it holds and posts back proofs.
+  // The admin-curated verifier registry (public GET /api/verifiers). Each entry's
+  // baseUrl already includes the port; the picker offers whatever the ancient
+  // admin added — empty until they add one in the Admin dashboard.
+  let verifiers = [];
   const RP = "pythia.ancientholdings.eu";
   const callbackUrl = location.origin + "/connectors/verify/callback";
+  const selectedVerifier = () => verifiers.find((v) => v.id === select.value) || null;
   const buildUrl = (nonce) => {
-    const loc = selectedLoc();
+    const v = selectedVerifier();
+    if (!v) return "";
     const accounts = `${encodeURIComponent(std)},${encodeURIComponent(smart)}`;
     return (
-      `${verifyLocBase(loc)}/apollo-verify?accounts=${accounts}` +
+      `${v.baseUrl}/apollo-verify?accounts=${accounts}` +
       `&challenge=${encodeURIComponent(nonce)}` +
       `&rp=${encodeURIComponent(RP)}` +
       `&callback=${encodeURIComponent(callbackUrl)}`
     );
   };
+
+  const emptyNote = el("p", "modal-note", "No verifiers configured yet — an ancient admin adds them in the Admin dashboard (/admin).");
+  emptyNote.hidden = true;
+  modal.appendChild(emptyNote);
+
   modal.appendChild(el("span", "modal-lbl", "Hand-off link (nonce added on open)"));
   const preview = el("code", "modal-link", "");
-
-  function syncLoc() {
-    const loc = selectedLoc();
-    localStorage.setItem("pythia_verify_loc", loc.id);
-    if (loc.host) {
-      portRow.hidden = false;
-      portInput.value = String(verifyLocPort(loc));
+  const refreshPreview = () => {
+    const v = selectedVerifier();
+    if (v) {
+      localStorage.setItem("pythia_verify_v", v.id);
+      preview.textContent = buildUrl("<challenge>");
     } else {
-      portRow.hidden = true;
+      preview.textContent = "";
     }
-    preview.textContent = buildUrl("<challenge>");
-  }
-  select.addEventListener("change", syncLoc);
-  portInput.addEventListener("input", () => {
-    const loc = selectedLoc();
-    const n = parseInt(portInput.value, 10);
-    if (loc.host && Number.isInteger(n) && n > 0 && n <= 65535) {
-      localStorage.setItem(`pythia_verify_port_${loc.id}`, String(n));
-    }
-    preview.textContent = buildUrl("<challenge>");
-  });
+  };
+  select.addEventListener("change", refreshPreview);
   modal.appendChild(preview);
-  syncLoc(); // initial state (port row visibility + preview)
 
   const err = el("p", "conn-error", "");
   err.hidden = true;
@@ -653,6 +610,11 @@ function openVerifyPopup() {
   go.textContent = "Open verifier ↗";
   go.addEventListener("click", async () => {
     err.hidden = true;
+    if (!selectedVerifier()) {
+      err.textContent = "pick a verifier first";
+      err.hidden = false;
+      return;
+    }
     go.disabled = true;
     try {
       // Mint a nonce bound to this pair + browser session, remember what we're
@@ -684,6 +646,37 @@ function openVerifyPopup() {
   cancel.addEventListener("click", close);
   actions.append(go, done, cancel);
   modal.appendChild(actions);
+
+  // Populate the picker from the admin-curated verifier registry.
+  fetch("/api/verifiers", { headers: { accept: "application/json" } })
+    .then((r) => r.json())
+    .then((b) => {
+      verifiers = Array.isArray(b.verifiers) ? b.verifiers : [];
+      select.textContent = "";
+      if (!verifiers.length) {
+        select.disabled = true;
+        select.appendChild(el("option", null, "— none —"));
+        emptyNote.hidden = false;
+        go.disabled = true;
+        return;
+      }
+      select.disabled = false;
+      for (const v of verifiers) {
+        const o = document.createElement("option");
+        o.value = v.id;
+        o.textContent = v.label;
+        select.appendChild(o);
+      }
+      const last = localStorage.getItem("pythia_verify_v");
+      if (last && verifiers.some((v) => v.id === last)) select.value = last;
+      refreshPreview();
+    })
+    .catch(() => {
+      select.textContent = "";
+      select.disabled = true;
+      select.appendChild(el("option", null, "failed to load verifiers"));
+      go.disabled = true;
+    });
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
@@ -1058,7 +1051,15 @@ function renderAuthbox() {
     out.className = "btn btn--ghost btn--small";
     out.href = "/admin/logout";
     out.textContent = "Log out";
-    box.append(who, out);
+    box.append(who);
+    if (isAncient()) {
+      const admin = document.createElement("a");
+      admin.className = "btn btn--small";
+      admin.href = "/admin";
+      admin.textContent = "Admin";
+      box.append(admin);
+    }
+    box.append(out);
   } else {
     const login = document.createElement("a");
     login.className = "btn btn--small";
@@ -1081,7 +1082,6 @@ async function loadMe() {
     authState = { authenticated: false, roles: [], name: null };
   }
   renderAuthbox();
-  updateHubFeedTab();
 }
 
 // ── hub feed (ancient-only): activate the node-pool feed from the UI ──────────
@@ -1698,13 +1698,9 @@ function wireTabs() {
 // ── init ─────────────────────────────────────────────────────────────────────
 wireTabs();
 wireConnectors();
-wireHubConfig();
-wireTxSenderForm();
-wireHubSubtabs();
-wireTxSenderBulk();
 renderChainTabs();
 startHealthPill();
-loadMe(); // /api/me → renders the header + reveals the ancient-only Hub feed tab
+loadMe(); // /api/me → renders the header (+ an Admin link for ancients → /admin)
 loadStats();
 showTab("chains");
 resumePendingVerify(); // if we just came back from a verifier, restore + light up Link

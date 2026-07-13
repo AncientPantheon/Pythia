@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
 import { Hono } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { registerHealthz } from "./routes/healthz.js";
@@ -10,6 +11,8 @@ import { registerConnectors } from "./routes/connectors.js";
 import { registerStats } from "./routes/stats.js";
 import { registerPools } from "./routes/pools.js";
 import { registerConnectorVerify } from "./routes/connectorVerify.js";
+import { registerVerifiers } from "./routes/verifiers.js";
+import { VerifierStore } from "./verifiers/store.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
@@ -86,6 +89,14 @@ export const settingsStore = new SettingsStore({
 export const txSenderStore = new TxSenderStore({
   filePath: process.env.TXSENDERS_FILE || "./pythia-txsenders.json",
   seeds: loadConfigFromDisk().sources.map((s) => ({ url: s.url, label: s.id })),
+});
+
+// The verifier registry: the ancient-admin-curated Apollo-ownership verify
+// locations the Connectors "Verify" popup offers. NOT seeded — admins add their
+// own (localhost dev ports vary; there is no safe universal default). Persisted
+// on the `/data` volume.
+export const verifierStore = new VerifierStore({
+  filePath: process.env.VERIFIERS_FILE || "./pythia-verifiers.json",
 });
 
 // The read node-pool (Observation): the hub's advertised StoaChain fleet (polled
@@ -176,6 +187,8 @@ registerPools(app, { pool: nodePool, txSenders: txSenderStore });
 // trust anchor, hub read pool as fallback — and verifies the browser's signature.
 // Pythia never signs. Not admin-gated: anyone links their own keys.
 registerConnectorVerify(app, { pool: nodePool, txSenders: txSenderStore });
+// Public list of admin-curated Apollo-ownership verifiers for the Verify popup.
+registerVerifiers(app, { store: verifierStore });
 
 // Begin polling the hub feed (no-op when the HMAC secret is unset → seed-only).
 nodePool.start();
@@ -189,7 +202,20 @@ if (oidcConfig)
   registerAdmin(app, oidcConfig, connectorStore, {
     hubAdmin,
     txSenders: txSenderStore,
+    verifiers: verifierStore,
   });
+
+// The dedicated ancient-admin dashboard page. Served as its own document at
+// `/admin` (distinct from the `/admin/*` OIDC + admin-API routes above, which are
+// registered first and win). The page is public HTML with no secrets — it reads
+// `GET /api/me` and gates ITSELF client-side, and every mutation it makes hits an
+// ancient-gated `/admin/*` API, so serving the shell to anyone is safe. Read per
+// request so a fresh deploy is served without a restart.
+const ADMIN_HTML = join(PUBLIC_DIR, "admin.html");
+app.get("/admin", (c) => {
+  c.header("Cache-Control", "no-cache");
+  return c.html(readFileSync(ADMIN_HTML, "utf8"));
+});
 
 // Serve the landing page + its assets at `/`. `root` is absolute so it resolves
 // the same regardless of where the process was started from. `onFound` stamps

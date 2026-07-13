@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Pythia — Admin</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="starfield" aria-hidden="true"></div>
+
+    <main class="shell">
+      <div class="topbar">
+        <a class="btn btn--ghost btn--small" href="/">← Pythia</a>
+        <div id="authbox" class="authbox" aria-live="polite"></div>
+      </div>
+
+      <header class="panel-head" style="margin-top: 1rem">
+        <h2>Admin</h2>
+        <p class="panel-note">Ancient-admin controls for the Pythia gateway.</p>
+      </header>
+
+      <!-- Shown when the visitor is not an ancient admin. -->
+      <div id="admin-gate" class="admin-gate" hidden></div>
+
+      <!-- The dashboard (revealed only to an ancient admin). -->
+      <div id="admin-body" hidden>
+        <nav class="subtabs" id="admin-subtabs" role="tablist" aria-label="Admin sections">
+          <button class="subtab subtab--active" data-subtab="verifiers" role="tab" type="button">Verifiers</button>
+          <button class="subtab" data-subtab="observation" role="tab" type="button">Observation Pool</button>
+          <button class="subtab" data-subtab="upload" role="tab" type="button">Upload Pool</button>
+        </nav>
+
+        <!-- VERIFIERS -->
+        <div class="subpanel" data-subpanel="verifiers">
+          <p class="panel-note">The Apollo-ownership verifiers the Connectors <b>Verify</b> popup offers — the wallet/Codex sites that hold your consumers' Apollo keys and serve <code>/apollo-verify</code>. None are seeded; add your own (e.g. <code>https://codex.ancientholdings.eu</code> or <code>http://localhost:3005</code>). The URL is stored as an origin — path/port only, no <code>/apollo-verify</code> suffix.</p>
+          <form id="verifier-form" class="conn-form conn-form--add">
+            <label class="conn-field">Label<input name="label" type="text" required placeholder="Mnemosyne" /></label>
+            <label class="conn-field">Base URL<input name="baseUrl" type="url" required placeholder="https://codex.ancientholdings.eu" /></label>
+            <div class="conn-actions"><button type="submit" class="btn btn--primary">Add verifier</button></div>
+            <p class="conn-error" id="verifier-error" hidden></p>
+          </form>
+          <div class="txsenders-head">
+            <span class="txsenders-title">Verifiers</span>
+            <span class="txsenders-count" id="verifiers-count"></span>
+          </div>
+          <div id="verifiers-list" class="txsenders"></div>
+        </div>
+
+        <!-- OBSERVATION POOL (hub feed) -->
+        <div class="subpanel" data-subpanel="observation" hidden>
+          <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP). When the feed is off, reads use the Upload Pool.</p>
+          <div id="hub-status" class="hub-status"></div>
+          <form id="hub-config-form" class="conn-form">
+            <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
+            <div class="conn-field">
+              <label for="hub-secret-input">HMAC service secret</label>
+              <span class="secret-input">
+                <input id="hub-secret-input" name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" />
+                <button type="button" id="hub-secret-toggle" class="secret-toggle" aria-label="Show or hide the secret">show</button>
+              </span>
+            </div>
+            <div id="hub-secret-current" class="secret-current" hidden></div>
+            <div class="conn-actions">
+              <button type="submit" class="btn btn--primary">Save &amp; activate</button>
+              <button type="button" id="hub-refresh" class="btn btn--ghost">Refresh now</button>
+            </div>
+            <p class="conn-error" id="hub-config-error" hidden></p>
+          </form>
+        </div>
+
+        <!-- UPLOAD POOL -->
+        <div class="subpanel" data-subpanel="upload" hidden>
+          <p class="panel-note">Signed-tx senders. Sends (<code>/stoachain/send</code>) go only here, in order (no PythXP), and also serve reads when the hub feed is off. The two <b>seed nodes</b> are baked in and can't be removed; add your own on top.</p>
+          <form id="txsender-form" class="conn-form conn-form--add">
+            <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
+            <label class="conn-field">Label (optional)<input name="label" type="text" placeholder="upload-1" /></label>
+            <div class="conn-actions"><button type="submit" class="btn btn--primary">Add to Upload Pool</button></div>
+            <p class="conn-error" id="txsender-error" hidden></p>
+          </form>
+          <details class="bulk-add">
+            <summary>Add multiple at once</summary>
+            <form id="txsender-bulk-form" class="conn-form">
+              <label class="conn-field">Node URLs — one per line<textarea name="urls" rows="4" placeholder="https://1.2.3.4:1848&#10;https://5.6.7.8:1848"></textarea></label>
+              <div class="conn-actions"><button type="submit" class="btn btn--primary">Add all</button></div>
+              <p class="conn-error" id="txsender-bulk-error" hidden></p>
+            </form>
+          </details>
+          <div class="txsenders-head">
+            <span class="txsenders-title">Upload Pool entries</span>
+            <span class="txsenders-count" id="txsenders-count"></span>
+          </div>
+          <div id="txsenders" class="txsenders"></div>
+        </div>
+      </div>
+    </main>
+
+    <script src="/admin.js" type="module"></script>
+  </body>
+</html>

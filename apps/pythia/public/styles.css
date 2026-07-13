@@ -491,6 +491,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   border: 1px solid var(--line); background: rgba(255,255,255,.03); color: var(--ink);
 }
 
+/* admin dashboard gate (shown when not an ancient admin) */
+.admin-gate { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; padding: 2rem 0; }
+
 /* two-pool summary on the public Chains tab */
 .pool-block { margin-bottom: 16px; }
 .pool-block:last-child { margin-bottom: 0; }

@@ -55,6 +55,10 @@ ENV SETTINGS_FILE=/data/settings.json
 # admin-curated sender list survives redeploys.
 ENV TXSENDERS_FILE=/data/txsenders.json
 
+# The verifier registry (admin-curated Apollo-ownership verify locations) — on the
+# /data volume so it survives redeploys.
+ENV VERIFIERS_FILE=/data/verifiers.json
+
 WORKDIR /app
 
 # Carry the hoisted (pruned) node_modules and the built workspace output.

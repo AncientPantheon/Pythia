@@ -15,6 +15,7 @@ import {
 } from "./session.js";
 import type { ConnectorStore } from "../connectors/store.js";
 import type { TxSenderStore } from "../txsenders/store.js";
+import type { VerifierStore } from "../verifiers/store.js";
 
 // The verified admin session is exposed to gated handlers via the Hono context.
 declare module "hono" {
@@ -189,6 +190,7 @@ export interface HubAdminControls {
 export interface AdminExtras {
   hubAdmin?: HubAdminControls;
   txSenders?: TxSenderStore;
+  verifiers?: VerifierStore;
 }
 
 export function registerAdmin(
@@ -198,7 +200,7 @@ export function registerAdmin(
   extras: AdminExtras = {},
 ): void {
   const gate = createAdminGate(cfg);
-  const { hubAdmin, txSenders } = extras;
+  const { hubAdmin, txSenders, verifiers } = extras;
 
   app.get("/admin/login", async (c) => {
     const { discovery } = await getDiscovery(cfg.issuer);
@@ -436,6 +438,37 @@ export function registerAdmin(
         return c.json({ ok: false, error: "seed nodes cannot be removed" }, 403);
       }
       return c.json({ ok: false }, 404);
+    });
+  }
+
+  // ── ancient-gated verifier registry (the Apollo-ownership verify locations) ──
+  if (verifiers) {
+    app.get("/admin/verifiers", gate, (c) =>
+      c.json({ verifiers: verifiers.list() }),
+    );
+
+    app.post("/admin/verifiers", gate, async (c) => {
+      const body = (await c.req.json().catch(() => null)) as
+        | { label?: unknown; baseUrl?: unknown }
+        | null;
+      const label = typeof body?.label === "string" ? body.label : "";
+      const baseUrl = typeof body?.baseUrl === "string" ? body.baseUrl : "";
+      const result = verifiers.add({ label, baseUrl });
+      if (!result.ok) return c.json({ error: result.error }, 400);
+      return c.json({ verifier: result.verifier }, 201);
+    });
+
+    app.post("/admin/verifiers/:id/enabled", gate, async (c) => {
+      const body = (await c.req.json().catch(() => null)) as
+        | { enabled?: unknown }
+        | null;
+      const ok = verifiers.setEnabled(c.req.param("id"), body?.enabled === true);
+      return c.json({ ok }, ok ? 200 : 404);
+    });
+
+    app.delete("/admin/verifiers/:id", gate, (c) => {
+      const ok = verifiers.remove(c.req.param("id"));
+      return c.json({ ok }, ok ? 200 : 404);
     });
   }
 }
