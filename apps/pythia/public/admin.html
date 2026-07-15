@@ -27,14 +27,13 @@
 
       <!-- The dashboard (revealed only to an ancient admin). -->
       <div id="admin-body" hidden>
-        <nav class="subtabs" id="admin-subtabs" role="tablist" aria-label="Admin sections">
-          <button class="subtab subtab--active" data-subtab="verifiers" role="tab" type="button">Verifiers</button>
-          <button class="subtab" data-subtab="observation" role="tab" type="button">Observation Pool</button>
-          <button class="subtab" data-subtab="upload" role="tab" type="button">Upload Pool</button>
-        </nav>
+        <!-- Landing: the function tiles (rendered from the TILES array in admin.js). -->
+        <div id="admin-tiles" class="admin-tiles"></div>
+        <p id="admin-tile-note" class="panel-note" hidden></p>
 
         <!-- VERIFIERS -->
-        <div class="subpanel" data-subpanel="verifiers">
+        <section class="admin-view" data-view="verifiers" hidden>
+          <button type="button" class="admin-back">← Dashboard</button>
           <p class="panel-note">The Apollo-ownership verifiers the Connectors <b>Verify</b> popup offers — the wallet/Codex sites that hold your consumers' Apollo keys and serve <code>/apollo-verify</code>. None are seeded; add your own (e.g. <code>https://codex.ancientholdings.eu</code> or <code>http://localhost:3005</code>). The URL is stored as an origin — path/port only, no <code>/apollo-verify</code> suffix.</p>
           <form id="verifier-form" class="conn-form conn-form--add">
             <label class="conn-field">Label<input name="label" type="text" required placeholder="Mnemosyne" /></label>
@@ -47,10 +46,11 @@
             <span class="txsenders-count" id="verifiers-count"></span>
           </div>
           <div id="verifiers-list" class="txsenders"></div>
-        </div>
+        </section>
 
         <!-- OBSERVATION POOL (hub feed) -->
-        <div class="subpanel" data-subpanel="observation" hidden>
+        <section class="admin-view" data-view="observation" hidden>
+          <button type="button" class="admin-back">← Dashboard</button>
           <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP). When the feed is off, reads use the Upload Pool.</p>
           <div id="hub-status" class="hub-status"></div>
           <form id="hub-config-form" class="conn-form">
@@ -69,10 +69,11 @@
             </div>
             <p class="conn-error" id="hub-config-error" hidden></p>
           </form>
-        </div>
+        </section>
 
         <!-- UPLOAD POOL -->
-        <div class="subpanel" data-subpanel="upload" hidden>
+        <section class="admin-view" data-view="upload" hidden>
+          <button type="button" class="admin-back">← Dashboard</button>
           <p class="panel-note">Signed-tx senders. Sends (<code>/stoachain/send</code>) go only here, in order (no PythXP), and also serve reads when the hub feed is off. The two <b>seed nodes</b> are baked in and can't be removed; add your own on top.</p>
           <form id="txsender-form" class="conn-form conn-form--add">
             <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
@@ -93,7 +94,14 @@
             <span class="txsenders-count" id="txsenders-count"></span>
           </div>
           <div id="txsenders" class="txsenders"></div>
-        </div>
+        </section>
+
+        <!-- VERSION & NETWORK -->
+        <section class="admin-view" data-view="version" hidden>
+          <button type="button" class="admin-back">← Dashboard</button>
+          <p class="panel-note">The live gateway version and each configured source's reachability, read from <code>/healthz</code>.</p>
+          <div id="version-network"></div>
+        </section>
       </div>
     </main>
 

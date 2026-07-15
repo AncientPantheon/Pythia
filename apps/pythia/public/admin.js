@@ -5,17 +5,19 @@
 // shell to anyone is safe.
 
 // ── auth / session ───────────────────────────────────────────────────────────
-let authState = { authenticated: false, roles: [], name: null };
+// `null` until GET /api/me resolves (the gate's "checking…" state); an object
+// afterwards.
+let authState = null;
 
 function isAncient() {
-  return authState.authenticated && authState.roles.includes("ancient");
+  return !!(authState && authState.authenticated && authState.roles.includes("ancient"));
 }
 
 function renderAuthbox() {
   const box = document.getElementById("authbox");
   if (!box) return;
   box.textContent = "";
-  if (authState.authenticated) {
+  if (authState && authState.authenticated) {
     const who = document.createElement("span");
     who.className = "who";
     const nm = document.createElement("b");
@@ -57,48 +59,188 @@ async function loadMe() {
   applyGate();
 }
 
-// Client-side gate: reveal the dashboard only to an ancient admin; otherwise show
-// the sign-in prompt. (Server-side, every /admin/* mutation is gated regardless.)
+// ── admin gate + tile landing + hash router ──────────────────────────────────
+// The shared gate owns four states, driven purely by `authState`:
+//   • authState === null           → "checking…" (before /api/me resolves)
+//   • not authenticated            → a login prompt
+//   • authenticated, not ancient   → a "requires the ancient role" notice
+//   • ancient                      → the tile landing (+ hash-routed views)
+// This is UX only — every /admin/* mutation is gated again server-side.
 function applyGate() {
   const body = document.getElementById("admin-body");
   const gate = document.getElementById("admin-gate");
+
   if (isAncient()) {
-    if (body) body.hidden = false;
     if (gate) { gate.hidden = true; gate.textContent = ""; }
-    loadVerifiers();
-    loadHubStatus();
-    loadTxSenders();
-  } else {
-    if (body) body.hidden = true;
-    if (gate) {
-      gate.hidden = false;
-      gate.textContent = "";
-      const p = document.createElement("p");
-      p.className = "panel-note";
-      p.textContent = authState.authenticated
-        ? "Your role can't access the admin dashboard — the ancient role is required."
-        : "Sign in as an ancient admin to access the dashboard.";
-      const login = document.createElement("a");
-      login.className = "btn btn--primary";
-      login.href = "/admin/login";
-      login.textContent = authState.authenticated ? "Switch account" : "Log in";
-      gate.append(p, login);
+    if (body) body.hidden = false;
+    renderTiles();
+    routeFromHash();
+    return;
+  }
+
+  if (body) body.hidden = true;
+  if (!gate) return;
+  gate.hidden = false;
+  gate.textContent = "";
+
+  if (authState === null) {
+    const p = document.createElement("p");
+    p.className = "panel-note";
+    p.textContent = "Checking your session…";
+    gate.appendChild(p);
+    return;
+  }
+
+  const p = document.createElement("p");
+  p.className = "panel-note";
+  p.textContent = authState.authenticated
+    ? "Your role can't access the admin dashboard — the ancient role is required."
+    : "Sign in as an ancient admin to access the dashboard.";
+  const login = document.createElement("a");
+  login.className = "btn btn--primary";
+  login.href = "/admin/login";
+  login.textContent = authState.authenticated ? "Switch account" : "Log in";
+  gate.append(p, login);
+}
+
+// The function tiles rendered on the landing. Enabled tiles hash-route into their
+// view; disabled ("planned") tiles render a badge and are inert (T2 turns some of
+// these — plus a Version & Network tile — into live views).
+const TILES = [
+  {
+    id: "verifiers",
+    icon: "🔐",
+    title: "Verifiers",
+    blurb: "The Apollo-ownership sites the Connectors Verify popup offers.",
+    hash: "#verifiers",
+    enabled: true,
+  },
+  {
+    id: "observation",
+    icon: "🛰️",
+    title: "Observation Pool",
+    blurb: "The AncientHub-fed read fleet — activate the feed and fan reads out.",
+    hash: "#observation",
+    enabled: true,
+  },
+  {
+    id: "upload",
+    icon: "📤",
+    title: "Upload Pool",
+    blurb: "Signed-tx senders that carry every send (and reads when the feed is off).",
+    hash: "#upload",
+    enabled: true,
+  },
+  {
+    id: "version",
+    icon: "📟",
+    title: "Version & Network",
+    blurb: "Live PYTHIA_VERSION and per-source reachability, read from /healthz.",
+    hash: "#version",
+    enabled: true,
+  },
+  {
+    id: "update-deploy",
+    icon: "⬆️",
+    title: "Update & Deploy",
+    blurb: "On-box pull + blue-green deploy of the gateway.",
+    hash: "#update-deploy",
+    enabled: false,
+  },
+  {
+    id: "security",
+    icon: "🔑",
+    title: "Security",
+    blurb: "Master-key sealed-creds vault + rotation.",
+    hash: "#security",
+    enabled: false,
+  },
+];
+
+// Views the hash router knows how to open (map back to their load* function).
+const VIEW_LOADERS = {
+  verifiers: loadVerifiers,
+  observation: loadHubStatus,
+  upload: loadTxSenders,
+  version: loadVersionNetwork,
+};
+
+function renderTiles() {
+  const grid = document.getElementById("admin-tiles");
+  if (!grid) return;
+  grid.textContent = "";
+  for (const t of TILES) {
+    const tile = document.createElement(t.enabled ? "a" : "button");
+    tile.className = "tile" + (t.enabled ? "" : " tile--planned");
+    if (t.enabled) {
+      tile.href = t.hash;
+    } else {
+      tile.type = "button";
+      tile.addEventListener("click", () => showPlannedNote(t.title));
     }
+
+    const icon = document.createElement("span");
+    icon.className = "tile-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = t.icon;
+
+    const bodyEl = document.createElement("span");
+    bodyEl.className = "tile-body";
+    const title = document.createElement("span");
+    title.className = "tile-title";
+    title.textContent = t.title;
+    const blurb = document.createElement("span");
+    blurb.className = "tile-blurb";
+    blurb.textContent = t.blurb;
+    bodyEl.append(title, blurb);
+    if (!t.enabled) {
+      const badge = document.createElement("span");
+      badge.className = "tile-badge";
+      badge.textContent = "planned";
+      bodyEl.appendChild(badge);
+    }
+
+    tile.append(icon, bodyEl);
+    grid.appendChild(tile);
   }
 }
 
-// Generic sub-tab switcher, scoped to `scope`.
-function wireSubtabs(nav, scope) {
-  if (!nav || !scope) return;
-  const buttons = Array.from(nav.querySelectorAll("[data-subtab]"));
-  const panels = Array.from(scope.querySelectorAll("[data-subpanel]"));
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const name = btn.dataset.subtab;
-      buttons.forEach((b) => b.classList.toggle("subtab--active", b === btn));
-      panels.forEach((p) => { p.hidden = p.dataset.subpanel !== name; });
-    });
-  });
+// A disabled tile just posts a short note — never a view, never a backend call.
+function showPlannedNote(title) {
+  const note = document.getElementById("admin-tile-note");
+  if (!note) return;
+  note.textContent = `${title} is coming in a later round.`;
+  note.hidden = false;
+}
+
+// Hash router: no (known) hash → the landing; #verifiers/#observation/#upload →
+// that view (landing hidden), firing its load* function so data shows on open.
+function routeFromHash() {
+  if (!isAncient()) return;
+  const name = location.hash.replace(/^#/, "");
+  const known = Object.prototype.hasOwnProperty.call(VIEW_LOADERS, name);
+  const tiles = document.getElementById("admin-tiles");
+  const note = document.getElementById("admin-tile-note");
+  const views = document.querySelectorAll(".admin-view");
+
+  if (known) {
+    if (tiles) tiles.hidden = true;
+    if (note) note.hidden = true;
+    views.forEach((v) => { v.hidden = v.dataset.view !== name; });
+    VIEW_LOADERS[name]();
+  } else {
+    if (tiles) tiles.hidden = false;
+    views.forEach((v) => { v.hidden = true; });
+  }
+}
+
+// The "← Dashboard" back control clears the hash (which fires the router).
+function goToLanding() {
+  if (location.hash) {
+    location.hash = "";
+  } else {
+    routeFromHash();
+  }
 }
 
 // ── verifiers (the Apollo-ownership verify locations the Verify popup offers) ──
@@ -585,10 +727,83 @@ function wireTxSenderBulk() {
   });
 }
 
+// ── version & network (live /healthz readout) ──────────────────────────────────
+async function loadVersionNetwork() {
+  const container = document.getElementById("version-network");
+  if (!container) return;
+  try {
+    const res = await fetch("/healthz", { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(`healthz ${res.status}`);
+    const body = await res.json();
+    renderVersionNetwork(container, body);
+  } catch {
+    container.textContent = "";
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "Could not read /healthz — version and source reachability are unavailable.";
+    container.appendChild(p);
+  }
+}
+
+function renderVersionNetwork(container, body) {
+  container.textContent = "";
+
+  const versionLine = document.createElement("p");
+  versionLine.className = "hub-stat";
+  const b = document.createElement("b");
+  b.textContent = "Version: ";
+  const v = document.createElement("span");
+  v.textContent = body.version || "unknown";
+  versionLine.append(b, v);
+  container.appendChild(versionLine);
+
+  const sources = Array.isArray(body.sources) ? body.sources : [];
+  if (!sources.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "No sources reported.";
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const s of sources) {
+    const row = document.createElement("div");
+    row.className = "txrow";
+
+    const main = document.createElement("span");
+    main.className = "txrow-main";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.setAttribute("data-color", s.reachable ? "green" : "red");
+    main.appendChild(dot);
+    const label = document.createElement("b");
+    label.className = "txrow-label";
+    label.textContent = s.id || "source";
+    main.appendChild(label);
+    if (s.role) {
+      const badge = document.createElement("span");
+      badge.className = "ca-badge";
+      badge.textContent = s.role;
+      main.appendChild(badge);
+    }
+    const url = document.createElement("span");
+    url.className = "txrow-url";
+    url.textContent = s.url || "";
+    main.appendChild(url);
+
+    row.appendChild(main);
+    container.appendChild(row);
+  }
+}
+
 // ── init ─────────────────────────────────────────────────────────────────────
-wireSubtabs(document.getElementById("admin-subtabs"), document.getElementById("admin-body"));
+document.querySelectorAll(".admin-back").forEach((btn) => {
+  btn.addEventListener("click", goToLanding);
+});
+window.addEventListener("hashchange", routeFromHash);
 wireVerifierForm();
 wireHubConfig();
 wireTxSenderForm();
 wireTxSenderBulk();
+applyGate(); // render the "checking…" state before /api/me resolves
 loadMe();
