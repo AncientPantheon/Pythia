@@ -22,6 +22,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ── Version gate ────────────────────────────────────────────────────────
+      # Hold the ghcr push to the SAME unified-version guarantee as the npm
+      # publish (publish.yml): a version-file drift (e.g. a forgotten
+      # apps/pythia/src/version.ts bump) must block the container too, so we
+      # never ship an image whose baked-in /healthz + footer version lies.
+      # Reuses the real gate (apps/pythia/src/versionConsistency.test.ts) via
+      # `npm test` instead of duplicating the rule here.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify tag matches the unified version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG_REF: ${{ github.ref }}
+        run: |
+          TAG_VERSION="${TAG_REF#refs/tags/v}"
+          UNIFIED_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$UNIFIED_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match the unified version $UNIFIED_VERSION — refusing to push a mistagged image."
+            exit 1
+          fi
+      - name: Version-consistency + test gate
+        run: npm test
+
       # Buildx is REQUIRED for the type=gha build cache below — without it
       # docker/build-push-action fails instantly (the default docker driver can't
       # export/import a gha cache).

@@ -8,7 +8,7 @@ name: Publish to npmjs.org
 # The tag version MUST equal the root package.json's version — the unified
 # version shared by root package.json, packages/pythia-client/package.json,
 # apps/pythia/package.json, and apps/pythia/src/version.ts (enforced by
-# tests/changelog-version.test.ts, run below) — and the client's README +
+# apps/pythia/src/versionConsistency.test.ts, run below) — and the client's README +
 # CHANGELOG must reference that version — otherwise the workflow fails before
 # npm sees a single byte.
 #
@@ -69,7 +69,7 @@ jobs:
       # ------------------------------------------------------------------
       # Tag-version match: the tag MUST equal the unified root package.json
       # version (the single source of truth mirrored across all four
-      # version-bearing files — see tests/changelog-version.test.ts, which
+      # version-bearing files — see apps/pythia/src/versionConsistency.test.ts, which
       # ran as part of "Typecheck + Build + Test" above and would already
       # have failed the workflow if those four files disagreed).
       # If the tag doesn't match, the tag is wrong — fail before npm sees a
@@ -82,6 +82,13 @@ jobs:
           UNIFIED_VERSION=$(node -p "require('./package.json').version")
           echo "Tag version:     $TAG_VERSION"
           echo "Unified version: $UNIFIED_VERSION"
+          # Defence-in-depth: the version must be clean semver before it is
+          # written to GITHUB_OUTPUT and consumed by later steps — so a crafted
+          # version string can never break out of a downstream shell command.
+          if ! printf '%s' "$UNIFIED_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Unified version '$UNIFIED_VERSION' is not clean semver (x.y.z)."
+            exit 1
+          fi
           if [ "$TAG_VERSION" != "$UNIFIED_VERSION" ]; then
             echo "::error::Tag $TAG_VERSION does not match the unified version $UNIFIED_VERSION."
             echo "::error::Bump package.json (and its mirrors: packages/pythia-client/package.json, apps/pythia/package.json, apps/pythia/src/version.ts) to $TAG_VERSION before tagging."
@@ -93,12 +100,17 @@ jobs:
       # README + CHANGELOG version-parity gate (three greps).
       # ------------------------------------------------------------------
       - name: Verify README + CHANGELOG mention the publish version
+        env:
+          # Pass the version through env rather than splicing ${{ }} into the
+          # script body, so it is never substituted into the shell text.
+          TAG_VERSION: ${{ steps.version.outputs.TAG_VERSION }}
         run: |
-          TAG_VERSION="${{ steps.version.outputs.TAG_VERSION }}"
           PKG_DIR="packages/pythia-client"
+          # Escape the dots so each literal '.' matches a period, not any char.
+          TAG_VERSION_RE="${TAG_VERSION//./\\.}"
 
           # README: ## Status block must reference the version.
-          if ! grep -qE "\`${TAG_VERSION}\`[[:space:]]+on public npmjs" "${PKG_DIR}/README.md"; then
+          if ! grep -qE "\`${TAG_VERSION_RE}\`[[:space:]]+on public npmjs" "${PKG_DIR}/README.md"; then
             echo "::error::${PKG_DIR}/README.md ## Status block does not lead with version ${TAG_VERSION}"
             echo "::error::Expected: a line containing \`${TAG_VERSION}\` on public npmjs"
             exit 1
@@ -106,7 +118,7 @@ jobs:
           echo "✓ ${PKG_DIR}/README.md ## Status block references ${TAG_VERSION}"
 
           # README: version history must contain a **vX.Y.Z** entry.
-          if ! grep -qE "^\*\*v${TAG_VERSION}\*\*[[:space:]]" "${PKG_DIR}/README.md"; then
+          if ! grep -qE "^\*\*v${TAG_VERSION_RE}\*\*[[:space:]]" "${PKG_DIR}/README.md"; then
             echo "::error::${PKG_DIR}/README.md version history is missing a **v${TAG_VERSION}** paragraph"
             exit 1
           fi
@@ -114,7 +126,7 @@ jobs:
 
           # CHANGELOG: first ## heading must be the version.
           FIRST_HEADING=$(grep -m1 '^## ' "${PKG_DIR}/CHANGELOG.md")
-          if ! echo "$FIRST_HEADING" | grep -qE "^## ${TAG_VERSION}[[:space:]]"; then
+          if ! echo "$FIRST_HEADING" | grep -qE "^## ${TAG_VERSION_RE}[[:space:]]"; then
             echo "::error::${PKG_DIR}/CHANGELOG.md's first ## heading does not match version ${TAG_VERSION}"
             echo "::error::First heading found: ${FIRST_HEADING}"
             exit 1
@@ -131,9 +143,10 @@ jobs:
       # Idempotent publish — skip if the version already exists on npm.
       # ------------------------------------------------------------------
       - name: Publish @ancientpantheon/pythia-client to npmjs.org
+        env:
+          TAG_VERSION: ${{ steps.version.outputs.TAG_VERSION }}
         run: |
-          TAG_VERSION="${{ steps.version.outputs.TAG_VERSION }}"
-          if npm view @ancientpantheon/pythia-client@${TAG_VERSION} version >/dev/null 2>&1; then
+          if npm view @ancientpantheon/pythia-client@"${TAG_VERSION}" version >/dev/null 2>&1; then
             echo "@ancientpantheon/pythia-client@${TAG_VERSION} already on npm — skipping (idempotent)."
           else
             npm publish --workspace=@ancientpantheon/pythia-client --access public --provenance
