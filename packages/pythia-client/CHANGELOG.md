@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 1.7.0 — 2026-07-15
+
+Version alignment: the client jumps from `1.1.0` straight to `1.7.0`,
+skipping `1.2.0`–`1.6.0`, to align with the unified Pythia service version
+line. No API changes — this is a version-only release; the service and the
+client are now released together from a single git tag.
+
 ## 1.1.0 — 2026-07-05
 
 The Pythia gateway pivots from a decode-baked read-only service to a keyless

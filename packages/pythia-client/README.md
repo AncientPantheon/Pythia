@@ -14,7 +14,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`1.1.0` on public npmjs — proprietary release, all rights reserved (see
+`1.7.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -50,6 +50,11 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v1.7.0** — version alignment: jumps from `1.1.0` straight to `1.7.0`,
+skipping `1.2.0`–`1.6.0`, to align with the unified Pythia service version
+line. No API changes — the service and the client are now released together
+from a single git tag.
 
 **v1.1.0** — the gateway pivots from a decode-baked read service to a keyless
 generic transport gateway (pre-adoption reshape). Removes `getBalance`,

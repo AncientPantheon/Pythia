@@ -47,7 +47,12 @@ function buildApp(upstream: (url: string, init?: RequestInit) => Response) {
       resolveHealth({ primary, fallback, fetchImpl: fetchImpl as never }),
   });
   registerRead(app, { sources, fetchImpl: fetchImpl as never });
-  registerSend(app, { sources, fetchImpl: fetchImpl as never });
+  // SEND is routed EXCLUSIVELY to the Upload Pool (`senders`), never `sources` —
+  // it deliberately does not share the read pair (routes/send.ts SendDeps).
+  registerSend(app, {
+    senders: [primary, fallback],
+    fetchImpl: fetchImpl as never,
+  });
   registerPoll(app, {
     sources,
     fetchImpl: fetchImpl as never,

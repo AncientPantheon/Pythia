@@ -5,9 +5,16 @@ name: Publish to npmjs.org
 # Only @ancientpantheon/pythia-client publishes. The gateway service
 # (apps/pythia) is private and is NEVER referenced in a publish step.
 #
-# The tag version MUST equal packages/pythia-client/package.json's version,
-# and the client's README + CHANGELOG must reference that version — otherwise
-# the workflow fails before npm sees a single byte.
+# The tag version MUST equal the root package.json's version — the unified
+# version shared by root package.json, packages/pythia-client/package.json,
+# apps/pythia/package.json, and apps/pythia/src/version.ts (enforced by
+# tests/changelog-version.test.ts, run below) — and the client's README +
+# CHANGELOG must reference that version — otherwise the workflow fails before
+# npm sees a single byte.
+#
+# One `v*` tag drives BOTH this workflow (npm publish of pythia-client) and
+# image.yml (ghcr container build/push) — they run independently off the same
+# tag push and are both gated on the same unified version.
 
 on:
   push:
@@ -60,19 +67,24 @@ jobs:
           npm test
 
       # ------------------------------------------------------------------
-      # Tag-version match: the tag MUST equal the client package version.
-      # If it doesn't, the tag is wrong — fail before npm sees a byte.
+      # Tag-version match: the tag MUST equal the unified root package.json
+      # version (the single source of truth mirrored across all four
+      # version-bearing files — see tests/changelog-version.test.ts, which
+      # ran as part of "Typecheck + Build + Test" above and would already
+      # have failed the workflow if those four files disagreed).
+      # If the tag doesn't match, the tag is wrong — fail before npm sees a
+      # byte.
       # ------------------------------------------------------------------
       - name: Verify tag matches pythia-client version
         id: version
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          CLIENT_VERSION=$(node -p "require('./packages/pythia-client/package.json').version")
-          echo "Tag version:    $TAG_VERSION"
-          echo "Client version: $CLIENT_VERSION"
-          if [ "$TAG_VERSION" != "$CLIENT_VERSION" ]; then
-            echo "::error::Tag $TAG_VERSION does not match @ancientpantheon/pythia-client version $CLIENT_VERSION."
-            echo "::error::Bump packages/pythia-client/package.json to $TAG_VERSION before tagging."
+          UNIFIED_VERSION=$(node -p "require('./package.json').version")
+          echo "Tag version:     $TAG_VERSION"
+          echo "Unified version: $UNIFIED_VERSION"
+          if [ "$TAG_VERSION" != "$UNIFIED_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match the unified version $UNIFIED_VERSION."
+            echo "::error::Bump package.json (and its mirrors: packages/pythia-client/package.json, apps/pythia/package.json, apps/pythia/src/version.ts) to $TAG_VERSION before tagging."
             exit 1
           fi
           echo "TAG_VERSION=$TAG_VERSION" >> "$GITHUB_OUTPUT"
