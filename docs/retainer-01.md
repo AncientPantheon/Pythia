@@ -11,7 +11,7 @@
 Pythia is the **keyless read/relay Constructor** of the **AncientPantheon** (the StoaChain / Kadena-chainweb ecosystem). It reads on-chain state and relays it to consumers; it **never writes, never signs, never holds a private key, never touches funds**. Think "read gateway + decode language for StoaChain," dogfooding its own read endpoint for its own UI.
 
 - **Live:** https://pythia.ancientholdings.eu (Ionos VPS, Docker behind **Caddy**).
-- **Repo:** this one (`D:\_Claude\AncientPantheon\Pythia`), branch `main`, remote `origin`. **Public.**
+- **Repo:** this one (`D:\_Claude\AncientPantheon\constructors\Pythia`), branch `main`, remote `origin`. **Public.**
 - **Stack:** Hono + `@hono/node-server`, Node 22, TypeScript (tsc, `tsconfig.build.json`), Vitest, npm-workspaces monorepo.
 - **Sibling repos** (same `D:\_Claude\AncientPantheon\` root): **Mnemosyne** (`codex.ancientholdings.eu` — the reference "constructor-service" whose blueprint Pythia is now copying), **Codex** (`@ancientpantheon/codex` npm pkg — ships the verifier UI), **AncientHoldings/hub**, **OuronetUI/wallet**.
 
