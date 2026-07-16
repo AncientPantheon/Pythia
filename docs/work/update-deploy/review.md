@@ -49,5 +49,27 @@ the risk surface). All findings adversarially validated against the cited code.
 - **Live end-to-end proof:** recorded in this topic's `## Live proof` below after the VPS install +
   migration + one real deploy.
 
-## Live proof
-(appended after T6 install/migration + T7 proof deploy)
+## Live proof (LittleBrother, 2026-07-16)
+Install + one-time migration: installer created `requests/` (`chown 1001`, container-writable) +
+`state/` (`chown root`, container can't symlink there) — the CRITICAL fix verified on disk; Caddy
+vhost switched to `import /etc/caddy/pythia-upstream.caddy` (validated + reloaded, no disruption);
+`pythia` → `pythia-blue` on 8080 (healthy in 1s).
+
+The proof surfaced (and the run fixed) three real first-install bugs — each is exactly what the
+mandatory live proof exists to catch:
+1. deployer forced `DOCKER_BUILDKIT=1` but the host has no buildx → fall back to the legacy builder.
+2. host scripts committed from Windows without the exec bit → `git reset` (run by the deployer)
+   stripped it → systemd `203/EXEC` → marked the scripts `100755` in git.
+3. `mktemp` made the Caddy snippet `0600`, unreadable by the `caddy` reload user → `chmod 0644`.
+
+Final proof deploy — request dropped **from inside `pythia-green` as uid 1001** (the real spool path,
+never the docker socket) → host path-unit → deployer:
+```
+current live: green · deploying to: blue (127.0.0.1:8080)
+✓ new container healthy   → flip Caddy → 8080 → Valid configuration
+✓ Caddy now routing to blue   ✓ old container (pythia-green) stopped + removed   ✓ deploy complete
+status: success
+```
+**Zero downtime: `30 × 200` through `https://pythia.ancientholdings.eu` across the swap, zero non-200.**
+Full blue↔green alternation demonstrated (migration→blue, blue→green, green→blue). Deploy button +
+SSE terminal + status block are live behind the ancient gate.

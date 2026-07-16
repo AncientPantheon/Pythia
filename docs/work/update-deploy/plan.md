@@ -88,7 +88,7 @@
   - files: `apps/pythia/public/admin.html`, `apps/pythia/public/admin.js`
 
 ## Wave 4 (ops — orchestrator over SSH, depends on Wave 3 + pushed main)
-- [ ] T6: VPS install + one-time migration — done when: on LittleBrother the installer has run
+- [x] T6: VPS install + one-time migration — done when: on LittleBrother the installer has run
       (spool dir on the volume, chown 1001; upstream snippet present; vhost imports it; caddy
       validate OK; path-unit enabled+active), and the running `pythia` container is replaced by
       `pythia-blue` (port 8080, `PYTHIA_COLOR=blue`, `PYTHIA_DEPLOY_DIR=/data/deploy`, env-file +
@@ -96,7 +96,7 @@
       ancient session — or verified via container env inspection) reports blue/8080.
   - files: (ops — LittleBrother: /etc/caddy/*, /etc/systemd/system/pythia-deploy.*, containers)
 
-- [ ] T7: End-to-end proof deploy — done when: a spool request written via the container path (or the
+- [x] T7: End-to-end proof deploy — done when: a spool request written via the container path (or the
       real admin button) triggers the deployer; the log streams; the color flips blue→green (or
       green→blue); `docker ps` shows the new color on the other port; the Caddy snippet points at the
       new port; a curl-poll loop against https://pythia.ancientholdings.eu/healthz during the swap
