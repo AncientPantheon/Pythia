@@ -127,7 +127,7 @@ const TILES = [
     id: "update-deploy",
     icon: "⬆️",
     title: "Update & Deploy",
-    blurb: "Live version + seed-pair health; on-box deploy controls land next round.",
+    blurb: "Live version + seed-pair health, plus the on-box blue-green deploy.",
     hash: "#update-deploy",
     enabled: true,
   },
@@ -151,6 +151,14 @@ const CHAINS = [
     hash: "#connectors/stoachain",
     enabled: true,
   },
+  {
+    id: "arweave",
+    icon: "🧵",
+    title: "Arweave",
+    blurb: "Permanent-storage connector — permaweb reads and uploads.",
+    badge: "coming soon",
+    enabled: false,
+  },
 ];
 
 // Views the hash router knows how to open (map to their load* function). Keys are
@@ -163,7 +171,10 @@ const VIEW_LOADERS = {
     loadTxSenders();
     renderStoachainRules();
   },
-  "update-deploy": loadVersionNetwork,
+  "update-deploy": () => {
+    loadVersionNetwork();
+    loadDeployStatus();
+  },
 };
 
 // Legacy (topic-2) flat hashes → their new nested homes, so old bookmarks land.
@@ -204,7 +215,7 @@ function renderEntryTiles(grid, entries) {
     if (!t.enabled) {
       const badge = document.createElement("span");
       badge.className = "tile-badge";
-      badge.textContent = "planned";
+      badge.textContent = t.badge || "planned";
       bodyEl.appendChild(badge);
     }
 
@@ -265,6 +276,24 @@ function goToLanding() {
   } else {
     routeFromHash();
   }
+}
+
+// ── chain-page sub-tabs (Observation Pool | Upload Pool | Routing Rules) ──────
+// The classic subtab pattern, scoped to the StoaChain chain page: a clicked
+// .subtab gets .subtab--active and the [data-subpanel] whose name matches its
+// data-subtab is shown, the others hidden. Purely visual — the panels' contents
+// stay in the DOM (IDs untouched), so the pool actions keep working as before.
+function wireChainSubtabs() {
+  const page = document.querySelector('.admin-view[data-view="connectors/stoachain"]');
+  if (!page) return;
+  const tabs = page.querySelectorAll(".subtab");
+  const panels = page.querySelectorAll("[data-subpanel]");
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      tabs.forEach((t) => t.classList.toggle("subtab--active", t === tab));
+      panels.forEach((p) => { p.hidden = p.dataset.subpanel !== tab.dataset.subtab; });
+    });
+  });
 }
 
 // ── verifiers (the Apollo-ownership verify locations the Verify popup offers) ──
@@ -883,6 +912,130 @@ function renderVersionNetwork(container, body) {
   }
 }
 
+// ── on-box deploy (status readout + Deploy button + SSE build-log terminal) ───
+// The EventSource of the in-flight deploy, or null. Non-null keeps the Deploy
+// button disabled even across loadDeployStatus() re-renders of the readout.
+let deployStream = null;
+
+async function loadDeployStatus() {
+  const container = document.getElementById("deploy-status");
+  const btn = document.getElementById("deploy-btn");
+  if (!container) return;
+  try {
+    const res = await fetch("/api/admin/deploy/status", { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(`deploy status ${res.status}`);
+    const body = await res.json();
+    renderDeployStatus(container, body);
+    if (btn) btn.disabled = body.mode === "dev" || deployStream !== null;
+  } catch {
+    container.textContent = "";
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "Could not read the deploy status — sign in again or check the gateway.";
+    container.appendChild(p);
+    if (btn) btn.disabled = true;
+  }
+}
+
+function renderDeployStatus(container, s) {
+  container.textContent = "";
+  const line = (label, value) => {
+    const p = document.createElement("p");
+    p.className = "hub-stat";
+    const b = document.createElement("b");
+    b.textContent = `${label}: `;
+    const v = document.createElement("span");
+    v.textContent = value;
+    p.append(b, v);
+    return p;
+  };
+  if (s.mode === "dev") {
+    const note = document.createElement("p");
+    note.className = "panel-note";
+    note.textContent = "dev mode — on-box deploy is available on the live server only";
+    container.append(note, line("Version", s.version || "unknown"));
+    return;
+  }
+  container.append(
+    line("Mode", s.mode || "unknown"),
+    line("Live color", s.color || "unknown"),
+    line("Loopback port", s.port ? `127.0.0.1:${s.port}` : "unknown"),
+    line("Container", s.container || "unknown"),
+    line("Version", s.version || "unknown"),
+  );
+}
+
+function wireDeployButton() {
+  const btn = document.getElementById("deploy-btn");
+  const err = document.getElementById("deploy-error");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    if (!window.confirm("Rebuild Pythia from origin/main on the box and swap colors with zero downtime?")) return;
+    if (err) err.hidden = true;
+    btn.disabled = true; // stays disabled while the deploy streams; done re-enables
+    try {
+      const res = await fetch("/api/admin/deploy", {
+        method: "POST",
+        headers: { accept: "application/json" },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.id) {
+        if (err) { err.textContent = body.error || `Deploy request failed (${res.status}).`; err.hidden = false; }
+        btn.disabled = false;
+        return;
+      }
+      openDeployStream(body.id);
+    } catch {
+      if (err) { err.textContent = "Network error requesting the deploy."; err.hidden = false; }
+      btn.disabled = false;
+    }
+  });
+}
+
+function openDeployStream(id) {
+  const log = document.getElementById("deploy-log");
+  const statusLine = document.getElementById("deploy-stream-status");
+  const btn = document.getElementById("deploy-btn");
+  if (!log) return;
+  if (deployStream) deployStream.close();
+  log.hidden = false;
+  log.textContent = "";
+  const append = (text) => {
+    log.textContent += text;
+    log.scrollTop = log.scrollHeight; // keep the tail in view
+  };
+
+  const es = new EventSource("/api/admin/deploy/stream/" + encodeURIComponent(id));
+  deployStream = es;
+
+  es.onopen = () => {
+    // Clear the buffer on every (re)connect: mid-deploy the color swap kills
+    // this container — EventSource auto-reconnects to the NEW one, whose tail
+    // replays the whole log from byte 0. Clearing first means the replay lands
+    // once, instead of being appended after a partial copy.
+    log.textContent = "";
+  };
+
+  // The chunk already carries its own newlines (a byte slice of the log); do NOT
+  // add one, or every ~500ms poll batch gets a spurious blank line / split line.
+  es.onmessage = (e) => { append(e.data); };
+
+  es.addEventListener("status", (e) => {
+    if (statusLine) {
+      statusLine.hidden = false;
+      statusLine.textContent = `Deploy status: ${e.data}`;
+    }
+  });
+
+  es.addEventListener("done", (e) => {
+    append(`— deploy ${e.data}\n`);
+    es.close();
+    deployStream = null;
+    if (btn) btn.disabled = false;
+    loadDeployStatus(); // the color/port flipped — refresh the readout
+  });
+}
+
 // ── init ─────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".admin-back").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -895,9 +1048,11 @@ document.querySelectorAll(".admin-back").forEach((btn) => {
   });
 });
 window.addEventListener("hashchange", routeFromHash);
+wireChainSubtabs();
 wireVerifierForm();
 wireHubConfig();
 wireTxSenderForm();
 wireTxSenderBulk();
+wireDeployButton();
 applyGate(); // render the "checking…" state before /api/me resolves
 loadMe();

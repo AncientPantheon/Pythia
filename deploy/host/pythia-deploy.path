@@ -1,0 +1,19 @@
+# Watches the deploy spool for a request file dropped by the Pythia container
+# (POST /api/admin/deploy) and starts pythia-deploy.service to process it.
+#
+# __PYTHIA_SPOOL__ below is a PLACEHOLDER for the container-writable REQUESTS dir
+# (<base>/requests) — the spool is split into requests/ (uid-1001-writable, watched
+# here) and state/ (root-owned log/status). The base lives inside the pythia-data
+# docker named volume, whose host mountpoint is only known at install time.
+# install-host-deployer.sh resolves it (`docker volume inspect -f
+# '{{.Mountpoint}}' pythia-data` + /deploy/requests) and rewrites the placeholder
+# while rendering this unit into /etc/systemd/system/ — never enable this file as-is.
+[Unit]
+Description=Watch Pythia deploy spool for on-box deploy requests
+
+[Path]
+PathExistsGlob=__PYTHIA_SPOOL__/*.request.json
+Unit=pythia-deploy.service
+
+[Install]
+WantedBy=multi-user.target

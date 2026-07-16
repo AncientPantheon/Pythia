@@ -1,0 +1,17 @@
+# Runs the blue-green deployer for every pending request in the spool. Triggered by
+# pythia-deploy.path (never enabled directly). Runs as root because it builds
+# images, manages containers, and reloads Caddy — the privileged half of the deploy
+# that the keyless, unprivileged app container is deliberately kept out of.
+[Unit]
+Description=Pythia on-box blue-green deploy
+After=docker.service network-online.target
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/pythia
+ExecStart=/opt/pythia/deploy/host/pythia-deploy-scan.sh
+# Give the source build room; the blue-green health check is bounded (30×2s)
+# inside pythia-deploy.sh itself.
+TimeoutStartSec=1800

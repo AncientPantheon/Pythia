@@ -59,6 +59,11 @@ ENV TXSENDERS_FILE=/data/txsenders.json
 # /data volume so it survives redeploys.
 ENV VERIFIERS_FILE=/data/verifiers.json
 
+# The on-box deploy spool (blue-green Deploy API) — on the /data volume so the
+# host's root systemd path-unit (watching this dir for *.request.json) sees
+# requests the container drops, independent of which container is live.
+ENV PYTHIA_DEPLOY_DIR=/data/deploy
+
 WORKDIR /app
 
 # Carry the hoisted (pruned) node_modules and the built workspace output.

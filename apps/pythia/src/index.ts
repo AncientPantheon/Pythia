@@ -12,6 +12,7 @@ import { registerStats } from "./routes/stats.js";
 import { registerPools } from "./routes/pools.js";
 import { registerConnectorVerify } from "./routes/connectorVerify.js";
 import { registerVerifiers } from "./routes/verifiers.js";
+import { registerAdminDeploy } from "./routes/adminDeploy.js";
 import { VerifierStore } from "./verifiers/store.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loadOidcConfig } from "./admin/oidcConfig.js";
@@ -198,12 +199,16 @@ nodePool.start();
 // present, so the public keyless gateway boots unchanged with no SSO configured.
 // Registered before the static catch-all so `/admin/*` is not shadowed.
 const oidcConfig = loadOidcConfig();
-if (oidcConfig)
+if (oidcConfig) {
   registerAdmin(app, oidcConfig, connectorStore, {
     hubAdmin,
     txSenders: txSenderStore,
     verifiers: verifierStore,
   });
+  // On-box blue-green Deploy API (Update & Deploy panel backend): ancient-gated,
+  // same OIDC config as the rest of the admin surface. See ./routes/adminDeploy.ts.
+  registerAdminDeploy(app, oidcConfig);
+}
 
 // The dedicated ancient-admin dashboard page. Served as its own document at
 // `/admin` (distinct from the `/admin/*` OIDC + admin-API routes above, which are
