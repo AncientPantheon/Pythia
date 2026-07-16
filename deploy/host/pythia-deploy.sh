@@ -141,6 +141,10 @@ if [ -f "$UPSTREAM_INC" ]; then cp "$UPSTREAM_INC" "$prev"; had_prev=1; fi
 tmp="$(mktemp "$UPSTREAM_INC.XXXXXX")"
 printf 'reverse_proxy 127.0.0.1:%s\n' "$NEW_PORT" >"$tmp"
 mv "$tmp" "$UPSTREAM_INC"
+# caddy.service reloads as the 'caddy' user, not root — it must be able to READ
+# the snippet. mktemp creates 0600, so widen to 0644 or the reload fails with
+# "permission denied" even though `caddy validate` (run here as root) passed.
+chmod 0644 "$UPSTREAM_INC"
 if ! caddy validate --config "$CADDYFILE" 2>&1 | tee -a "$LOG"; then
   if [ "$had_prev" = 1 ]; then mv "$prev" "$UPSTREAM_INC"; else rm -f "$UPSTREAM_INC" "$prev"; fi
   docker rm -f "pythia-$NEW" >/dev/null 2>&1 || true
