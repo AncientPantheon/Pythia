@@ -82,11 +82,16 @@ cd "$REPO"
 git fetch origin main 2>&1 | tee -a "$LOG"
 git reset --hard origin/main 2>&1 | tee -a "$LOG"
 
-# 2) Build the new image. BuildKit + --progress=plain streams every step
-#    line-by-line (no cursor-rewrite), so the admin SSE terminal shows live,
-#    granular progress instead of terse legacy-builder output.
-phase "2/5 · Build image (BuildKit)"
-DOCKER_BUILDKIT=1 docker build --progress=plain -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
+# 2) Build the new image. Prefer BuildKit + --progress=plain (line-by-line, no
+#    cursor-rewrite → cleaner SSE terminal) WHEN buildx is present; otherwise fall
+#    back to the legacy builder, which streams fine and is all some hosts have.
+phase "2/5 · Build image"
+if DOCKER_BUILDKIT=1 docker buildx version >/dev/null 2>&1; then
+  DOCKER_BUILDKIT=1 docker build --progress=plain -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
+else
+  log "(buildx not present — using the legacy builder)"
+  docker build -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
+fi
 
 # 3) Pick the target color (the one NOT currently serving).
 if docker ps --format '{{.Names}}' | grep -qx 'pythia-green'; then
