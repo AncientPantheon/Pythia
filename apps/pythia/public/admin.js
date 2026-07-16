@@ -74,6 +74,7 @@ function applyGate() {
     if (gate) { gate.hidden = true; gate.textContent = ""; }
     if (body) body.hidden = false;
     renderTiles();
+    renderChains();
     routeFromHash();
     return;
   }
@@ -104,8 +105,7 @@ function applyGate() {
 }
 
 // The function tiles rendered on the landing. Enabled tiles hash-route into their
-// view; disabled ("planned") tiles render a badge and are inert (T2 turns some of
-// these — plus a Version & Network tile — into live views).
+// view; disabled ("planned") tiles render a badge and are inert.
 const TILES = [
   {
     id: "verifiers",
@@ -116,36 +116,20 @@ const TILES = [
     enabled: true,
   },
   {
-    id: "observation",
-    icon: "🛰️",
-    title: "Observation Pool",
-    blurb: "The AncientHub-fed read fleet — activate the feed and fan reads out.",
-    hash: "#observation",
-    enabled: true,
-  },
-  {
-    id: "upload",
-    icon: "📤",
-    title: "Upload Pool",
-    blurb: "Signed-tx senders that carry every send (and reads when the feed is off).",
-    hash: "#upload",
-    enabled: true,
-  },
-  {
-    id: "version",
-    icon: "📟",
-    title: "Version & Network",
-    blurb: "Live PYTHIA_VERSION and per-source reachability, read from /healthz.",
-    hash: "#version",
+    id: "connectors",
+    icon: "⛓️",
+    title: "Blockchain Connectors",
+    blurb: "Per-chain connector settings — read/send pools and routing, chain by chain.",
+    hash: "#connectors",
     enabled: true,
   },
   {
     id: "update-deploy",
     icon: "⬆️",
     title: "Update & Deploy",
-    blurb: "On-box pull + blue-green deploy of the gateway.",
+    blurb: "Live version + seed-pair health; on-box deploy controls land next round.",
     hash: "#update-deploy",
-    enabled: false,
+    enabled: true,
   },
   {
     id: "security",
@@ -157,19 +141,43 @@ const TILES = [
   },
 ];
 
-// Views the hash router knows how to open (map back to their load* function).
+// The chains the Blockchain Connectors list offers (future chains slot in here).
+const CHAINS = [
+  {
+    id: "stoachain",
+    icon: "🏛️",
+    title: "StoaChain",
+    blurb: "Observation Pool (hub-fed reads) + Upload Pool (signed-tx senders).",
+    hash: "#connectors/stoachain",
+    enabled: true,
+  },
+];
+
+// Views the hash router knows how to open (map to their load* function). Keys are
+// the FULL nested names, matching the sections' data-view values exactly.
 const VIEW_LOADERS = {
   verifiers: loadVerifiers,
-  observation: loadHubStatus,
-  upload: loadTxSenders,
-  version: loadVersionNetwork,
+  connectors: () => {}, // static chain list — rendered up front, nothing to load
+  "connectors/stoachain": () => {
+    loadHubStatus();
+    loadTxSenders();
+    renderStoachainRules();
+  },
+  "update-deploy": loadVersionNetwork,
 };
 
-function renderTiles() {
-  const grid = document.getElementById("admin-tiles");
-  if (!grid) return;
+// Legacy (topic-2) flat hashes → their new nested homes, so old bookmarks land.
+const LEGACY_HASHES = {
+  observation: "connectors/stoachain",
+  upload: "connectors/stoachain",
+  version: "update-deploy",
+};
+
+// Shared lined-entry builder: the landing tiles and the chain list use the same
+// .admin-tiles/.tile markup idiom.
+function renderEntryTiles(grid, entries) {
   grid.textContent = "";
-  for (const t of TILES) {
+  for (const t of entries) {
     const tile = document.createElement(t.enabled ? "a" : "button");
     tile.className = "tile" + (t.enabled ? "" : " tile--planned");
     if (t.enabled) {
@@ -205,6 +213,16 @@ function renderTiles() {
   }
 }
 
+function renderTiles() {
+  const grid = document.getElementById("admin-tiles");
+  if (grid) renderEntryTiles(grid, TILES);
+}
+
+function renderChains() {
+  const grid = document.getElementById("admin-chains");
+  if (grid) renderEntryTiles(grid, CHAINS);
+}
+
 // A disabled tile just posts a short note — never a view, never a backend call.
 function showPlannedNote(title) {
   const note = document.getElementById("admin-tile-note");
@@ -213,11 +231,16 @@ function showPlannedNote(title) {
   note.hidden = false;
 }
 
-// Hash router: no (known) hash → the landing; #verifiers/#observation/#upload →
-// that view (landing hidden), firing its load* function so data shows on open.
+// Hash router: no (known) hash → the landing; a known name (flat like #verifiers
+// or nested like #connectors/stoachain) → that view (landing hidden), firing its
+// load* function so data shows on open. Legacy topic-2 hashes redirect first.
 function routeFromHash() {
   if (!isAncient()) return;
   const name = location.hash.replace(/^#/, "");
+  if (Object.prototype.hasOwnProperty.call(LEGACY_HASHES, name)) {
+    location.hash = "#" + LEGACY_HASHES[name]; // hashchange re-fires the router
+    return;
+  }
   const known = Object.prototype.hasOwnProperty.call(VIEW_LOADERS, name);
   const tiles = document.getElementById("admin-tiles");
   const note = document.getElementById("admin-tile-note");
@@ -234,7 +257,8 @@ function routeFromHash() {
   }
 }
 
-// The "← Dashboard" back control clears the hash (which fires the router).
+// A landing-level "← Dashboard" back control clears the hash (which fires the
+// router); nested views' back controls carry a data-back="#…" target instead.
 function goToLanding() {
   if (location.hash) {
     location.hash = "";
@@ -727,6 +751,69 @@ function wireTxSenderBulk() {
   });
 }
 
+// ── stoachain routing rule-book (static, code-derived) ────────────────────────
+// The real read/send/failover rules, extracted from dial/nodePool/hub/send/store
+// and verified against the code 2026-07-16. Kept as data so the panel is a plain
+// render — it changes only when the routing code changes.
+const STOACHAIN_RULES = [
+  {
+    title: "Read rotation (feed live)",
+    body: "When the AncientHub feed is live, each read rotates across the hub fleet as the primary leg, with an Upload Pool node held as the fallback leg for that request.",
+  },
+  {
+    title: "Feed down",
+    body: "When the feed is off, erroring, or reports zero slots, both the primary and fallback legs rotate across the Upload Pool instead.",
+  },
+  {
+    title: "Both pools empty",
+    body: "If the Upload Pool is also empty, the read fails closed with 503 pythia_no_read_node — there is no silent fallback to nothing.",
+  },
+  {
+    title: "Failover is transport-only",
+    body: "A node's HTTP error response (4xx/5xx) is returned to the caller verbatim — it is never treated as a failover trigger. Only transport failures (timeouts, connection errors) fail over, with one retry and a 10s per-attempt timeout; if both legs exhaust their attempts, the read returns 502 pythia_pool_exhausted.",
+  },
+  {
+    title: "Last-good slots",
+    body: "If a hub-feed poll fails, Pythia keeps serving the last-good slot list rather than dropping to zero — it only changes once the feed recovers or an admin reconfigures the hub.",
+  },
+  {
+    title: "Sends",
+    body: "Signed-tx sends go only to the Upload Pool, tried in the order nodes were added — never to hub read nodes. An empty or fully-disabled pool fails closed with 503 pythia_no_tx_sender.",
+  },
+  {
+    title: "Seed permanence",
+    body: "The two seed nodes, node1.stoachain.com and node2.stoachain.com, are permanent — they can't be disabled or removed — and they serve reads whenever the hub feed is off.",
+  },
+  {
+    title: "Cadences",
+    body: "The hub feed is re-polled every 60s and seed-pair health every 15s. There is no node blacklist or circuit breaker — every request fails over live, node by node.",
+  },
+];
+
+function renderStoachainRules() {
+  const container = document.getElementById("stoachain-rules");
+  if (!container) return;
+  container.textContent = "";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "How StoaChain routing works — verified against the code 2026-07-16";
+  container.appendChild(heading);
+
+  for (const rule of STOACHAIN_RULES) {
+    const title = document.createElement("p");
+    title.className = "hub-stat";
+    const b = document.createElement("b");
+    b.textContent = rule.title;
+    title.appendChild(b);
+
+    const body = document.createElement("p");
+    body.className = "panel-note";
+    body.textContent = rule.body;
+
+    container.append(title, body);
+  }
+}
+
 // ── version & network (live /healthz readout) ──────────────────────────────────
 async function loadVersionNetwork() {
   const container = document.getElementById("version-network");
@@ -798,7 +885,14 @@ function renderVersionNetwork(container, body) {
 
 // ── init ─────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".admin-back").forEach((btn) => {
-  btn.addEventListener("click", goToLanding);
+  btn.addEventListener("click", () => {
+    const target = btn.dataset.back;
+    if (target) {
+      location.hash = target; // one level up (e.g. stoachain → #connectors)
+    } else {
+      goToLanding();
+    }
+  });
 });
 window.addEventListener("hashchange", routeFromHash);
 wireVerifierForm();

@@ -48,9 +48,18 @@
           <div id="verifiers-list" class="txsenders"></div>
         </section>
 
-        <!-- OBSERVATION POOL (hub feed) -->
-        <section class="admin-view" data-view="observation" hidden>
+        <!-- BLOCKCHAIN CONNECTORS — the chain list (rendered from CHAINS in admin.js) -->
+        <section class="admin-view" data-view="connectors" hidden>
           <button type="button" class="admin-back">← Dashboard</button>
+          <p class="panel-note">Per-chain connector settings. Pick a chain to manage its read/send pools and see how routing works.</p>
+          <div id="admin-chains" class="admin-tiles"></div>
+        </section>
+
+        <!-- STOACHAIN — the chain page: Observation Pool + Upload Pool + rule-book -->
+        <section class="admin-view" data-view="connectors/stoachain" hidden>
+          <button type="button" class="admin-back" data-back="#connectors">← Connectors</button>
+
+          <h3>Observation Pool</h3>
           <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP). When the feed is off, reads use the Upload Pool.</p>
           <div id="hub-status" class="hub-status"></div>
           <form id="hub-config-form" class="conn-form">
@@ -69,11 +78,8 @@
             </div>
             <p class="conn-error" id="hub-config-error" hidden></p>
           </form>
-        </section>
 
-        <!-- UPLOAD POOL -->
-        <section class="admin-view" data-view="upload" hidden>
-          <button type="button" class="admin-back">← Dashboard</button>
+          <h3>Upload Pool</h3>
           <p class="panel-note">Signed-tx senders. Sends (<code>/stoachain/send</code>) go only here, in order (no PythXP), and also serve reads when the hub feed is off. The two <b>seed nodes</b> are baked in and can't be removed; add your own on top.</p>
           <form id="txsender-form" class="conn-form conn-form--add">
             <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
@@ -94,13 +100,18 @@
             <span class="txsenders-count" id="txsenders-count"></span>
           </div>
           <div id="txsenders" class="txsenders"></div>
+
+          <!-- The StoaChain routing rule-book, filled by renderStoachainRules(). -->
+          <div id="stoachain-rules"></div>
         </section>
 
-        <!-- VERSION & NETWORK -->
-        <section class="admin-view" data-view="version" hidden>
+        <!-- UPDATE & DEPLOY — version/seed-pair health readout; deploy controls come next round -->
+        <section class="admin-view" data-view="update-deploy" hidden>
           <button type="button" class="admin-back">← Dashboard</button>
-          <p class="panel-note">The live gateway version and each configured source's reachability, read from <code>/healthz</code>.</p>
+          <h3>Version &amp; seed-pair health</h3>
+          <p class="panel-note">The live gateway version plus reachability, read from <code>/healthz</code> — which reports only the two config seed nodes, so it can differ from the pool actually serving reads.</p>
           <div id="version-network"></div>
+          <p class="panel-note">Deploy controls land in the next round (topic: update-deploy).</p>
         </section>
       </div>
     </main>

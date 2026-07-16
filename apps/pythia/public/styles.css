@@ -604,27 +604,32 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .halves { grid-template-columns: 1fr; }
 }
 
-/* ── admin: tile landing + hash-routed views ────────────────────────────── */
+/* ── admin: tile landing + hash-routed views (Mnemosyne-style lined entries,
+   a vertical tilelist — NOT a card grid) ─────────────────────────────────── */
 .admin-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
   margin: 18px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
 }
 .tile {
   display: flex; align-items: flex-start; gap: 14px;
-  padding: 18px 20px; border-radius: var(--radius);
-  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
-  border: 1px solid var(--line);
+  width: 100%;
+  padding: 18px 20px 18px 17px;
+  border: none; border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  background: transparent;
   color: var(--ink); text-decoration: none; text-align: left;
   font: inherit; cursor: pointer;
-  transition: border-color .15s, background .15s, transform .1s, box-shadow .15s;
+  transition: border-color .15s, background .15s;
 }
+.tile:last-child { border-bottom: none; }
 .tile:hover {
-  border-color: var(--gold-dim);
-  background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel) 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px -14px rgba(0,0,0,.6), 0 0 20px -8px rgba(230,190,106,.3);
+  border-left-color: var(--gold-dim);
+  background: rgba(230,190,106,.06);
 }
 .tile-icon { flex: none; font-size: 28px; line-height: 1; }
 .tile-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -637,15 +642,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   background: rgba(111,122,150,.16); color: var(--ink-mute);
 }
 
-/* Planned tiles look disabled — dimmed, no hover lift, not-allowed cursor —
-   matching the .btn:disabled convention used elsewhere. */
+/* Planned tiles look disabled — dimmed, no hover highlight, not-allowed
+   cursor — matching the .btn:disabled convention used elsewhere. */
 .tile--planned {
   opacity: .55; filter: grayscale(.35); cursor: not-allowed;
 }
 .tile--planned:hover {
-  border-color: var(--line);
-  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
-  transform: none; box-shadow: none;
+  border-left-color: transparent;
+  background: transparent;
 }
 
 .admin-view { margin: 18px 0; }
@@ -658,7 +662,3 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   transition: border-color .15s, background .15s, color .15s;
 }
 .admin-back:hover { border-color: var(--gold-dim); color: var(--ink); background: rgba(230,190,106,.07); }
-
-@media (max-width: 480px) {
-  .admin-tiles { grid-template-columns: 1fr; }
-}

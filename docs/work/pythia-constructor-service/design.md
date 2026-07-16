@@ -65,11 +65,17 @@ runs the Docker container behind Caddy. The Deploy path (when built later) is de
   handled when we touch local admin login, tracked in memory, not a project deliverable.
 
 ## Topics
-1. **container-ci** — unified two-artifact release (npm client + ghcr container on one `v*` tag) +
-   versioning gate (CHANGELOG + changelog-version test + RELEASING.md). Foundation; shaped now.
-2. **card-admin** — restructure the sub-tabbed `/admin` into a Mnemosyne-style tile landing + shared
-   AdminGate; all operator tiles present (Verifiers, Observation Pool, Upload Pool, Deploy [status
-   only], Security [placeholder], Network/Version). Shaped when its turn comes.
-3. **embeddable-verifiers** — two-tier verifier registry (baked-in `config/verifiers.json` +
-   runtime `/data`), embedded ones badged/read-only, "embed / update embedded" folds a runtime
-   verifier into the checked-in config. The owner's focus. Shaped when its turn comes.
+1. **container-ci** — ✅ DONE (v1.7.0 released: npm + ghcr on one tag; versioning gate).
+2. **card-admin** — ✅ DONE (tile landing + AdminGate + hash router; deployed live).
+3. **admin-connectors-ia** — regroup the StoaChain-specific pools under a **Blockchain Connectors**
+   section (landing → Connectors → StoaChain → Observation Pool + Upload Pool w/ visible seeds +
+   the REAL routing rule-book displayed); restyle the landing to Mnemosyne-style **lined entries**;
+   merge Version & Network into the Update & Deploy entry. Shaped now (owner-directed round).
+4. **update-deploy** — the real on-box tokenless Deploy: spool + systemd path-unit + **blue-green
+   zero-downtime swap via Caddy** (owner chose blue-green; both ports loopback-only, no firewall
+   changes) + SSE-streamed log + a status panel depicting live color/port/container. Shaped next.
+5. **security-vault** — master-key sealed operator creds (libsodium secretbox; seal the hub HMAC
+   secret etc.), atomic env write, plan-then-apply rotation; the Security entry's real backend.
+   ⚠ verify the keylessScanner tolerates symmetric sealing. Shaped after update-deploy.
+6. **embeddable-verifiers** — two-tier verifier registry (baked-in `config/verifiers.json` +
+   runtime `/data`) + embed flow. Owner deferred until after topics 3–5.
