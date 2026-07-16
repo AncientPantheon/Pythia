@@ -1,0 +1,5 @@
+# Host deploy scripts + systemd units run on Linux — they MUST be LF, or a CRLF
+# shebang/line breaks them on the VPS. Force LF regardless of the checkout platform.
+*.sh text eol=lf
+deploy/host/*.path text eol=lf
+deploy/host/*.service text eol=lf
