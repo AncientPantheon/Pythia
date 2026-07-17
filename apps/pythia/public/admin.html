@@ -12,141 +12,148 @@
     <div class="starfield" aria-hidden="true"></div>
 
     <main class="shell">
-      <div class="topbar">
-        <a class="btn btn--ghost btn--small" href="/">← Pythia</a>
+      <!-- Pantheonic Header (admin variant): back + section title on the left,
+           the identity block on the right. -->
+      <header class="admin-header">
+        <div class="admin-header-left">
+          <a class="btn btn--ghost btn--small" href="/">← Pythia</a>
+          <span class="admin-header-title">Admin</span>
+        </div>
         <div id="authbox" class="authbox" aria-live="polite"></div>
-      </div>
-
-      <header class="panel-head" style="margin-top: 1rem">
-        <h2>Admin</h2>
-        <p class="panel-note">Ancient-admin controls for the Pythia gateway.</p>
       </header>
 
       <!-- Shown when the visitor is not an ancient admin. -->
       <div id="admin-gate" class="admin-gate" hidden></div>
 
-      <!-- The dashboard (revealed only to an ancient admin). -->
+      <!-- The dashboard (revealed only to an ancient admin): a two-column
+           master–detail — a persistent sidebar menu + a content pane. -->
       <div id="admin-body" hidden>
-        <!-- Landing: the function tiles (rendered from the TILES array in admin.js). -->
-        <div id="admin-tiles" class="admin-tiles"></div>
-        <p id="admin-tile-note" class="panel-note" hidden></p>
+        <div class="admin-layout">
+          <!-- Sidebar nav (.admin-nav-item rows rendered from TILES in admin.js). -->
+          <nav id="admin-sidebar" class="admin-sidebar" aria-label="Admin sections"></nav>
 
-        <!-- VERIFIERS -->
-        <section class="admin-view" data-view="verifiers" hidden>
-          <button type="button" class="admin-back">← Dashboard</button>
-          <p class="panel-note">The Apollo-ownership verifiers the Connectors <b>Verify</b> popup offers — the wallet/Codex sites that hold your consumers' Apollo keys and serve <code>/apollo-verify</code>. None are seeded; add your own (e.g. <code>https://codex.ancientholdings.eu</code> or <code>http://localhost:3005</code>). The URL is stored as an origin — path/port only, no <code>/apollo-verify</code> suffix.</p>
-          <form id="verifier-form" class="conn-form conn-form--add">
-            <label class="conn-field">Label<input name="label" type="text" required placeholder="Mnemosyne" /></label>
-            <label class="conn-field">Base URL<input name="baseUrl" type="url" required placeholder="https://codex.ancientholdings.eu" /></label>
-            <div class="conn-actions"><button type="submit" class="btn btn--primary">Add verifier</button></div>
-            <p class="conn-error" id="verifier-error" hidden></p>
-          </form>
-          <div class="txsenders-head">
-            <span class="txsenders-title">Verifiers</span>
-            <span class="txsenders-count" id="verifiers-count"></span>
-          </div>
-          <div id="verifiers-list" class="txsenders"></div>
-        </section>
-
-        <!-- BLOCKCHAIN CONNECTORS — the chain list (rendered from CHAINS in admin.js) -->
-        <section class="admin-view" data-view="connectors" hidden>
-          <button type="button" class="admin-back">← Dashboard</button>
-          <p class="panel-note">Per-chain connector settings. Pick a chain to manage its read/send pools and see how routing works.</p>
-          <div id="admin-chains" class="admin-tiles"></div>
-        </section>
-
-        <!-- STOACHAIN — the chain page: the list entry "expanded" in place, its content
-             grouped into sub-tabs (Observation Pool | Upload Pool | Routing Rules). -->
-        <section class="admin-view" data-view="connectors/stoachain" hidden>
-          <button type="button" class="admin-back" data-back="#connectors">← Connectors</button>
-
-          <!-- Chain header row — the .tile look, but a plain div so it isn't a link. -->
-          <div class="admin-tiles">
-            <div class="tile" style="cursor: default">
-              <span class="tile-icon" aria-hidden="true">⛓️</span>
-              <span class="tile-body">
-                <span class="tile-title">StoaChain</span>
-                <span class="tile-blurb">Observation Pool (hub-fed reads) + Upload Pool (signed-tx senders).</span>
-              </span>
+          <div class="admin-pane">
+            <!-- Unselected state: the natural landing at bare /admin. -->
+            <div id="admin-empty" class="admin-empty">
+              <p class="panel-note">Select a section from the left to begin.</p>
             </div>
-          </div>
+            <p id="admin-tile-note" class="panel-note" hidden></p>
 
-          <!-- Sub-tabs, wired by wireChainSubtabs() in admin.js. Default: Observation Pool. -->
-          <div class="subtabs">
-            <button type="button" class="subtab subtab--active" data-subtab="observation">Observation Pool</button>
-            <button type="button" class="subtab" data-subtab="upload">Upload Pool</button>
-            <button type="button" class="subtab" data-subtab="rules">Routing Rules</button>
-          </div>
-
-          <div class="subpanel" data-subpanel="observation">
-            <h3>Observation Pool</h3>
-            <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP). When the feed is off, reads use the Upload Pool.</p>
-            <div id="hub-status" class="hub-status"></div>
-            <form id="hub-config-form" class="conn-form">
-              <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
-              <div class="conn-field">
-                <label for="hub-secret-input">HMAC service secret</label>
-                <span class="secret-input">
-                  <input id="hub-secret-input" name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" />
-                  <button type="button" id="hub-secret-toggle" class="secret-toggle" aria-label="Show or hide the secret">show</button>
-                </span>
-              </div>
-              <div id="hub-secret-current" class="secret-current" hidden></div>
-              <div class="conn-actions">
-                <button type="submit" class="btn btn--primary">Save &amp; activate</button>
-                <button type="button" id="hub-refresh" class="btn btn--ghost">Refresh now</button>
-              </div>
-              <p class="conn-error" id="hub-config-error" hidden></p>
-            </form>
-          </div>
-
-          <div class="subpanel" data-subpanel="upload" hidden>
-            <h3>Upload Pool</h3>
-            <p class="panel-note">Signed-tx senders. Sends (<code>/stoachain/send</code>) go only here, in order (no PythXP), and also serve reads when the hub feed is off. The two <b>seed nodes</b> are baked in and can't be removed; add your own on top.</p>
-            <form id="txsender-form" class="conn-form conn-form--add">
-              <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
-              <label class="conn-field">Label (optional)<input name="label" type="text" placeholder="upload-1" /></label>
-              <div class="conn-actions"><button type="submit" class="btn btn--primary">Add to Upload Pool</button></div>
-              <p class="conn-error" id="txsender-error" hidden></p>
-            </form>
-            <details class="bulk-add">
-              <summary>Add multiple at once</summary>
-              <form id="txsender-bulk-form" class="conn-form">
-                <label class="conn-field">Node URLs — one per line<textarea name="urls" rows="4" placeholder="https://1.2.3.4:1848&#10;https://5.6.7.8:1848"></textarea></label>
-                <div class="conn-actions"><button type="submit" class="btn btn--primary">Add all</button></div>
-                <p class="conn-error" id="txsender-bulk-error" hidden></p>
+            <!-- VERIFIERS -->
+            <section class="admin-view" data-view="verifiers" hidden>
+              <p class="panel-note">The Apollo-ownership verifiers the Connectors <b>Verify</b> popup offers — the wallet/Codex sites that hold your consumers' Apollo keys and serve <code>/apollo-verify</code>. None are seeded; add your own (e.g. <code>https://codex.ancientholdings.eu</code> or <code>http://localhost:3005</code>). The URL is stored as an origin — path/port only, no <code>/apollo-verify</code> suffix.</p>
+              <form id="verifier-form" class="conn-form conn-form--add">
+                <label class="conn-field">Label<input name="label" type="text" required placeholder="Mnemosyne" /></label>
+                <label class="conn-field">Base URL<input name="baseUrl" type="url" required placeholder="https://codex.ancientholdings.eu" /></label>
+                <div class="conn-actions"><button type="submit" class="btn btn--primary">Add verifier</button></div>
+                <p class="conn-error" id="verifier-error" hidden></p>
               </form>
-            </details>
-            <div class="txsenders-head">
-              <span class="txsenders-title">Upload Pool entries</span>
-              <span class="txsenders-count" id="txsenders-count"></span>
-            </div>
-            <div id="txsenders" class="txsenders"></div>
-          </div>
+              <div class="txsenders-head">
+                <span class="txsenders-title">Verifiers</span>
+                <span class="txsenders-count" id="verifiers-count"></span>
+              </div>
+              <div id="verifiers-list" class="txsenders"></div>
+            </section>
 
-          <div class="subpanel" data-subpanel="rules" hidden>
-            <!-- The StoaChain routing rule-book, filled by renderStoachainRules(). -->
-            <div id="stoachain-rules"></div>
-          </div>
-        </section>
+            <!-- BLOCKCHAIN CONNECTORS — the chain list (rendered from CHAINS in admin.js) -->
+            <section class="admin-view" data-view="connectors" hidden>
+              <p class="panel-note">Per-chain connector settings. Pick a chain to manage its read/send pools and see how routing works.</p>
+              <div id="admin-chains" class="admin-tiles"></div>
+            </section>
 
-        <!-- UPDATE & DEPLOY — version/seed-pair health readout + on-box blue-green deploy -->
-        <section class="admin-view" data-view="update-deploy" hidden>
-          <button type="button" class="admin-back">← Dashboard</button>
-          <h3>Version &amp; seed-pair health</h3>
-          <p class="panel-note">The live gateway version plus reachability, read from <code>/healthz</code> — which reports only the two config seed nodes, so it can differ from the pool actually serving reads.</p>
-          <div id="version-network"></div>
+            <!-- STOACHAIN — the chain page: the list entry "expanded" in place, its content
+                 grouped into sub-tabs (Observation Pool | Upload Pool | Routing Rules). -->
+            <section class="admin-view" data-view="connectors/stoachain" hidden>
+              <button type="button" class="admin-back" data-back="#connectors">← Connectors</button>
 
-          <h3>On-box deploy</h3>
-          <div id="deploy-status"></div>
-          <p class="panel-note">Blue-green port juggle: <b>blue</b> = <code>127.0.0.1:8080</code>, <b>green</b> = <code>127.0.0.1:8081</code>. Each deploy builds the other color, health-checks it, then Caddy flips between the two loopback ports — public stays on 80/443 throughout.</p>
-          <div class="conn-actions">
-            <button type="button" id="deploy-btn" class="btn btn--primary" disabled>Deploy</button>
+              <!-- Chain header row — the .tile look, but a plain div so it isn't a link. -->
+              <div class="admin-tiles">
+                <div class="tile" style="cursor: default">
+                  <span class="tile-icon" aria-hidden="true">⛓️</span>
+                  <span class="tile-body">
+                    <span class="tile-title">StoaChain</span>
+                    <span class="tile-blurb">Observation Pool (hub-fed reads) + Upload Pool (signed-tx senders).</span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- Sub-tabs, wired by wireChainSubtabs() in admin.js. Default: Observation Pool. -->
+              <div class="subtabs">
+                <button type="button" class="subtab subtab--active" data-subtab="observation">Observation Pool</button>
+                <button type="button" class="subtab" data-subtab="upload">Upload Pool</button>
+                <button type="button" class="subtab" data-subtab="rules">Routing Rules</button>
+              </div>
+
+              <div class="subpanel" data-subpanel="observation">
+                <h3>Observation Pool</h3>
+                <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP). When the feed is off, reads use the Upload Pool.</p>
+                <div id="hub-status" class="hub-status"></div>
+                <form id="hub-config-form" class="conn-form">
+                  <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
+                  <div class="conn-field">
+                    <label for="hub-secret-input">HMAC service secret</label>
+                    <span class="secret-input">
+                      <input id="hub-secret-input" name="hmacSecret" type="password" autocomplete="new-password" placeholder="paste to set — leave blank to keep the current one" />
+                      <button type="button" id="hub-secret-toggle" class="secret-toggle" aria-label="Show or hide the secret">show</button>
+                    </span>
+                  </div>
+                  <div id="hub-secret-current" class="secret-current" hidden></div>
+                  <div class="conn-actions">
+                    <button type="submit" class="btn btn--primary">Save &amp; activate</button>
+                    <button type="button" id="hub-refresh" class="btn btn--ghost">Refresh now</button>
+                  </div>
+                  <p class="conn-error" id="hub-config-error" hidden></p>
+                </form>
+              </div>
+
+              <div class="subpanel" data-subpanel="upload" hidden>
+                <h3>Upload Pool</h3>
+                <p class="panel-note">Signed-tx senders. Sends (<code>/stoachain/send</code>) go only here, in order (no PythXP), and also serve reads when the hub feed is off. The two <b>seed nodes</b> are baked in and can't be removed; add your own on top.</p>
+                <form id="txsender-form" class="conn-form conn-form--add">
+                  <label class="conn-field">Node URL<input name="url" type="url" required placeholder="https://1.2.3.4:1848" /></label>
+                  <label class="conn-field">Label (optional)<input name="label" type="text" placeholder="upload-1" /></label>
+                  <div class="conn-actions"><button type="submit" class="btn btn--primary">Add to Upload Pool</button></div>
+                  <p class="conn-error" id="txsender-error" hidden></p>
+                </form>
+                <details class="bulk-add">
+                  <summary>Add multiple at once</summary>
+                  <form id="txsender-bulk-form" class="conn-form">
+                    <label class="conn-field">Node URLs — one per line<textarea name="urls" rows="4" placeholder="https://1.2.3.4:1848&#10;https://5.6.7.8:1848"></textarea></label>
+                    <div class="conn-actions"><button type="submit" class="btn btn--primary">Add all</button></div>
+                    <p class="conn-error" id="txsender-bulk-error" hidden></p>
+                  </form>
+                </details>
+                <div class="txsenders-head">
+                  <span class="txsenders-title">Upload Pool entries</span>
+                  <span class="txsenders-count" id="txsenders-count"></span>
+                </div>
+                <div id="txsenders" class="txsenders"></div>
+              </div>
+
+              <div class="subpanel" data-subpanel="rules" hidden>
+                <!-- The StoaChain routing rule-book, filled by renderStoachainRules(). -->
+                <div id="stoachain-rules"></div>
+              </div>
+            </section>
+
+            <!-- UPDATE & DEPLOY — version/seed-pair health readout + on-box blue-green deploy -->
+            <section class="admin-view" data-view="update-deploy" hidden>
+              <h3>Version &amp; seed-pair health</h3>
+              <p class="panel-note">The live gateway version plus reachability, read from <code>/healthz</code> — which reports only the two config seed nodes, so it can differ from the pool actually serving reads.</p>
+              <div id="version-network"></div>
+
+              <h3>On-box deploy</h3>
+              <div id="deploy-status"></div>
+              <p class="panel-note">Blue-green port juggle: <b>blue</b> = <code>127.0.0.1:8080</code>, <b>green</b> = <code>127.0.0.1:8081</code>. Each deploy builds the other color, health-checks it, then Caddy flips between the two loopback ports — public stays on 80/443 throughout.</p>
+              <div class="conn-actions">
+                <button type="button" id="deploy-btn" class="btn btn--primary" disabled>Deploy</button>
+              </div>
+              <p class="conn-error" id="deploy-error" hidden></p>
+              <p class="hub-stat" id="deploy-stream-status" hidden></p>
+              <pre id="deploy-log" class="console-out" hidden></pre>
+            </section>
           </div>
-          <p class="conn-error" id="deploy-error" hidden></p>
-          <p class="hub-stat" id="deploy-stream-status" hidden></p>
-          <pre id="deploy-log" class="console-out" hidden></pre>
-        </section>
+        </div>
       </div>
     </main>
 

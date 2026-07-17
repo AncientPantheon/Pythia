@@ -24,10 +24,13 @@ function renderAuthbox() {
     nm.textContent = authState.name || "user";
     who.append("Signed in as ", nm);
     if (authState.roles.length) {
-      const role = document.createElement("span");
-      role.className = "role";
-      role.textContent = authState.roles[0];
-      who.append(" · ", role);
+      // Promote `ancient` to the shown role when present (per the roles guideline);
+      // otherwise show the first role. The badge accents only when it's `ancient`.
+      const shown = authState.roles.includes("ancient") ? "ancient" : authState.roles[0];
+      const badge = document.createElement("span");
+      badge.className = "role-badge" + (shown === "ancient" ? " role-badge--ancient" : "");
+      badge.textContent = shown;
+      who.append(" · ", badge);
     }
     const out = document.createElement("a");
     out.className = "btn btn--ghost btn--small";
@@ -59,12 +62,12 @@ async function loadMe() {
   applyGate();
 }
 
-// ── admin gate + tile landing + hash router ──────────────────────────────────
+// ── admin gate + sidebar + hash router ───────────────────────────────────────
 // The shared gate owns four states, driven purely by `authState`:
 //   • authState === null           → "checking…" (before /api/me resolves)
 //   • not authenticated            → a login prompt
 //   • authenticated, not ancient   → a "requires the ancient role" notice
-//   • ancient                      → the tile landing (+ hash-routed views)
+//   • ancient                      → the sidebar + content pane (hash-routed)
 // This is UX only — every /admin/* mutation is gated again server-side.
 function applyGate() {
   const body = document.getElementById("admin-body");
@@ -73,7 +76,7 @@ function applyGate() {
   if (isAncient()) {
     if (gate) { gate.hidden = true; gate.textContent = ""; }
     if (body) body.hidden = false;
-    renderTiles();
+    renderSidebar();
     renderChains();
     routeFromHash();
     return;
@@ -104,8 +107,8 @@ function applyGate() {
   gate.append(p, login);
 }
 
-// The function tiles rendered on the landing. Enabled tiles hash-route into their
-// view; disabled ("planned") tiles render a badge and are inert.
+// The top-level sections rendered as the persistent sidebar menu. Enabled items
+// hash-route into their view; disabled ("planned") items are greyed and inert.
 const TILES = [
   {
     id: "verifiers",
@@ -224,9 +227,36 @@ function renderEntryTiles(grid, entries) {
   }
 }
 
-function renderTiles() {
-  const grid = document.getElementById("admin-tiles");
-  if (grid) renderEntryTiles(grid, TILES);
+// The persistent sidebar: one .admin-nav-item row per top-level section (icon +
+// label). Enabled → an <a href=hash>; planned → an inert button that posts the
+// "coming later" note in the pane. Rendered once when the gate opens.
+function renderSidebar() {
+  const nav = document.getElementById("admin-sidebar");
+  if (!nav) return;
+  nav.textContent = "";
+  for (const t of TILES) {
+    const item = document.createElement(t.enabled ? "a" : "button");
+    item.className = "admin-nav-item" + (t.enabled ? "" : " admin-nav-item--planned");
+    item.dataset.navId = t.id;
+    if (t.enabled) {
+      item.href = t.hash;
+    } else {
+      item.type = "button";
+      item.addEventListener("click", () => showPlannedNote(t.title));
+    }
+
+    const icon = document.createElement("span");
+    icon.className = "admin-nav-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = t.icon;
+
+    const label = document.createElement("span");
+    label.className = "admin-nav-label";
+    label.textContent = t.title;
+
+    item.append(icon, label);
+    nav.appendChild(item);
+  }
 }
 
 function renderChains() {
@@ -234,17 +264,21 @@ function renderChains() {
   if (grid) renderEntryTiles(grid, CHAINS);
 }
 
-// A disabled tile just posts a short note — never a view, never a backend call.
+// A disabled section just posts a short note in the pane — never a view, never a
+// backend call. Clears the empty prompt so the note stands alone.
 function showPlannedNote(title) {
+  const empty = document.getElementById("admin-empty");
+  if (empty) empty.hidden = true;
   const note = document.getElementById("admin-tile-note");
   if (!note) return;
   note.textContent = `${title} is coming in a later round.`;
   note.hidden = false;
 }
 
-// Hash router: no (known) hash → the landing; a known name (flat like #verifiers
-// or nested like #connectors/stoachain) → that view (landing hidden), firing its
-// load* function so data shows on open. Legacy topic-2 hashes redirect first.
+// Hash router: no (known) hash → the empty prompt in the pane (no active nav item);
+// a known name (flat like #verifiers or nested like #connectors/stoachain) → that
+// view in the pane + its top-level sidebar item marked active, firing its load*
+// function so data shows on open. Legacy topic-2 hashes redirect first.
 function routeFromHash() {
   if (!isAncient()) return;
   const name = location.hash.replace(/^#/, "");
@@ -253,22 +287,30 @@ function routeFromHash() {
     return;
   }
   const known = Object.prototype.hasOwnProperty.call(VIEW_LOADERS, name);
-  const tiles = document.getElementById("admin-tiles");
+  const empty = document.getElementById("admin-empty");
   const note = document.getElementById("admin-tile-note");
   const views = document.querySelectorAll(".admin-view");
+  const navItems = document.querySelectorAll(".admin-nav-item");
 
   if (known) {
-    if (tiles) tiles.hidden = true;
+    if (empty) empty.hidden = true;
     if (note) note.hidden = true;
     views.forEach((v) => { v.hidden = v.dataset.view !== name; });
+    // Nested (#connectors/stoachain) highlights its top-level (connectors) item.
+    const topLevel = name.split("/")[0];
+    navItems.forEach((it) => {
+      it.classList.toggle("admin-nav-item--active", it.dataset.navId === topLevel);
+    });
     VIEW_LOADERS[name]();
   } else {
-    if (tiles) tiles.hidden = false;
+    if (empty) empty.hidden = false;
+    if (note) note.hidden = true;
     views.forEach((v) => { v.hidden = true; });
+    navItems.forEach((it) => it.classList.remove("admin-nav-item--active"));
   }
 }
 
-// A landing-level "← Dashboard" back control clears the hash (which fires the
+// Clears the hash to return to the unselected /admin state (which fires the
 // router); nested views' back controls carry a data-back="#…" target instead.
 function goToLanding() {
   if (location.hash) {
