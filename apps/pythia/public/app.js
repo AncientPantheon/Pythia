@@ -1660,11 +1660,9 @@ function renderTier2(name) {
   if (!row || !nav) return;
   nav.textContent = "";
   const items = TIER2[name] || [];
-  if (!items.length) {
-    row.hidden = true; // no sub-nav for this section — collapse the L3 band
-    return;
-  }
-  row.hidden = false;
+  // L3 is a FIXED zone — never hidden, so the header height stays constant. The
+  // tier-2 buttons just fill into or empty out of it as sections are picked.
+  if (!items.length) return;
   // Reflect whichever in-panel sub-tab is currently active (default: the first).
   const activeSub = document.querySelector("#conn-subtabs .subtab--active");
   const activeName = activeSub ? activeSub.dataset.subtab : items[0].subtab;

@@ -53,16 +53,20 @@ body {
   position: relative; z-index: 1;
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: clamp(20px, 4vw, 48px);
+  /* Small top padding only — the sticky header sits directly above, so a large
+     top gap reads as dead space. Sides + bottom keep the page gutter. */
+  padding: 14px clamp(20px, 4vw, 48px) 48px;
 }
 
-/* ── HERO ───────────────────────────────────────────────── */
+/* ── HERO — compact identity band (single-screen console) ─────────────────────
+   Deliberately NOT a full page: title/tagline share the top with a size-capped
+   portrait so the work-area beneath is visible without scrolling. */
 .hero {
   display: grid;
-  grid-template-columns: 1.15fr .85fr;
-  gap: clamp(24px, 4vw, 56px);
+  grid-template-columns: 1.1fr .9fr;
+  gap: clamp(24px, 4vw, 48px);
   align-items: center;
-  padding: clamp(24px, 5vw, 64px) 0 clamp(28px, 4vw, 48px);
+  padding: 6px 0 22px;
 }
 .eyebrow {
   margin: 0 0 14px;
@@ -71,20 +75,20 @@ body {
 }
 .title {
   margin: 0;
-  font-size: clamp(52px, 9vw, 108px);
+  font-size: clamp(40px, 6vw, 72px);
   line-height: .95; font-weight: 800; letter-spacing: -.02em;
   background: linear-gradient(180deg, #fff 0%, var(--gold) 70%, var(--gold-dim) 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   text-shadow: 0 0 60px rgba(230,190,106,.18);
 }
 .tagline {
-  margin: 8px 0 20px;
-  font-size: clamp(18px, 2.6vw, 24px);
+  margin: 6px 0 14px;
+  font-size: clamp(17px, 2.4vw, 22px);
   color: var(--ink); font-weight: 500;
 }
 .lede {
-  margin: 0 0 26px; max-width: 46ch;
-  color: var(--ink-soft); font-size: 16.5px;
+  margin: 0 0 18px; max-width: 46ch;
+  color: var(--ink-soft); font-size: 15.5px;
 }
 .lede strong { color: var(--cyan); font-weight: 600; }
 
@@ -105,7 +109,7 @@ body {
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
 /* per-chain status medallions (one per chain; StoaChain shows its two pools) */
-.medallions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 26px; }
+.medallions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
 .medallion {
   display: inline-flex; align-items: center; gap: 9px;
   padding: 7px 14px; border-radius: 999px;
@@ -147,12 +151,22 @@ body {
   transition: box-shadow .2s, opacity .2s, filter .2s;
 }
 
-.hero-art { position: relative; }
+.hero-art { position: relative; display: flex; justify-content: flex-end; }
 .hero-art img {
-  width: 100%; height: auto; display: block;
+  /* Height-capped so the hero stays a compact band, not a full-page portrait. */
+  width: auto; max-width: 100%;
+  max-height: clamp(220px, 32vh, 340px);
+  height: auto; display: block;
   border-radius: 20px;
   border: 1px solid var(--line);
   box-shadow: 0 30px 80px -30px rgba(0,0,0,.8), 0 0 90px -30px rgba(88,201,232,.25);
+}
+
+/* ── WORK-AREA — the console display surface beneath the compact hero ──────── */
+.work-area {
+  min-height: 46vh;
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
 }
 
 /* ── PANELS ─────────────────────────────────────────────── */
@@ -897,6 +911,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 [aria-disabled="true"].ph-btn:hover { border-color: var(--line); background: var(--panel-2); filter: none; }
 
 .ph-l2, .ph-l3 { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 8px; }
+/* L3 is a FIXED-height zone: it always reserves a full button row (button box
+   34px + the row's 8px padding-top = 42px) so the header never grows/shrinks as
+   tier-2 buttons are summoned in or out. */
+.ph-l3 { min-height: 42px; }
 .ph-tier1, .ph-tier2 { display: flex; align-items: center; gap: 8px; }
 .ph-l2-memorable, .ph-l3-memorable { display: flex; align-items: center; justify-content: flex-end; flex: none; }
 

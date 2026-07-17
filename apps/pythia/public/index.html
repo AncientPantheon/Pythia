@@ -52,7 +52,9 @@
           </div>
         </div>
 
-        <div class="ph-l3" id="ph-l3" hidden>
+        <!-- L3 is a FIXED zone: always present so the header never changes height.
+             renderTier2() fills its buttons in/out as tier-1 sections are picked. -->
+        <div class="ph-l3" id="ph-l3">
           <nav class="ph-tier2" id="ph-tier2" aria-label="Section views"></nav>
           <span class="ph-l3-memorable"></span>
         </div>
@@ -91,8 +93,12 @@
         </div>
       </header>
 
-      <!-- Top-level section nav migrated up into the Pantheonic Header's
-           .ph-tier1 (see above); showTab() still drives these tabpanels. -->
+      <!-- ── WORK-AREA — the single-screen console display surface ────────────
+           Top-level section nav lives in the Pantheonic Header (.ph-tier1);
+           showTab() swaps the active .tabpanel IN PLACE here, directly beneath
+           the compact hero, so clicking a header button visibly changes the
+           screen without scrolling. Heavy sections scroll within this area. -->
+      <div class="work-area">
 
       <!-- ── CHAINS ───────────────────────────────────────────── -->
       <section class="panel tabpanel" data-panel="chains" aria-labelledby="chains-h">
@@ -200,6 +206,7 @@
           <div id="reg-status" class="conn-readstatus" aria-live="polite">…</div>
         </div>
       </section>
+      </div><!-- /.work-area -->
 
 
       <footer class="foot">
