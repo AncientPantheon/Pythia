@@ -1632,11 +1632,50 @@ function showConnectorSubview(key) {
   }
 }
 
+// Activity is per-chain: the tier-2 picks the chain. A live chain shows its
+// stats; a not-yet-live chain (Arweave) shows a coming-soon placeholder.
+let currentActivityChain = CHAINS[0].id;
+function renderActivitySoon(chain) {
+  const box = document.getElementById("activity-soon");
+  if (!box) return;
+  box.textContent = "";
+  const badge = el("span", "chain-badge chain-badge--soon", "Coming soon");
+  const h = el("h3", null, chain.name);
+  h.appendChild(el("span", "chain-kind", ` · ${chain.kind || "next in line"}`));
+  const p = el("p", null, `Usage will appear here once ${chain.name} is live.`);
+  box.append(badge, h, p);
+}
+function showActivityChain(id) {
+  currentActivityChain = id;
+  const chain = CHAINS.find((c) => c.id === id);
+  if (!chain) return;
+  const live = chain.status === "live";
+  const body = document.getElementById("stats-body");
+  const noteLine = document.getElementById("stats-note-line");
+  const soon = document.getElementById("activity-soon");
+  const note = document.getElementById("activity-note");
+  if (body) body.hidden = !live;
+  if (noteLine) noteLine.hidden = !live;
+  if (soon) soon.hidden = live;
+  if (note) {
+    note.textContent = live
+      ? `Usage on ${chain.name} — reads, broadcasts, and polls. Attributed by consumer, never per request.`
+      : `${chain.name} is not live yet — no usage to report.`;
+  }
+  if (live) loadStats();
+  else renderActivitySoon(chain);
+}
+
 const TIER2 = {
   chains: {
     items: () => CHAINS.map((c) => ({ key: c.id, label: c.name })),
     select: (key) => selectChain(key),
     active: () => currentChainId,
+  },
+  activity: {
+    items: () => CHAINS.map((c) => ({ key: c.id, label: c.name })),
+    select: (key) => showActivityChain(key),
+    active: () => currentActivityChain,
   },
   connectors: {
     items: () => [
@@ -1685,7 +1724,7 @@ function showTab(name) {
   // new section starts at its head, not wherever the previous one was scrolled.
   const wa = document.querySelector(".work-area");
   if (wa) wa.scrollTop = 0;
-  if (name === "activity") loadStats(); // refresh usage each time it's opened
+  if (name === "activity") showActivityChain(currentActivityChain); // per-chain usage view
   if (name === "connectors") {
     loadDualLinks(); // default sub-tab; halves load lazily on the register tab
     if (regState.loaded) loadHalves();

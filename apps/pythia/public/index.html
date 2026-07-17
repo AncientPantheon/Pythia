@@ -107,15 +107,19 @@
       </section>
 
       <!-- ── ACTIVITY ─────────────────────────────────────────── -->
+      <!-- Per-chain: the StoaChain / Arweave selector lives in the header's
+           tier-2 (L3) row — see renderTier2 / showActivityChain. -->
       <section class="panel tabpanel" data-panel="activity" aria-labelledby="stats-h" hidden>
         <div class="panel-head">
           <h2 id="stats-h">Activity</h2>
-          <p class="panel-note">Aggregate usage across the gateway — reads, broadcasts, and polls. Attributed by consumer, never per request.</p>
+          <p class="panel-note" id="activity-note">Usage on StoaChain — reads, broadcasts, and polls. Attributed by consumer, never per request.</p>
         </div>
         <div id="stats-body" class="stats" aria-live="polite">
           <p class="empty">Loading activity…</p>
         </div>
-        <p class="stats-note">Public aggregate view · <code>GET /stats</code></p>
+        <p class="stats-note" id="stats-note-line">Public aggregate view · <code>GET /stats</code></p>
+        <!-- Shown when a not-yet-live chain (Arweave) is picked in the tier-2. -->
+        <div id="activity-soon" class="chain-soon" hidden></div>
       </section>
 
       <!-- ── FOR DEVELOPERS ───────────────────────────────────── -->

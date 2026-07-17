@@ -438,6 +438,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 /* ── ACTIVITY / STATS ───────────────────────────────────── */
 .stats { display: grid; gap: 14px; }
+/* [hidden] must win over the grid display (Activity hides the stats body when a
+   not-yet-live chain is picked in the tier-2). */
+.stats[hidden] { display: none; }
 /* On the landing the Activity panel fills a fixed height — keep its padding
    tighter so the whole readout fits without an internal scrollbar. */
 body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
