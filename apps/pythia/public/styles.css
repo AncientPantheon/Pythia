@@ -67,35 +67,32 @@ body {
    give the content the full width. Scoped to body.landing (admin keeps its own
    scrolling flow). The landing widens past --maxw (owner-sanctioned exception to
    the 1536 Pantheonic width law) to use wide screens. */
-:root { --stage-h: 640px; --landing-maxw: 1760px; }
+:root { --stage-h: 660px; --landing-maxw: 1760px; }
 
 body.landing { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-.landing-mid {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column;   /* let the shell fill the mid height */
-}
+/* Only this middle region scrolls, and only when the window is shorter than the
+   fixed page (header + --stage-h + footer). When the window is TALLER, the stage
+   keeps its fixed height and the leftover space below it is simply empty. */
+.landing-mid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 body.landing .shell {
-  flex: 1 1 auto; min-height: 0;            /* fill the mid; DON'T grow with content */
   width: 100%; max-width: var(--landing-maxw); margin-inline: auto;
-  display: flex; flex-direction: column;
-  padding: 0 clamp(16px, 2vw, 32px);
+  padding: 14px clamp(16px, 2vw, 32px);
 }
 body.landing .foot { flex: none; margin: 0; }
 
 .stage {
   position: relative;               /* anchor for the collapse toggle */
-  /* Shrinkable (1 1) so the work-area — not the stage — absorbs overflow by
-     scrolling internally; min-height holds the virtual height on short windows
-     (where .landing-mid then scrolls) and it grows to fill a taller window. */
-  flex: 1 1 auto; min-height: var(--stage-h);
+  /* FIXED page height — the Pythia portrait is the etalon. The stage never grows
+     or shrinks with the window: a taller window leaves empty space below it; a
+     shorter window scrolls .landing-mid to reveal it (nothing collapses). */
+  height: var(--stage-h);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 560px);
+  grid-template-columns: minmax(0, 1fr) auto;   /* left fills; right = the portrait's own width */
   /* Single row pinned to the stage height (minmax 0 min) rather than the default
      `auto` — an auto row sizes to content and would defeat the internal scroll. */
   grid-template-rows: minmax(0, 1fr);
   gap: clamp(16px, 2vw, 32px);
   align-items: stretch;
-  padding: 12px 0;
 }
 .stage.art-collapsed { grid-template-columns: 1fr; }
 
@@ -107,8 +104,9 @@ body.landing .foot { flex: none; margin: 0; }
 }
 .art-collapsed .stage-art { display: none; }
 .stage-art img {
-  height: 100%; width: 100%;
-  object-fit: contain; object-position: center right;
+  /* Fixed box — height is the page etalon, width follows the aspect. No object-fit
+     box, so the container never letterboxes around the portrait. */
+  height: 100%; width: auto; display: block;
   border-radius: 20px;
   border: 1px solid var(--line);
   box-shadow: 0 30px 80px -30px rgba(0,0,0,.8), 0 0 90px -30px rgba(88,201,232,.25);
@@ -146,7 +144,7 @@ body.landing .foot { flex: none; margin: 0; }
   color: var(--ink); font-weight: 500;
 }
 .lede {
-  margin: 0 0 10px; max-width: 62ch;
+  margin: 0 0 10px; max-width: none;   /* full column width → fewer lines, less height */
   color: var(--ink-soft); font-size: 14.5px; line-height: 1.5;
 }
 .lede strong { color: var(--cyan); font-weight: 600; }
@@ -243,7 +241,7 @@ body.landing .foot { border-top: 1px solid var(--line); padding: 0; }
   body.landing { height: auto; overflow: visible; display: block; }
   .landing-mid { overflow: visible; }
   body.landing .shell { display: block; padding-top: 14px; min-height: 0; }
-  .stage { display: flex; flex-direction: column; min-height: 0; }
+  .stage { display: flex; flex-direction: column; min-height: 0; height: auto; }
   .stage.art-collapsed { display: flex; }
   .stage-art { order: -1; padding: 0 0 16px; }
   .stage-art img { height: auto; width: 100%; max-height: 46vh; }
