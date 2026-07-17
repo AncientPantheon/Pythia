@@ -67,11 +67,10 @@ body {
    give the content the full width. Scoped to body.landing (admin keeps its own
    scrolling flow). The landing widens past --maxw (owner-sanctioned exception to
    the 1536 Pantheonic width law) to use wide screens. */
-/* --stage-h = the fixed page height (768px = half the portrait's native 1536).
-   At 768 tall the portrait is ~512px wide ≈ a third of the page. The page is
-   fixed: a taller window leaves empty space below the stage; a shorter one
-   scrolls .landing-mid to reveal it (nothing collapses). */
-:root { --stage-h: 768px; --landing-maxw: 1760px; }
+/* --stage-h = the fixed page height (960px). At 960 tall the portrait is ~640px
+   wide (~a third of the 1760 page). The page is fixed: a taller window leaves
+   empty space below the stage; a shorter one scrolls .landing-mid to reveal it. */
+:root { --stage-h: 960px; --landing-maxw: 1760px; }
 
 body.landing { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 /* Only this middle region scrolls, and only when the window is shorter than the

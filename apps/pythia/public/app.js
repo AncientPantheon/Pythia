@@ -1647,35 +1647,53 @@ async function loadStats() {
 // Connectors' two tier-2 buttons delegate to the in-panel #conn-subtabs handler
 // so the existing sub-view switch (incl. its lazy register load) is reused, not
 // re-implemented.
+// Each section's tier-2 sub-nav lives ONLY in the header's L3 row — never
+// duplicated in the panel. A config maps the header buttons onto the section's
+// real (now hidden) in-panel controls, which still own the switching logic and
+// the active-state truth. `items()` lists the buttons, `target(key)` is the
+// hidden control to delegate a click to, `active()` reads the current key.
 const TIER2 = {
-  connectors: [
-    { subtab: "apikeys", label: "Full API Keys" },
-    { subtab: "register", label: "Register / Link halves" },
-  ],
+  chains: {
+    items: () => CHAINS.map((c) => ({ key: c.id, label: c.name })),
+    target: (key) => document.querySelector(`#chain-tabs [data-chain="${key}"]`),
+    active: () => {
+      const el = document.querySelector("#chain-tabs .chain-tab--active");
+      return el ? el.dataset.chain : null;
+    },
+  },
+  connectors: {
+    items: () => [
+      { key: "apikeys", label: "Full API Keys" },
+      { key: "register", label: "Register / Link halves" },
+    ],
+    target: (key) => document.querySelector(`#conn-subtabs [data-subtab="${key}"]`),
+    active: () => {
+      const el = document.querySelector("#conn-subtabs .subtab--active");
+      return el ? el.dataset.subtab : null;
+    },
+  },
 };
 
 function renderTier2(name) {
-  const row = document.getElementById("ph-l3");
   const nav = document.getElementById("ph-tier2");
-  if (!row || !nav) return;
+  if (!nav) return;
   nav.textContent = "";
-  const items = TIER2[name] || [];
   // L3 is a FIXED zone — never hidden, so the header height stays constant. The
   // tier-2 buttons just fill into or empty out of it as sections are picked.
-  if (!items.length) return;
-  // Reflect whichever in-panel sub-tab is currently active (default: the first).
-  const activeSub = document.querySelector("#conn-subtabs .subtab--active");
-  const activeName = activeSub ? activeSub.dataset.subtab : items[0].subtab;
+  const cfg = TIER2[name];
+  if (!cfg) return;
+  const items = cfg.items();
+  const activeKey = cfg.active() || (items[0] && items[0].key);
   for (const item of items) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "ph-btn ph-btn--ghost" + (item.subtab === activeName ? " ph-btn--active" : "");
-    btn.dataset.tier2 = item.subtab;
+    btn.className = "ph-btn ph-btn--ghost" + (item.key === activeKey ? " ph-btn--active" : "");
+    btn.dataset.tier2 = item.key;
     btn.textContent = item.label;
     btn.addEventListener("click", () => {
-      // Delegate to the existing in-panel sub-tab switch (same handler wireSubtabs
-      // bound), then mirror the active state onto the header buttons.
-      const target = document.querySelector(`#conn-subtabs [data-subtab="${item.subtab}"]`);
+      // Delegate to the hidden in-panel control (its own handler owns the switch),
+      // then mirror the active state onto the header buttons.
+      const target = cfg.target(item.key);
       if (target) target.click();
       nav.querySelectorAll("[data-tier2]").forEach((b) => b.classList.toggle("ph-btn--active", b === btn));
     });

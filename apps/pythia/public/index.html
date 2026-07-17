@@ -102,7 +102,9 @@
           <h2 id="chains-h">Chains</h2>
           <p class="panel-note">One keyless out-point per chain — node pool, dirty read, broadcast, poll. Pick a chain.</p>
         </div>
-        <div class="chain-tabs" id="chain-tabs" role="tablist" aria-label="Chains"></div>
+        <!-- Chain selector — hidden; mirrored into the header's tier-2 (L3) row.
+             renderTier2('chains') delegates clicks here; selectChain owns the switch. -->
+        <div class="chain-tabs" id="chain-tabs" role="tablist" aria-label="Chains" hidden></div>
         <div class="chain-module" id="chain-module" role="tabpanel"></div>
       </section>
 
@@ -150,7 +152,9 @@
           <p class="panel-note">Consumer API keys live on-chain in <code>ouronet-ns.PYTHIA</code>. A full key is a Standard (<b>₱.</b>, Pythia side) half linked to a Smart (<b>Π.</b>, consumer side) half. Read live off StoaChain through Pythia itself.</p>
         </div>
 
-        <nav class="subtabs" id="conn-subtabs" role="tablist" aria-label="Connector views">
+        <!-- Sub-nav — hidden; mirrored into the header's tier-2 (L3) row.
+             renderTier2('connectors') delegates clicks here. -->
+        <nav class="subtabs" id="conn-subtabs" role="tablist" aria-label="Connector views" hidden>
           <button class="subtab subtab--active" data-subtab="apikeys" role="tab" type="button">Full API Keys</button>
           <button class="subtab" data-subtab="register" role="tab" type="button">Register / Link halves</button>
         </nav>
