@@ -216,17 +216,20 @@ body.landing .foot { flex: none; margin: 0; }
   border-top: 1px solid var(--line);
   padding-top: 8px; margin-top: 10px;
 }
-/* On the landing it takes the remaining left-column height and becomes an
-   internal viewport ONLY when its own content overflows that zone (overflow
-   auto) — otherwise it just fills. The PAGE-level scroll (short windows) is the
-   .landing-mid area, not this. */
+/* On the landing the work-area fills the left column down to the portrait's
+   height, and the ACTIVE panel fills it — so the left content box is as tall as
+   the portrait, and scrolls INSIDE itself only when its content needs more room
+   than that. (The page-level scroll, for short windows, is the .landing-mid.) */
 body.landing .work-area {
   flex: 1 1 auto; min-height: 0;
-  overflow-y: auto;
-  padding-bottom: 12px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
 }
-/* Trim the first panel's top margin so the work-area starts flush under its rule. */
-body.landing .work-area .tabpanel:first-child { margin-top: 6px; }
+body.landing .work-area .tabpanel:not([hidden]) {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+}
 
 /* ── Slim fixed footer — full-width bar, content aligned to the landing width ── */
 body.landing .foot { border-top: 1px solid var(--line); padding: 0; }
@@ -368,6 +371,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 /* chains — modular per-chain module */
 .chain-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+/* The `display:flex` above would otherwise beat the [hidden] attribute — this
+   makes hidden win (the chain selector is mirrored into the header's tier-2). */
+.chain-tabs[hidden] { display: none; }
 .chain-tab {
   display: inline-flex; align-items: center; gap: 10px;
   padding: 10px 14px; border-radius: 11px;
@@ -570,6 +576,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 /* hub-feed sub-tabs (Observation Pool | Upload Pool) */
 .subtabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 16px; }
+/* Same [hidden] override — #conn-subtabs is mirrored into the header's tier-2. */
+.subtabs[hidden] { display: none; }
 .subtab {
   padding: 8px 14px; border-radius: 10px;
   border: 1px solid var(--line); background: rgba(255,255,255,.03);
