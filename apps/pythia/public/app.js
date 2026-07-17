@@ -1713,8 +1713,34 @@ function wireTabs() {
   });
 }
 
+// ── portrait collapse toggle ─────────────────────────────────────────────────
+// Collapse the right-hand Pythia portrait to give the work-area the full page
+// width; the choice persists across visits (localStorage).
+function wireArtToggle() {
+  const stage = document.getElementById("stage");
+  const btn = document.getElementById("art-toggle");
+  if (!stage || !btn) return;
+  const KEY = "pythia_art_collapsed";
+  const apply = (collapsed) => {
+    stage.classList.toggle("art-collapsed", collapsed);
+    btn.textContent = collapsed ? "⇤" : "⇥";
+    btn.setAttribute("aria-pressed", collapsed ? "true" : "false");
+    btn.setAttribute("aria-label", collapsed ? "Show the portrait" : "Collapse the portrait");
+    btn.title = collapsed
+      ? "Show the portrait"
+      : "Collapse the portrait (give content full width)";
+  };
+  apply(localStorage.getItem(KEY) === "1");
+  btn.addEventListener("click", () => {
+    const collapsed = !stage.classList.contains("art-collapsed");
+    localStorage.setItem(KEY, collapsed ? "1" : "0");
+    apply(collapsed);
+  });
+}
+
 // ── init ─────────────────────────────────────────────────────────────────────
 wireTabs();
+wireArtToggle();
 wireConnectors();
 renderChainTabs();
 startHealthPill();

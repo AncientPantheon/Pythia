@@ -61,13 +61,18 @@
       </div>
     </header>
 
+    <!-- .landing-mid is the ONLY scroll area: the header (above) and footer
+         (below) stay fixed; when the window is shorter than the stage's virtual
+         height, this middle scrolls. -->
+    <div class="landing-mid">
     <main class="shell">
-      <!-- ── STAGE — viewport-height, single-screen layout ────────────────────
-           Two columns: the LEFT holds the identity + the work-area (the display
-           surface the tier-1/2 buttons drive), the RIGHT holds the full-height
-           Pythia portrait. The work-area scrolls INTERNALLY so the page itself
-           never scrolls — the image stays fully in view at all times. -->
-      <div class="stage">
+      <!-- ── STAGE — fixed virtual-height, single-screen layout ───────────────
+           Two columns: LEFT = identity + work-area (the display surface the
+           tier-1/2 buttons drive); RIGHT = the full-height Pythia portrait.
+           The ⇥ button (upper-right) collapses the portrait to give the content
+           the full page width. -->
+      <div class="stage" id="stage">
+        <button class="art-toggle" id="art-toggle" type="button" aria-pressed="false" aria-label="Collapse the portrait" title="Collapse the portrait (give content full width)">⇥</button>
         <div class="stage-left">
           <!-- Identity block (compact, top of the left column). -->
           <header class="hero-id">
@@ -206,8 +211,12 @@
           <img src="/pythia.jpg" width="1024" height="1536" alt="Pythia — the oracle-titaness of the AncientPantheon, meditating amid the chains she watches over." />
         </aside>
       </div><!-- /.stage -->
+    </main>
+    </div><!-- /.landing-mid -->
 
-      <footer class="foot">
+    <!-- Fixed footer — full-width bar pinned to the bottom of the viewport. -->
+    <footer class="foot">
+      <div class="foot-inner">
         <span class="foot-mark">Pythia</span>
         <span id="version" class="foot-version"></span>
         <span class="foot-sep">·</span>
@@ -220,8 +229,8 @@
         <a href="/healthz">/healthz</a>
         <span class="foot-sep">·</span>
         <a href="/stats">/stats</a>
-      </footer>
-    </main>
+      </div>
+    </footer>
 
     <script src="/app.js" type="module"></script>
   </body>
