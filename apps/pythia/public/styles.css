@@ -437,7 +437,10 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 }
 
 /* ── ACTIVITY / STATS ───────────────────────────────────── */
-.stats { display: grid; gap: 22px; }
+.stats { display: grid; gap: 14px; }
+/* On the landing the Activity panel fills a fixed height — keep its padding
+   tighter so the whole readout fits without an internal scrollbar. */
+body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .stats-note { margin: 4px 0 0; color: var(--ink-mute); font-size: 13px; }
 .stats-note code { color: var(--gold); }
 .stats-sub {
@@ -450,12 +453,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 }
 .stat-cards--verbs { grid-template-columns: repeat(3, 1fr); }
 .stat-card {
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 16px 18px; border-radius: 12px;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 11px 14px; border-radius: 12px;
   background: rgba(255,255,255,.025); border: 1px solid var(--line);
 }
 .stat-value {
-  font-size: 30px; font-weight: 700; line-height: 1;
+  font-size: 26px; font-weight: 700; line-height: 1;
   background: linear-gradient(180deg, #fff 0%, var(--gold) 80%, var(--gold-dim) 100%);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
@@ -465,7 +468,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 }
 
 .stats-chart {
-  padding: 16px 18px; border-radius: 12px;
+  padding: 12px 14px; border-radius: 12px;
   background: rgba(255,255,255,.02); border: 1px solid var(--line);
 }
 .activity-chart { display: block; width: 100%; height: auto; }

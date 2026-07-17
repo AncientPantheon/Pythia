@@ -1486,8 +1486,8 @@ function padDays(daily, n) {
 function buildActivityChart(daily) {
   const days = padDays(daily, CHART_DAYS);
   const W = 640;
-  const H = 160;
-  const pad = { top: 8, right: 8, bottom: 20, left: 8 };
+  const H = 112; // compact — the Activity panel fits a fixed height on the landing
+  const pad = { top: 6, right: 8, bottom: 14, left: 8 };
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top - pad.bottom;
   const max = days.reduce((m, d) => Math.max(m, d.requests), 0) || 1;
