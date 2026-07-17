@@ -493,6 +493,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 /* admin dashboard gate (shown when not an ancient admin) */
 .admin-gate { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; padding: 2rem 0; }
+/* The `hidden` attribute must win over the display above — otherwise the empty
+   gate keeps occupying ~64px for an ancient admin (the "wasted band" bug). */
+.admin-gate[hidden] { display: none; }
 
 /* two-pool summary on the public Chains tab */
 .pool-block { margin-bottom: 16px; }
@@ -792,13 +795,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 }
 .ph-identity b { color: var(--ink); font-weight: 600; }
 
+/* The description/tooltip zone — plain text that USES the space beneath the
+   header (shows the hovered/active section's blurb), NOT a bordered band. */
 .pantheon-subhead {
   width: 100%;
-  min-height: 2.4em;
+  min-height: 1.8em;
   display: flex; align-items: center;
-  padding: 8px 0;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--line);
+  padding: 4px 0 8px;
+  margin: 0;
   background: transparent;
 }
 .subhead-text {
