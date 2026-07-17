@@ -1692,6 +1692,10 @@ function showTab(name) {
     p.hidden = p.dataset.panel !== name;
   });
   renderTier2(name); // repopulate the header's tier-2 sub-nav for this section
+  // The work-area scrolls internally on the landing — reset it to the top so a
+  // new section starts at its head, not wherever the previous one was scrolled.
+  const wa = document.querySelector(".work-area");
+  if (wa) wa.scrollTop = 0;
   if (name === "activity") loadStats(); // refresh usage each time it's opened
   if (name === "connectors") {
     loadDualLinks(); // default sub-tab; halves load lazily on the register tab

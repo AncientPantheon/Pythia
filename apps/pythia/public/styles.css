@@ -53,20 +53,46 @@ body {
   position: relative; z-index: 1;
   max-width: var(--maxw);
   margin: 0 auto;
-  /* Small top padding only — the sticky header sits directly above, so a large
-     top gap reads as dead space. Sides + bottom keep the page gutter. */
   padding: 14px clamp(20px, 4vw, 48px) 48px;
 }
 
-/* ── HERO — compact identity band (single-screen console) ─────────────────────
-   Deliberately NOT a full page: title/tagline share the top with a size-capped
-   portrait so the work-area beneath is visible without scrolling. */
-.hero {
+/* ── LANDING STAGE — single-screen layout, full-height portrait ───────────────
+   The landing locks to one viewport: sticky header + a viewport-filling stage +
+   a slim footer. The stage is two columns — a LEFT column (identity + a work-
+   area that scrolls INTERNALLY) and a full-height Pythia portrait on the RIGHT
+   that is always in view. Scoped to body.landing so the admin surface (same
+   stylesheet) keeps its normal scrolling flow. */
+body.landing { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+body.landing .shell {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
+  padding-top: 0; padding-bottom: 0;
+}
+body.landing .foot { margin-top: 0; }
+
+.stage {
+  flex: 1 1 auto; min-height: 0;
   display: grid;
-  grid-template-columns: 1.1fr .9fr;
-  gap: clamp(24px, 4vw, 48px);
-  align-items: center;
-  padding: 6px 0 22px;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 34vw, 620px);
+  gap: clamp(20px, 3.5vw, 48px);
+  align-items: stretch;
+}
+.stage-left {
+  display: flex; flex-direction: column; min-height: 0;
+  padding: 14px 0 6px;
+}
+.hero-id { flex: 0 0 auto; }
+.stage-art {
+  align-self: stretch; min-height: 0;
+  display: flex; align-items: stretch; justify-content: flex-end;
+  padding: 14px 0 6px;
+}
+.stage-art img {
+  height: 100%; width: 100%;
+  object-fit: contain; object-position: center right;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,.8), 0 0 90px -30px rgba(88,201,232,.25);
 }
 .eyebrow {
   margin: 0 0 14px;
@@ -151,22 +177,32 @@ body {
   transition: box-shadow .2s, opacity .2s, filter .2s;
 }
 
-.hero-art { position: relative; display: flex; justify-content: flex-end; }
-.hero-art img {
-  /* Height-capped so the hero stays a compact band, not a full-page portrait. */
-  width: auto; max-width: 100%;
-  max-height: clamp(220px, 32vh, 340px);
-  height: auto; display: block;
-  border-radius: 20px;
-  border: 1px solid var(--line);
-  box-shadow: 0 30px 80px -30px rgba(0,0,0,.8), 0 0 90px -30px rgba(88,201,232,.25);
-}
-
-/* ── WORK-AREA — the console display surface beneath the compact hero ──────── */
+/* ── WORK-AREA — the display surface the tier-1/2 buttons drive ─────────────── */
 .work-area {
-  min-height: 46vh;
   border-top: 1px solid var(--line);
-  padding-top: 4px;
+  padding-top: 6px; margin-top: 8px;
+}
+/* On the landing it takes the remaining column height and scrolls internally so
+   the PAGE never scrolls and the portrait stays fully in view. */
+body.landing .work-area {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+/* Trim the first panel's top margin so the work-area starts flush under its rule. */
+body.landing .work-area .tabpanel:first-child { margin-top: 6px; }
+
+/* ── Narrow screens: unlock the single-screen constraint ──────────────────────
+   The full-height two-column stage only makes sense on wide viewports. Below
+   this, fall back to a normal scrolling page: portrait on top (capped), content
+   beneath, at full width. */
+@media (max-width: 960px) {
+  body.landing { height: auto; overflow: visible; display: block; }
+  body.landing .shell { display: block; padding-top: 14px; }
+  .stage { display: flex; flex-direction: column; }
+  .stage-art { order: -1; padding: 0 0 16px; }
+  .stage-art img { height: auto; width: 100%; max-height: 46vh; }
+  body.landing .work-area { overflow-y: visible; }
 }
 
 /* ── PANELS ─────────────────────────────────────────────── */

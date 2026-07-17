@@ -16,7 +16,7 @@
     <link rel="preload" as="image" href="/pythia.jpg" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
+  <body class="landing">
     <div class="starfield" aria-hidden="true"></div>
 
     <!-- Pantheonic Header — the standardized 3-level landing header. Sits OUTSIDE
@@ -62,43 +62,34 @@
     </header>
 
     <main class="shell">
-      <!-- ── HERO ─────────────────────────────────────────────── -->
-      <header class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">The AncientPantheon · Read &amp; Relay Constructor</p>
-          <h1 class="title">Pythia</h1>
-          <p class="tagline">The all-seeing gateway.</p>
-          <p class="lede">
-            One endpoint per chain for pooled, failover-safe blockchain
-            transport — read any chain, broadcast your own signed transactions,
-            and poll their status. <strong>Keyless</strong> — Pythia never holds
-            keys and never signs; it only relays what you give it.
-          </p>
+      <!-- ── STAGE — viewport-height, single-screen layout ────────────────────
+           Two columns: the LEFT holds the identity + the work-area (the display
+           surface the tier-1/2 buttons drive), the RIGHT holds the full-height
+           Pythia portrait. The work-area scrolls INTERNALLY so the page itself
+           never scrolls — the image stays fully in view at all times. -->
+      <div class="stage">
+        <div class="stage-left">
+          <!-- Identity block (compact, top of the left column). -->
+          <header class="hero-id">
+            <p class="eyebrow">The AncientPantheon · Read &amp; Relay Constructor</p>
+            <h1 class="title">Pythia</h1>
+            <p class="tagline">The all-seeing gateway.</p>
+            <p class="lede">
+              One endpoint per chain for pooled, failover-safe blockchain
+              transport — read any chain, broadcast your own signed transactions,
+              and poll their status. <strong>Keyless</strong> — Pythia never holds
+              keys and never signs; it only relays what you give it.
+            </p>
 
-          <div id="live-medallions" class="medallions" aria-live="polite" title="Per-chain pool status">
-            <div class="medallion"><span class="med-dot"></span><b class="med-name">StoaChain</b><span class="med-pools">checking…</span></div>
-          </div>
+            <div id="live-medallions" class="medallions" aria-live="polite" title="Per-chain pool status">
+              <div class="medallion"><span class="med-dot"></span><b class="med-name">StoaChain</b><span class="med-pools">checking…</span></div>
+            </div>
+          </header>
 
-          <div class="cta">
-            <a class="btn btn--primary" href="#" data-tab="chains">Explore the chains</a>
-            <a class="btn" href="#" data-tab="activity">Activity</a>
-            <a class="btn" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK on npm</a>
-            <a class="btn" href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a class="btn btn--ghost" href="/healthz">/healthz</a>
-          </div>
-        </div>
-
-        <div class="hero-art">
-          <img src="/pythia.jpg" width="1024" height="1536" alt="Pythia — the oracle-titaness of the AncientPantheon, meditating amid the chains she watches over." />
-        </div>
-      </header>
-
-      <!-- ── WORK-AREA — the single-screen console display surface ────────────
-           Top-level section nav lives in the Pantheonic Header (.ph-tier1);
-           showTab() swaps the active .tabpanel IN PLACE here, directly beneath
-           the compact hero, so clicking a header button visibly changes the
-           screen without scrolling. Heavy sections scroll within this area. -->
-      <div class="work-area">
+          <!-- ── WORK-AREA — the display surface. showTab() swaps the active
+               .tabpanel IN PLACE here; it scrolls internally, keeping the page
+               to one screen and the portrait always visible. -->
+          <div class="work-area">
 
       <!-- ── CHAINS ───────────────────────────────────────────── -->
       <section class="panel tabpanel" data-panel="chains" aria-labelledby="chains-h">
@@ -206,14 +197,25 @@
           <div id="reg-status" class="conn-readstatus" aria-live="polite">…</div>
         </div>
       </section>
-      </div><!-- /.work-area -->
+          </div><!-- /.work-area -->
+        </div><!-- /.stage-left -->
 
+        <!-- The full-height Pythia portrait — right column, spans the whole
+             stage height, contained (never squished). -->
+        <aside class="stage-art">
+          <img src="/pythia.jpg" width="1024" height="1536" alt="Pythia — the oracle-titaness of the AncientPantheon, meditating amid the chains she watches over." />
+        </aside>
+      </div><!-- /.stage -->
 
       <footer class="foot">
         <span class="foot-mark">Pythia</span>
         <span id="version" class="foot-version"></span>
         <span class="foot-sep">·</span>
-        <span>Keyless gateway — never holds keys, never signs</span>
+        <span>Keyless — never holds keys, never signs</span>
+        <span class="foot-sep">·</span>
+        <a href="https://github.com/AncientPantheon/Pythia" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <span class="foot-sep">·</span>
+        <a href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener noreferrer">Client SDK</a>
         <span class="foot-sep">·</span>
         <a href="/healthz">/healthz</a>
         <span class="foot-sep">·</span>
