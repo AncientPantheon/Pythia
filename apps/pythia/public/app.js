@@ -701,8 +701,7 @@ async function resumePendingVerify() {
   if (!pending || !pending.standard || !pending.smart) return;
 
   showTab("connectors");
-  const regBtn = document.querySelector('#conn-subtabs [data-subtab="register"]');
-  if (regBtn) regBtn.click(); // switch to the register sub-panel
+  showConnectorSubview("register"); // switch to the register sub-panel + its tier-2 state
   await loadHalves(); // authoritative reload to re-point selection against
   regState.selStd = regState.halves.find((h) => h["apollo-account"] === pending.standard) || null;
   regState.selSmart = regState.halves.find((h) => h["apollo-account"] === pending.smart) || null;
@@ -723,15 +722,11 @@ async function resumePendingVerify() {
 }
 
 // Wire the Connectors tab once at boot (elements are static in the panel).
+// The sub-view switch (Full API Keys / Register) is owned by the header tier-2
+// (showConnectorSubview), not an in-panel nav — nothing to wire here for it.
 function wireConnectors() {
   const panel = document.querySelector('[data-panel="connectors"]');
   if (!panel) return;
-  wireSubtabs(document.getElementById("conn-subtabs"), panel);
-
-  // Lazy-load the halves the first time the register sub-tab is opened; always
-  // refresh the proven set so returning verifications reflect immediately.
-  const regBtn = panel.querySelector('[data-subtab="register"]');
-  if (regBtn) regBtn.addEventListener("click", () => { if (!regState.loaded) loadHalves(); loadProven(); });
 
   const filter = document.getElementById("dl-filter");
   if (filter) {
@@ -991,41 +986,13 @@ function renderChainModule(chain) {
 }
 
 // ── chain selector ──────────────────────────────────────────────────────────
+// The chain selector lives ONLY in the header's tier-2 row (renderTier2) — there
+// is no in-panel button list. `currentChainId` is the sole active-state truth.
+let currentChainId = CHAINS[0].id;
 function selectChain(id) {
-  document.querySelectorAll(".chain-tab").forEach((t) => {
-    const on = t.dataset.chain === id;
-    t.classList.toggle("chain-tab--active", on);
-    t.setAttribute("aria-selected", on ? "true" : "false");
-  });
+  currentChainId = id;
   const chain = CHAINS.find((c) => c.id === id);
   if (chain) renderChainModule(chain);
-}
-
-function renderChainTabs() {
-  const tabs = document.getElementById("chain-tabs");
-  if (!tabs) return;
-  tabs.textContent = "";
-  CHAINS.forEach((c, i) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "chain-tab" + (i === 0 ? " chain-tab--active" : "");
-    btn.dataset.chain = c.id;
-    btn.setAttribute("role", "tab");
-    btn.setAttribute("aria-selected", i === 0 ? "true" : "false");
-
-    const name = document.createElement("span");
-    name.className = "chain-tab-name";
-    name.textContent = c.name;
-    const badge = document.createElement("span");
-    badge.className = `chain-badge chain-badge--${c.status}`;
-    badge.textContent = c.status === "live" ? "Live" : "Soon";
-
-    btn.appendChild(name);
-    btn.appendChild(badge);
-    btn.addEventListener("click", () => selectChain(c.id));
-    tabs.appendChild(btn);
-  });
-  selectChain(CHAINS[0].id);
 }
 
 // ── auth / session (site-wide) ───────────────────────────────────────────────
@@ -1647,30 +1614,37 @@ async function loadStats() {
 // Connectors' two tier-2 buttons delegate to the in-panel #conn-subtabs handler
 // so the existing sub-view switch (incl. its lazy register load) is reused, not
 // re-implemented.
-// Each section's tier-2 sub-nav lives ONLY in the header's L3 row — never
-// duplicated in the panel. A config maps the header buttons onto the section's
-// real (now hidden) in-panel controls, which still own the switching logic and
-// the active-state truth. `items()` lists the buttons, `target(key)` is the
-// hidden control to delegate a click to, `active()` reads the current key.
+// Each section's tier-2 sub-nav lives ONLY in the header's L3 row — there are no
+// in-panel button rows at all. The header buttons ARE the controls: `select(key)`
+// performs the switch directly; `active()` reads the section's own state truth.
+let currentConnSub = "apikeys";
+function showConnectorSubview(key) {
+  currentConnSub = key;
+  const panel = document.querySelector('[data-panel="connectors"]');
+  if (!panel) return;
+  panel.querySelectorAll("[data-subpanel]").forEach((p) => {
+    p.hidden = p.dataset.subpanel !== key;
+  });
+  // Lazy-load the halves the first time Register opens; always refresh proven.
+  if (key === "register") {
+    if (!regState.loaded) loadHalves();
+    loadProven();
+  }
+}
+
 const TIER2 = {
   chains: {
     items: () => CHAINS.map((c) => ({ key: c.id, label: c.name })),
-    target: (key) => document.querySelector(`#chain-tabs [data-chain="${key}"]`),
-    active: () => {
-      const el = document.querySelector("#chain-tabs .chain-tab--active");
-      return el ? el.dataset.chain : null;
-    },
+    select: (key) => selectChain(key),
+    active: () => currentChainId,
   },
   connectors: {
     items: () => [
       { key: "apikeys", label: "Full API Keys" },
       { key: "register", label: "Register / Link halves" },
     ],
-    target: (key) => document.querySelector(`#conn-subtabs [data-subtab="${key}"]`),
-    active: () => {
-      const el = document.querySelector("#conn-subtabs .subtab--active");
-      return el ? el.dataset.subtab : null;
-    },
+    select: (key) => showConnectorSubview(key),
+    active: () => currentConnSub,
   },
 };
 
@@ -1691,10 +1665,7 @@ function renderTier2(name) {
     btn.dataset.tier2 = item.key;
     btn.textContent = item.label;
     btn.addEventListener("click", () => {
-      // Delegate to the hidden in-panel control (its own handler owns the switch),
-      // then mirror the active state onto the header buttons.
-      const target = cfg.target(item.key);
-      if (target) target.click();
+      cfg.select(item.key); // the header button IS the control
       nav.querySelectorAll("[data-tier2]").forEach((b) => b.classList.toggle("ph-btn--active", b === btn));
     });
     nav.appendChild(btn);
@@ -1760,7 +1731,7 @@ function wireArtToggle() {
 wireTabs();
 wireArtToggle();
 wireConnectors();
-renderChainTabs();
+selectChain(currentChainId); // render the initial chain module (selector is in the header tier-2)
 startHealthPill();
 loadMe(); // /api/me → renders the header (+ an Admin link for ancients → /admin)
 loadStats();
