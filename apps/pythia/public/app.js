@@ -3,6 +3,8 @@
 // its own self-contained module (node pool + dirty-read console + endpoints).
 // Adding a chain = adding one entry to CHAINS.
 
+import { renderIdentity, setVersion } from "./pantheon-header.js";
+
 const POLL_INTERVAL_MS = 15000;
 
 // ── chain registry ─────────────────────────────────────────────────────────
@@ -117,6 +119,8 @@ function renderMedallions(pools, health) {
   // Surface the running service version in the footer (verifiable after a deploy).
   const ver = document.getElementById("version");
   if (ver && health && health.version) ver.textContent = `v${health.version}`;
+  // …and in the header brand chip (the standardized Pantheonic Header).
+  setVersion(document.getElementById("ph-version"), health && health.version);
 }
 
 // ── connectors: on-chain consumer API keys (read THROUGH Pythia) ─────────────
@@ -1032,41 +1036,9 @@ function isAncient() {
 }
 
 function renderAuthbox() {
-  const box = document.getElementById("authbox");
-  if (!box) return;
-  box.textContent = "";
-  if (authState.authenticated) {
-    const who = document.createElement("span");
-    who.className = "who";
-    const nm = document.createElement("b");
-    nm.textContent = authState.name || "user";
-    who.append("Signed in as ", nm);
-    if (authState.roles.length) {
-      const role = document.createElement("span");
-      role.className = "role";
-      role.textContent = authState.roles[0];
-      who.append(" · ", role);
-    }
-    const out = document.createElement("a");
-    out.className = "btn btn--ghost btn--small";
-    out.href = "/admin/logout";
-    out.textContent = "Log out";
-    box.append(who);
-    if (isAncient()) {
-      const admin = document.createElement("a");
-      admin.className = "btn btn--small";
-      admin.href = "/admin";
-      admin.textContent = "Admin";
-      box.append(admin);
-    }
-    box.append(out);
-  } else {
-    const login = document.createElement("a");
-    login.className = "btn btn--small";
-    login.href = "/admin/login";
-    login.textContent = "Log in";
-    box.appendChild(login);
-  }
+  // Delegate to the ONE shared Pantheonic Header renderer. The landing variant
+  // includes the Admin link (real /admin for ancients; a disabled chip otherwise).
+  renderIdentity(document.getElementById("authbox"), authState, { adminLink: true });
 }
 
 async function loadMe() {

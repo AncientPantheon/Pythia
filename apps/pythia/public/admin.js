@@ -4,6 +4,8 @@
 // GET /api/me (the mutations all hit ancient-gated /admin/* APIs), so serving the
 // shell to anyone is safe.
 
+import { renderIdentity, setVersion } from "./pantheon-header.js";
+
 // ── auth / session ───────────────────────────────────────────────────────────
 // `null` until GET /api/me resolves (the gate's "checking…" state); an object
 // afterwards.
@@ -13,36 +15,21 @@ function isAncient() {
   return !!(authState && authState.authenticated && authState.roles.includes("ancient"));
 }
 
+// The identity block is the shared Pantheonic Header renderer. Admin variant:
+// no "Admin" link (we're already inside /admin).
 function renderAuthbox() {
-  const box = document.getElementById("authbox");
-  if (!box) return;
-  box.textContent = "";
-  if (authState && authState.authenticated) {
-    const who = document.createElement("span");
-    who.className = "who";
-    const nm = document.createElement("b");
-    nm.textContent = authState.name || "user";
-    who.append("Signed in as ", nm);
-    if (authState.roles.length) {
-      // Promote `ancient` to the shown role when present (per the roles guideline);
-      // otherwise show the first role. The badge accents only when it's `ancient`.
-      const shown = authState.roles.includes("ancient") ? "ancient" : authState.roles[0];
-      const badge = document.createElement("span");
-      badge.className = "role-badge" + (shown === "ancient" ? " role-badge--ancient" : "");
-      badge.textContent = shown;
-      who.append(" · ", badge);
-    }
-    const out = document.createElement("a");
-    out.className = "btn btn--ghost btn--small";
-    out.href = "/admin/logout";
-    out.textContent = "Log out";
-    box.append(who, out);
-  } else {
-    const login = document.createElement("a");
-    login.className = "btn btn--small";
-    login.href = "/admin/login";
-    login.textContent = "Log in";
-    box.appendChild(login);
+  renderIdentity(document.getElementById("authbox"), authState, { adminLink: false });
+}
+
+// The brand's version chip, read once from /healthz on load.
+async function loadVersion() {
+  try {
+    const res = await fetch("/healthz", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    const body = await res.json();
+    setVersion(document.getElementById("ph-version"), body.version);
+  } catch {
+    /* leave the chip empty */
   }
 }
 
@@ -187,6 +174,34 @@ const LEGACY_HASHES = {
   version: "update-deploy",
 };
 
+// ── subhead (the description/tooltip zone beneath the header) ─────────────────
+// The default prompt shown at bare /admin, and while hovering nothing.
+const DEFAULT_HINT = "Select a section from the left to begin.";
+
+// The active section's blurb, so a nav mouseleave restores it (not the hover one).
+let currentBlurb = "";
+
+function currentSectionBlurb() {
+  return currentBlurb;
+}
+
+// Sets the subhead text; an empty string falls back to the default hint.
+function setSubhead(text) {
+  const el = document.getElementById("subhead-text");
+  if (!el) return;
+  el.textContent = text || DEFAULT_HINT;
+}
+
+// The blurb for a routed hash name: a chain's own blurb for a nested chain page
+// (e.g. connectors/stoachain), else the top-level section's blurb from TILES.
+function blurbForName(name) {
+  const chain = CHAINS.find((c) => c.hash === "#" + name);
+  if (chain) return chain.blurb;
+  const topLevel = name.split("/")[0];
+  const tile = TILES.find((t) => t.id === topLevel);
+  return tile ? tile.blurb : "";
+}
+
 // Shared lined-entry builder: the landing tiles and the chain list use the same
 // .admin-tiles/.tile markup idiom.
 function renderEntryTiles(grid, entries) {
@@ -254,6 +269,11 @@ function renderSidebar() {
     label.className = "admin-nav-label";
     label.textContent = t.title;
 
+    // Hover feeds the item's blurb into the subhead zone; leaving restores the
+    // active section's blurb (or the default hint).
+    item.addEventListener("mouseenter", () => setSubhead(t.blurb));
+    item.addEventListener("mouseleave", () => setSubhead(currentSectionBlurb()));
+
     item.append(icon, label);
     nav.appendChild(item);
   }
@@ -265,20 +285,19 @@ function renderChains() {
 }
 
 // A disabled section just posts a short note in the pane — never a view, never a
-// backend call. Clears the empty prompt so the note stands alone.
+// backend call.
 function showPlannedNote(title) {
-  const empty = document.getElementById("admin-empty");
-  if (empty) empty.hidden = true;
   const note = document.getElementById("admin-tile-note");
   if (!note) return;
   note.textContent = `${title} is coming in a later round.`;
   note.hidden = false;
 }
 
-// Hash router: no (known) hash → the empty prompt in the pane (no active nav item);
-// a known name (flat like #verifiers or nested like #connectors/stoachain) → that
-// view in the pane + its top-level sidebar item marked active, firing its load*
-// function so data shows on open. Legacy topic-2 hashes redirect first.
+// Hash router: no (known) hash → no active nav + the default hint in the subhead +
+// all views hidden; a known name (flat like #verifiers or nested like
+// #connectors/stoachain) → that view in the pane + its top-level sidebar item
+// marked active + its blurb in the subhead, firing its load* function so data
+// shows on open. Legacy topic-2 hashes redirect first.
 function routeFromHash() {
   if (!isAncient()) return;
   const name = location.hash.replace(/^#/, "");
@@ -287,13 +306,11 @@ function routeFromHash() {
     return;
   }
   const known = Object.prototype.hasOwnProperty.call(VIEW_LOADERS, name);
-  const empty = document.getElementById("admin-empty");
   const note = document.getElementById("admin-tile-note");
   const views = document.querySelectorAll(".admin-view");
   const navItems = document.querySelectorAll(".admin-nav-item");
 
   if (known) {
-    if (empty) empty.hidden = true;
     if (note) note.hidden = true;
     views.forEach((v) => { v.hidden = v.dataset.view !== name; });
     // Nested (#connectors/stoachain) highlights its top-level (connectors) item.
@@ -301,12 +318,15 @@ function routeFromHash() {
     navItems.forEach((it) => {
       it.classList.toggle("admin-nav-item--active", it.dataset.navId === topLevel);
     });
+    currentBlurb = blurbForName(name);
+    setSubhead(currentBlurb);
     VIEW_LOADERS[name]();
   } else {
-    if (empty) empty.hidden = false;
     if (note) note.hidden = true;
     views.forEach((v) => { v.hidden = true; });
     navItems.forEach((it) => it.classList.remove("admin-nav-item--active"));
+    currentBlurb = "";
+    setSubhead("");
   }
 }
 
@@ -1096,5 +1116,6 @@ wireHubConfig();
 wireTxSenderForm();
 wireTxSenderBulk();
 wireDeployButton();
+loadVersion(); // fill the brand's version chip from /healthz
 applyGate(); // render the "checking…" state before /api/me resolves
 loadMe();

@@ -12,15 +12,19 @@
     <div class="starfield" aria-hidden="true"></div>
 
     <main class="shell">
-      <!-- Pantheonic Header (admin variant): back + section title on the left,
-           the identity block on the right. -->
-      <header class="admin-header">
-        <div class="admin-header-left">
-          <a class="btn btn--ghost btn--small" href="/">← Pythia</a>
-          <span class="admin-header-title">Admin</span>
-        </div>
-        <div id="authbox" class="authbox" aria-live="polite"></div>
+      <!-- Pantheonic Header (two-row): row 1 = brand+version (brand links home,
+           the back affordance) on the left + the identity block on the right;
+           row 2 = the description/tooltip subhead zone. -->
+      <header class="pantheon-header">
+        <a class="ph-brand" href="/">
+          <span class="ph-wordmark">Pythia</span>
+          <span class="ph-version" id="ph-version"></span>
+        </a>
+        <div id="authbox" class="ph-identity" aria-live="polite"></div>
       </header>
+      <div class="pantheon-subhead">
+        <p id="subhead-text" class="subhead-text"></p>
+      </div>
 
       <!-- Shown when the visitor is not an ancient admin. -->
       <div id="admin-gate" class="admin-gate" hidden></div>
@@ -33,10 +37,8 @@
           <nav id="admin-sidebar" class="admin-sidebar" aria-label="Admin sections"></nav>
 
           <div class="admin-pane">
-            <!-- Unselected state: the natural landing at bare /admin. -->
-            <div id="admin-empty" class="admin-empty">
-              <p class="panel-note">Select a section from the left to begin.</p>
-            </div>
+            <!-- The unselected prompt now lives in the subhead zone above; a
+                 planned/disabled section still posts its note here. -->
             <p id="admin-tile-note" class="panel-note" hidden></p>
 
             <!-- VERIFIERS -->

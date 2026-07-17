@@ -20,10 +20,15 @@
     <div class="starfield" aria-hidden="true"></div>
 
     <main class="shell">
-      <!-- ── TOP BAR (site-wide login state) ───────────────────── -->
-      <div class="topbar">
-        <div id="authbox" class="authbox" aria-live="polite"></div>
-      </div>
+      <!-- ── PANTHEONIC HEADER (site-wide): brand+version on the left,
+           identity block on the right — the SAME header line as /admin. -->
+      <header class="pantheon-header">
+        <a class="ph-brand" href="/">
+          <span class="ph-wordmark">Pythia</span>
+          <span class="ph-version" id="ph-version"></span>
+        </a>
+        <div id="authbox" class="ph-identity" aria-live="polite"></div>
+      </header>
 
       <!-- ── HERO ─────────────────────────────────────────────── -->
       <header class="hero">
