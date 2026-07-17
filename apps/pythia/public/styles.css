@@ -67,15 +67,16 @@ body {
    give the content the full width. Scoped to body.landing (admin keeps its own
    scrolling flow). The landing widens past --maxw (owner-sanctioned exception to
    the 1536 Pantheonic width law) to use wide screens. */
-/* --stage-h = the portrait's NATIVE height (pythia.jpg is 1024×1536), so the
-   fixed page shows the image at 1:1 — the "original size". The window is almost
-   always shorter than this, so .landing-mid scrolls (the intended PDF-page feel). */
-:root { --stage-h: 1536px; --landing-maxw: 1760px; }
+/* --stage-h = the fixed page height (768px = half the portrait's native 1536).
+   At 768 tall the portrait is ~512px wide ≈ a third of the page. The page is
+   fixed: a taller window leaves empty space below the stage; a shorter one
+   scrolls .landing-mid to reveal it (nothing collapses). */
+:root { --stage-h: 768px; --landing-maxw: 1760px; }
 
 body.landing { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 /* Only this middle region scrolls, and only when the window is shorter than the
-   fixed page (header + --stage-h + footer). When the window is TALLER, the stage
-   keeps its fixed height and the leftover space below it is simply empty. */
+   fixed page (header + --stage-h + footer). Taller windows leave the space below
+   the stage empty. */
 .landing-mid { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 body.landing .shell {
   width: 100%; max-width: var(--landing-maxw); margin-inline: auto;
@@ -85,9 +86,9 @@ body.landing .foot { flex: none; margin: 0; }
 
 .stage {
   position: relative;               /* anchor for the collapse toggle */
-  /* FIXED page height — the Pythia portrait is the etalon. The stage never grows
-     or shrinks with the window: a taller window leaves empty space below it; a
-     shorter window scrolls .landing-mid to reveal it (nothing collapses). */
+  /* Fixed page height (768). The stage never grows/shrinks with the window: a
+     taller window leaves empty space below it; a shorter one scrolls .landing-mid
+     to reveal it. The portrait's width follows the 2:3 aspect (~a third). */
   height: var(--stage-h);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;   /* left fills; right = the portrait's own width */
@@ -237,11 +238,10 @@ body.landing .foot { border-top: 1px solid var(--line); padding: 0; }
 }
 
 /* ── Narrow screens: unlock the fixed-shell constraint ────────────────────────
-   The two-column stage needs room for the ~1024px-wide native portrait PLUS a
-   usable content column, so it only makes sense on wide viewports. Below this,
-   fall back to a normal scrolling page: portrait on top (capped), content
-   beneath, at full width; header/footer stop being pinned. */
-@media (max-width: 1200px) {
+   The two-column stage needs room for the portrait (~512px wide) plus a usable
+   content column. Below this, fall back to a normal scrolling page: portrait on
+   top (capped), content beneath, at full width; header/footer stop being pinned. */
+@media (max-width: 900px) {
   body.landing { height: auto; overflow: visible; display: block; }
   .landing-mid { overflow: visible; }
   body.landing .shell { display: block; padding-top: 14px; min-height: 0; }
