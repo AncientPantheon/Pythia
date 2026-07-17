@@ -67,7 +67,10 @@ body {
    give the content the full width. Scoped to body.landing (admin keeps its own
    scrolling flow). The landing widens past --maxw (owner-sanctioned exception to
    the 1536 Pantheonic width law) to use wide screens. */
-:root { --stage-h: 660px; --landing-maxw: 1760px; }
+/* --stage-h = the portrait's NATIVE height (pythia.jpg is 1024×1536), so the
+   fixed page shows the image at 1:1 — the "original size". The window is almost
+   always shorter than this, so .landing-mid scrolls (the intended PDF-page feel). */
+:root { --stage-h: 1536px; --landing-maxw: 1760px; }
 
 body.landing { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 /* Only this middle region scrolls, and only when the window is shorter than the
@@ -234,10 +237,11 @@ body.landing .foot { border-top: 1px solid var(--line); padding: 0; }
 }
 
 /* ── Narrow screens: unlock the fixed-shell constraint ────────────────────────
-   The full-height two-column stage only makes sense on wide viewports. Below
-   this, fall back to a normal scrolling page: portrait on top (capped), content
+   The two-column stage needs room for the ~1024px-wide native portrait PLUS a
+   usable content column, so it only makes sense on wide viewports. Below this,
+   fall back to a normal scrolling page: portrait on top (capped), content
    beneath, at full width; header/footer stop being pinned. */
-@media (max-width: 960px) {
+@media (max-width: 1200px) {
   body.landing { height: auto; overflow: visible; display: block; }
   .landing-mid { overflow: visible; }
   body.landing .shell { display: block; padding-top: 14px; min-height: 0; }
