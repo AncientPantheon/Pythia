@@ -1641,15 +1641,59 @@ async function loadStats() {
 }
 
 // ── top-level tabs (Chains / Activity / For developers / Connectors) ─────────
+// The tier-1 section nav now lives in the Pantheonic Header (.ph-tier1). Each
+// active section's tier-2 sub-navigation is mirrored into the header's .ph-l3
+// row; sections without a sub-nav leave that row hidden (no empty band).
+// Connectors' two tier-2 buttons delegate to the in-panel #conn-subtabs handler
+// so the existing sub-view switch (incl. its lazy register load) is reused, not
+// re-implemented.
+const TIER2 = {
+  connectors: [
+    { subtab: "apikeys", label: "Full API Keys" },
+    { subtab: "register", label: "Register / Link halves" },
+  ],
+};
+
+function renderTier2(name) {
+  const row = document.getElementById("ph-l3");
+  const nav = document.getElementById("ph-tier2");
+  if (!row || !nav) return;
+  nav.textContent = "";
+  const items = TIER2[name] || [];
+  if (!items.length) {
+    row.hidden = true; // no sub-nav for this section — collapse the L3 band
+    return;
+  }
+  row.hidden = false;
+  // Reflect whichever in-panel sub-tab is currently active (default: the first).
+  const activeSub = document.querySelector("#conn-subtabs .subtab--active");
+  const activeName = activeSub ? activeSub.dataset.subtab : items[0].subtab;
+  for (const item of items) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ph-btn ph-btn--ghost" + (item.subtab === activeName ? " ph-btn--active" : "");
+    btn.dataset.tier2 = item.subtab;
+    btn.textContent = item.label;
+    btn.addEventListener("click", () => {
+      // Delegate to the existing in-panel sub-tab switch (same handler wireSubtabs
+      // bound), then mirror the active state onto the header buttons.
+      const target = document.querySelector(`#conn-subtabs [data-subtab="${item.subtab}"]`);
+      if (target) target.click();
+      nav.querySelectorAll("[data-tier2]").forEach((b) => b.classList.toggle("ph-btn--active", b === btn));
+    });
+    nav.appendChild(btn);
+  }
+}
+
 function showTab(name) {
-  document.querySelectorAll(".tab").forEach((t) => {
-    const on = t.dataset.tab === name;
-    t.classList.toggle("tab--active", on);
-    t.setAttribute("aria-selected", on ? "true" : "false");
+  // Tier-1 section nav lives in the header (.ph-tier1); mark the active button.
+  document.querySelectorAll(".ph-tier1 [data-tab]").forEach((t) => {
+    t.classList.toggle("ph-btn--active", t.dataset.tab === name);
   });
   document.querySelectorAll(".tabpanel").forEach((p) => {
     p.hidden = p.dataset.panel !== name;
   });
+  renderTier2(name); // repopulate the header's tier-2 sub-nav for this section
   if (name === "activity") loadStats(); // refresh usage each time it's opened
   if (name === "connectors") {
     loadDualLinks(); // default sub-tab; halves load lazily on the register tab

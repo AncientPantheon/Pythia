@@ -11,17 +11,29 @@
   <body>
     <div class="starfield" aria-hidden="true"></div>
 
+    <!-- Pantheonic Header — LEVEL 1 only (medallion + back control on the left,
+         identity block on the right). Admin omits levels 2-3: its navigation is
+         the sidebar beneath. Sits OUTSIDE .shell so it's flush to the top edge
+         and spans full width; .ph-inner keeps the elements + separator at the
+         content width. -->
+    <header class="ph">
+      <div class="ph-inner">
+        <div class="ph-l1">
+          <div class="ph-l1-left">
+            <span class="ph-medallion">
+              <a class="ph-name" href="/">Pythia</a>
+              <a class="ph-version" id="ph-version" href="https://github.com/AncientPantheon/Pythia/blob/main/CHANGELOG.md" target="_blank" rel="noopener" title="Version notes (on-site version docs coming soon)"></a>
+            </span>
+            <a class="ph-back ph-btn ph-btn--ghost" href="/">← Pythia</a>
+          </div>
+          <div class="ph-l1-right" id="authbox" aria-live="polite"></div>
+        </div>
+      </div>
+    </header>
+
     <main class="shell">
-      <!-- Pantheonic Header (two-row): row 1 = brand+version (brand links home,
-           the back affordance) on the left + the identity block on the right;
-           row 2 = the description/tooltip subhead zone. -->
-      <header class="pantheon-header">
-        <a class="ph-brand" href="/">
-          <span class="ph-wordmark">Pythia</span>
-          <span class="ph-version" id="ph-version"></span>
-        </a>
-        <div id="authbox" class="ph-identity" aria-live="polite"></div>
-      </header>
+      <!-- The description/tooltip subhead zone (sidebar-hover tooltip), now below
+           the header and above the admin layout. -->
       <div class="pantheon-subhead">
         <p id="subhead-text" class="subhead-text"></p>
       </div>

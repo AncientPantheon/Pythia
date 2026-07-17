@@ -19,17 +19,47 @@
   <body>
     <div class="starfield" aria-hidden="true"></div>
 
-    <main class="shell">
-      <!-- ── PANTHEONIC HEADER (site-wide): brand+version on the left,
-           identity block on the right — the SAME header line as /admin. -->
-      <header class="pantheon-header">
-        <a class="ph-brand" href="/">
-          <span class="ph-wordmark">Pythia</span>
-          <span class="ph-version" id="ph-version"></span>
-        </a>
-        <div id="authbox" class="ph-identity" aria-live="polite"></div>
-      </header>
+    <!-- Pantheonic Header — the standardized 3-level landing header. Sits OUTSIDE
+         .shell so it's flush to the top edge and spans full width; .ph-inner keeps
+         the elements + separator at the content width (same as /admin).
+           L1 — medallion (wordmark + version) on the left; identity block right.
+                No back button — the landing IS home.
+           L2 — the FOUR migrated section-nav buttons (tier-1) on the left; one
+                memorable "Client SDK" button on the right.
+           L3 — the active section's sub-navigation (tier-2), populated by
+                renderTier2() in app.js; hidden when the section has no sub-nav. -->
+    <header class="ph">
+      <div class="ph-inner">
+        <div class="ph-l1">
+          <div class="ph-l1-left">
+            <span class="ph-medallion">
+              <a class="ph-name" href="/">Pythia</a>
+              <a class="ph-version" id="ph-version" href="https://github.com/AncientPantheon/Pythia/blob/main/CHANGELOG.md" target="_blank" rel="noopener" title="Version notes (on-site version docs coming soon)"></a>
+            </span>
+          </div>
+          <div id="authbox" class="ph-l1-right" aria-live="polite"></div>
+        </div>
 
+        <div class="ph-l2">
+          <nav class="ph-tier1" aria-label="Sections">
+            <button class="ph-btn ph-btn--ghost ph-btn--active" data-tab="chains" type="button">Chains</button>
+            <button class="ph-btn ph-btn--ghost" data-tab="activity" type="button">Activity</button>
+            <button class="ph-btn ph-btn--ghost" data-tab="developers" type="button">For developers</button>
+            <button class="ph-btn ph-btn--ghost" data-tab="connectors" type="button">Connectors</button>
+          </nav>
+          <div class="ph-l2-memorable">
+            <a class="ph-btn ph-btn--primary" href="https://www.npmjs.com/package/@ancientpantheon/pythia-client" target="_blank" rel="noopener">Client SDK ↗</a>
+          </div>
+        </div>
+
+        <div class="ph-l3" id="ph-l3" hidden>
+          <nav class="ph-tier2" id="ph-tier2" aria-label="Section views"></nav>
+          <span class="ph-l3-memorable"></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell">
       <!-- ── HERO ─────────────────────────────────────────────── -->
       <header class="hero">
         <div class="hero-copy">
@@ -61,13 +91,8 @@
         </div>
       </header>
 
-      <!-- ── TOP-LEVEL TABS ───────────────────────────────────── -->
-      <nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
-        <button class="tab tab--active" data-tab="chains" role="tab" aria-selected="true" type="button">Chains</button>
-        <button class="tab" data-tab="activity" role="tab" aria-selected="false" type="button">Activity</button>
-        <button class="tab" data-tab="developers" role="tab" aria-selected="false" type="button">For developers</button>
-        <button class="tab" data-tab="connectors" role="tab" aria-selected="false" type="button">Connectors</button>
-      </nav>
+      <!-- Top-level section nav migrated up into the Pantheonic Header's
+           .ph-tier1 (see above); showTab() still drives these tabpanels. -->
 
       <!-- ── CHAINS ───────────────────────────────────────────── -->
       <section class="panel tabpanel" data-panel="chains" aria-labelledby="chains-h">

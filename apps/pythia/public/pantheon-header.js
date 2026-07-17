@@ -35,31 +35,29 @@ export function renderIdentity(box, authState, opts = {}) {
     if (opts.adminLink) {
       if (isAncient) {
         const admin = document.createElement("a");
-        admin.className = "btn btn--ghost btn--small";
+        admin.className = "ph-btn ph-btn--ghost";
         admin.href = "/admin";
-        admin.textContent = "Admin";
+        admin.textContent = "Admin Dashboard";
         box.append(admin);
       } else {
-        // Inert, greyed chip — the ancient role is required for the dashboard.
+        // Inert, greyed button — the ancient role is required for the dashboard.
         const chip = document.createElement("span");
-        chip.className = "btn btn--ghost btn--small";
+        chip.className = "ph-btn ph-btn--ghost";
         chip.setAttribute("aria-disabled", "true");
         chip.title = "Requires the ancient role";
-        chip.style.opacity = "0.5";
-        chip.style.cursor = "not-allowed";
-        chip.textContent = "Admin";
+        chip.textContent = "Admin Dashboard";
         box.append(chip);
       }
     }
 
     const out = document.createElement("a");
-    out.className = "btn btn--ghost btn--small";
+    out.className = "ph-btn ph-btn--ghost";
     out.href = "/admin/logout";
     out.textContent = "Log out";
     box.append(out);
   } else {
     const login = document.createElement("a");
-    login.className = "btn btn--ghost btn--small";
+    login.className = "ph-btn ph-btn--primary";
     login.href = "/admin/login";
     login.textContent = "Login with AncientHub";
     box.append(login);
