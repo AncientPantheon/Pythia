@@ -57,7 +57,7 @@ owner's (not part of this plan).
   - files: `apps/pythia/public/admin.js`, `apps/pythia/public/admin.html`
 
 ## Wave 4 — release (Phase 4 commit, depends on Wave 3)
-- [ ] T6: Version bump + changelog — done when: the four version files
+- [x] T6: Version bump + changelog — done when: the four version files
       (`package.json`, `apps/pythia/package.json`, `packages/pythia-client/package.json`,
       `apps/pythia/src/version.ts`) read the next minor (`1.11.0`), `CHANGELOG.md` gains a top
       `## [1.11.0]` entry describing the Observation Pool node visibility, and

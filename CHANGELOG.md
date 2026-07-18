@@ -9,6 +9,25 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.11.0] — 2026-07-18
+
+### Added
+- **Observation Pool now shows the whole hub fleet.** The admin Observation Pool renders
+  one row per advertised hub node — IP, server URL, operator, at-tip — each with a
+  **reachability dot probed from Pythia's own vantage** (`GET <url>/info`, HTTPS, 3s,
+  cert-validated) and, when red, the **reason** (`refused` / `timeout` / `dns` / `cert` /
+  `http <status>`) so a dead node is diagnosable at a glance instead of an opaque red dot.
+  Per-node **earnings** (operator PythXP/level + the slot's stoicism/rewarded-requests)
+  render when the hub returns them and degrade to "awaiting hub" until it does. Served by a
+  new ancient-gated `GET /admin/hub-nodes`; the feed now retains the full advertised slot
+  list (not just a count).
+
+### Changed
+- **Update & Deploy is version + deploy only.** The per-node reachability rows moved to the
+  Observation Pool (their proper home); Update & Deploy keeps the live Version readout and
+  the Deploy controls, and its stale "reports only the two config seed nodes" note is
+  corrected.
+
 ## [1.10.1] — 2026-07-18
 
 ### Fixed
