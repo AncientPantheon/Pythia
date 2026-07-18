@@ -34,6 +34,7 @@ import { pythMeterMiddleware } from "./pyth/meter.js";
 import { TxTracker } from "./pyth/txTracker.js";
 import { pollExecution } from "./reads/index.js";
 import { SlotUsageMeter } from "./stats/slotUsage.js";
+import { UsageReporter } from "./stats/usageReporter.js";
 
 /**
  * The Pythia gateway application.
@@ -148,6 +149,18 @@ export const txTracker = new TxTracker({
 // reporter (CP3), gated by the report toggle.
 export const slotUsage = new SlotUsageMeter();
 
+// The usage reporter: every ~60s it drains the slot window and POSTs it to the
+// hub (the money path), honoring the report toggle + the window contract. A
+// fresh HubServiceClient per tick (cheap, stateless) reflects the current config.
+export const usageReporter = new UsageReporter({
+  meter: slotUsage,
+  client: () => {
+    const cfg = currentHubConfig();
+    return cfg ? new HubServiceClient(cfg) : null;
+  },
+  reportEnabled: () => settingsStore.reportEnabled(),
+});
+
 // Detect Pythia's public egress IP (the hub allowlist target) at boot; refreshed
 // on admin refresh. Non-blocking — the value populates shortly after start.
 void detectEgressIp();
@@ -239,6 +252,9 @@ nodePool.start();
 
 // Begin the tx-outcome resolution loop (records execution-level send metrics).
 txTracker.start();
+
+// Begin the ~60s usage-report loop (drains the slot window → hub; toggle-gated).
+usageReporter.start();
 
 // The human admin surface (connector manager) is gated on the AncientHoldings
 // hub OIDC IdP. It is OPTIONAL: only wired when the deploy-time OIDC secrets are

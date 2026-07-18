@@ -28,6 +28,32 @@ export interface NodesFeed {
   refreshAfter: number;
 }
 
+/** One slot's line in a usage report (§2.3 + the pondus handoff). `id` is echoed
+ * byte-identically from the feed (the reward join key); `keyedPondus` +
+ * `pondusVersion` are the weight fields. */
+export interface UsageReportSlot {
+  id: string;
+  operator: string | null;
+  keyedRequests: number;
+  anonRequests: number;
+  /** COUNT of successful reads (NOT a 0/1 flag). */
+  ok: number;
+  keyedPondus: number;
+  pondusVersion: number;
+}
+
+export interface UsageReport {
+  period: { from: string; to: string };
+  slots: UsageReportSlot[];
+}
+
+/** The hub's usage-endpoint ack: which `(period,slot)` rows inserted vs deduped. */
+export interface UsageAck {
+  ok: boolean;
+  inserted?: string[];
+  duplicate?: string[];
+}
+
 export interface HubConfig {
   baseUrl: string;
   secret: string;
@@ -135,5 +161,24 @@ export class HubServiceClient {
         ? body.refreshAfter
         : 60;
     return { slots, refreshAfter };
+  }
+
+  /**
+   * `POST /api/pythia/usage/` — report a window of per-slot usage (the money
+   * path). The trailing slash is REQUIRED. Idempotent per `(period, slot)`
+   * first-write-wins on the hub: a retry with byte-identical counts is deduped.
+   * Throws on a non-2xx so the reporter can retry the SAME window unchanged.
+   */
+  async postUsage(report: UsageReport): Promise<UsageAck> {
+    const res = await this.fetchImpl(`${this.cfg.baseUrl}/api/pythia/usage/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(signEnvelope(report, this.cfg.secret)),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`hub /usage ${res.status}: ${detail.slice(0, 160)}`);
+    }
+    return (await res.json()) as UsageAck;
   }
 }

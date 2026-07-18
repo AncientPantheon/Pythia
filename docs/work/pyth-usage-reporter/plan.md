@@ -25,8 +25,8 @@ Test command: `npm test -w @ancientpantheon/pythia`.
   - files: `apps/pythia/src/stats/slotUsage.ts`, `apps/pythia/src/stats/slotUsage.test.ts`,
     `apps/pythia/src/pyth/meter.ts` (or a sibling), `apps/pythia/src/index.ts`
 
-## CP3 — HMAC reporter (postUsage + usageReporter)
-- [ ] T3: `hub/serviceClient.ts` gains `postUsage(report)` (signed §2.1 envelope →
+## CP3 — HMAC reporter (postUsage + usageReporter) ✅
+- [x] T3: `hub/serviceClient.ts` gains `postUsage(report)` (signed §2.1 envelope →
       `POST /api/pythia/usage/`, echo slot id + keyedPondus + pondusVersion:1);
       `stats/usageReporter.ts` — a ~60s timer that drains + posts a contiguous
       non-overlapping window, SKIPS when the report toggle is off, retries a failed

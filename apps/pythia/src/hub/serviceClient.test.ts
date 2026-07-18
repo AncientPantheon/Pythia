@@ -92,3 +92,41 @@ describe("HubServiceClient.fetchNodes", () => {
     await expect(client.fetchNodes()).rejects.toThrow(/403/);
   });
 });
+
+describe("HubServiceClient.postUsage", () => {
+  it("POSTs a signed usage report to /api/pythia/usage/ (trailing slash), payload verbatim", async () => {
+    let calledUrl = "";
+    let calledInit: RequestInit = {};
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      calledUrl = url;
+      calledInit = init ?? {};
+      return new Response(JSON.stringify({ ok: true, inserted: ["w|1.2.3.4"], duplicate: [] }), {
+        status: 200,
+      });
+    });
+    const client = new HubServiceClient({ baseUrl: "https://hub.test", secret: "s" }, fetchMock);
+    const report = {
+      period: { from: "2026-07-05T00:00:00.000Z", to: "2026-07-05T00:01:00.000Z" },
+      slots: [
+        { id: "1.2.3.4", operator: "k:a", keyedRequests: 10, anonRequests: 2, ok: 12, keyedPondus: 51.5, pondusVersion: 1 },
+      ],
+    };
+    const ack = await client.postUsage(report);
+
+    expect(calledUrl).toBe("https://hub.test/api/pythia/usage/");
+    expect(calledInit.method).toBe("POST");
+    const body = JSON.parse(String(calledInit.body));
+    expect(body).toHaveProperty("signature");
+    expect(body).toHaveProperty("nonce");
+    expect(body.payload).toEqual(report); // the report is the signed payload, byte-for-byte
+    expect(ack.ok).toBe(true);
+  });
+
+  it("throws on a non-2xx so the reporter retries the same window", async () => {
+    const fetchMock = vi.fn(async () => new Response("nope", { status: 401 }));
+    const client = new HubServiceClient({ baseUrl: "https://hub.test", secret: "s" }, fetchMock);
+    await expect(
+      client.postUsage({ period: { from: "a", to: "b" }, slots: [] }),
+    ).rejects.toThrow(/401/);
+  });
+});
