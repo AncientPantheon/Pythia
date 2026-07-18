@@ -133,9 +133,9 @@ const TILES = [
     id: "security",
     icon: "🔑",
     title: "Security",
-    blurb: "Master-key sealed-creds vault + rotation.",
+    blurb: "Sealed-credential vault — the hub secret, encrypted at rest.",
     hash: "#security",
-    enabled: false,
+    enabled: true,
   },
 ];
 
@@ -174,6 +174,7 @@ const VIEW_LOADERS = {
     loadDeployStatus();
   },
   earnings: loadEarnings,
+  security: loadSecurity,
 };
 
 // Legacy (topic-2) flat hashes → their new nested homes, so old bookmarks land.
@@ -1220,6 +1221,117 @@ function wireEarnings() {
   }
 }
 
+// ── Security (sealed vault) ──────────────────────────────────────────────────
+// The three vault states → badge text/class + an explanatory line. `plaintextFallback`
+// (no master key) wins over the raw mode for the human-facing label.
+function securityView(st) {
+  if (st.plaintextFallback) {
+    return {
+      cls: "sec-badge--warn",
+      text: "Plaintext fallback",
+      explain:
+        "No PYTHIA_MASTER_KEY is set, so bearer credentials are stored unencrypted on the data volume (dev only). Set a master key in the deploy env to seal them at rest.",
+    };
+  }
+  if (st.mode === "locked") {
+    return {
+      cls: "sec-badge--warn",
+      text: "Locked — key mismatch",
+      explain:
+        "A master key is set but a sealed credential will not decrypt under it (the key changed). The hub feed falls back to the env secret / off until the correct key is restored or the vault is re-sealed.",
+    };
+  }
+  return {
+    cls: "sec-badge--sealed",
+    text: "Sealed ✓",
+    explain: "Bearer credentials are encrypted at rest (AES-256-GCM) under the deploy master key.",
+  };
+}
+
+function renderSecurity(st) {
+  const badge = document.getElementById("sec-badge");
+  const fp = document.getElementById("sec-fingerprint");
+  const explain = document.getElementById("sec-explain");
+  const creds = document.getElementById("sec-creds");
+  const clearBtn = document.getElementById("sec-clear-btn");
+  const view = securityView(st);
+
+  if (badge) {
+    badge.textContent = view.text;
+    badge.className = "sec-badge " + view.cls;
+  }
+  if (fp) {
+    fp.textContent = st.fingerprint ? `master key #${st.fingerprint}` : "no master key";
+  }
+  if (explain) explain.textContent = view.explain;
+
+  if (creds) {
+    creds.textContent = "";
+    const names = Array.isArray(st.names) ? st.names : [];
+    if (!names.length) {
+      const empty = document.createElement("p");
+      empty.className = "panel-note";
+      empty.textContent = "No sealed credentials.";
+      creds.appendChild(empty);
+    } else {
+      for (const name of names) {
+        const row = document.createElement("div");
+        row.className = "sec-cred";
+        const n = document.createElement("span");
+        n.className = "sec-cred-name";
+        n.textContent = name;
+        const mask = document.createElement("span");
+        mask.className = "sec-cred-mask";
+        mask.textContent = "•••••••• sealed";
+        row.append(n, mask);
+        creds.appendChild(row);
+      }
+    }
+  }
+
+  if (clearBtn) clearBtn.disabled = (st.sealedCount || 0) === 0;
+}
+
+async function loadSecurity() {
+  try {
+    const res = await fetch("/admin/security", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    renderSecurity(await res.json());
+  } catch {
+    /* leave as-is */
+  }
+}
+
+function wireSecurity() {
+  const clearBtn = document.getElementById("sec-clear-btn");
+  const err = document.getElementById("sec-clear-error");
+  if (!clearBtn) return;
+  clearBtn.addEventListener("click", async () => {
+    const ok = await confirmDialog({
+      title: "Clear the sealed vault?",
+      message:
+        "This deletes every sealed credential — including the hub HMAC secret. The hub feed will have no secret until one is re-set. Cannot be undone.",
+      confirmLabel: "Clear vault",
+      danger: true,
+    });
+    if (!ok) return;
+    if (err) err.hidden = true;
+    try {
+      const res = await fetch("/admin/security/clear", {
+        method: "POST",
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) {
+        if (err) { err.textContent = "Clear failed — is your ancient session still valid?"; err.hidden = false; }
+        return;
+      }
+      renderSecurity(await res.json());
+    } catch {
+      if (err) { err.textContent = "Network error."; err.hidden = false; }
+    }
+  });
+}
+
 // ── init ─────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".admin-back").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -1239,6 +1351,7 @@ wireTxSenderForm();
 wireTxSenderBulk();
 wireDeployButton();
 wireEarnings();
+wireSecurity();
 loadVersion(); // fill the brand's version chip from /healthz
 applyGate(); // render the "checking…" state before /api/me resolves
 loadMe();

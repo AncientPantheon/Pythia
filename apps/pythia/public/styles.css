@@ -591,6 +591,24 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .earn-toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
 .conn-form--add { margin-top: .6rem; }
 
+/* Security — sealed vault */
+.sec-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
+.sec-badge {
+  display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; letter-spacing: .02em; border: 1px solid var(--line);
+}
+.sec-badge--sealed { color: var(--gold); border-color: var(--gold-dim); background: rgba(230,190,106,.08); }
+.sec-badge--warn { color: #f0b34d; border-color: #7a5a1e; background: rgba(240,179,77,.08); }
+.sec-fingerprint { font-size: 13px; color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+.sec-creds { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; }
+.sec-cred {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-radius: 10px;
+  background: rgba(255,255,255,.025); border: 1px solid var(--line);
+}
+.sec-cred-name { font-weight: 600; color: var(--ink); }
+.sec-cred-mask { font-size: 13px; color: var(--ink-mute); letter-spacing: .1em; }
+
 /* seed-node badge — permanent, gold to distinguish from the grey "disabled" */
 .ca-badge--seed { color: var(--gold); border-color: var(--gold-dim); }
 

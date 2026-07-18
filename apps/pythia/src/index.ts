@@ -20,6 +20,7 @@ import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
 import { SettingsStore } from "./admin/settingsStore.js";
+import { SealedVault } from "./admin/sealedVault.js";
 import { TxSenderStore } from "./txsenders/store.js";
 import { loadConfigFromDisk } from "./config/index.js";
 import { loadHubConfig, HubServiceClient } from "./hub/serviceClient.js";
@@ -90,11 +91,23 @@ function resolveConsumer(key?: string): string {
   return "direct";
 }
 
+// The sealed credential vault: bearer creds Pythia must USE (the hub HMAC secret)
+// are encrypted at rest under a master key from the deploy env (PYTHIA_MASTER_KEY,
+// off the /data volume), so a volume leak alone never yields them. With no master
+// key set (dev), the vault is locked and the settings store falls back to today's
+// plaintext path. Persisted on the `/data` volume alongside the other stores.
+export const sealedVault = new SealedVault({
+  filePath: process.env.VAULT_FILE || "./pythia-vault.json",
+  masterKey: process.env.PYTHIA_MASTER_KEY,
+});
+
 // Runtime admin settings (the hub feed URL + HMAC secret), set from the
 // `ancient`-gated admin UI so the operator activates the feed from the website
-// rather than editing env over SSH. Persisted on the `/data` volume.
+// rather than editing env over SSH. Persisted on the `/data` volume. The HMAC
+// secret is sealed through the vault above when a master key is present.
 export const settingsStore = new SettingsStore({
   filePath: process.env.SETTINGS_FILE || "./pythia-settings.json",
+  vault: sealedVault,
 });
 
 // The Upload Pool: dedicated, ancient-managed nodes for signed-tx `/send` ONLY.
@@ -273,6 +286,12 @@ if (oidcConfig) {
       nuke: () => pythLedger.nuke(),
       reportEnabled: () => settingsStore.reportEnabled(),
       setReportEnabled: (on) => settingsStore.setReportEnabled(on),
+    },
+    // The "Security" panel: sealed-vault status + decommission (clear). Secret
+    // values are set in the Hub-feed panel (which seals them via the vault).
+    security: {
+      status: () => settingsStore.securityStatus(),
+      clear: () => sealedVault.clear(),
     },
   });
   // On-box blue-green Deploy API (Update & Deploy panel backend): ancient-gated,

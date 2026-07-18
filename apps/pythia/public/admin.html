@@ -187,6 +187,26 @@
               </div>
               <p class="conn-error" id="earn-nuke-error" hidden></p>
             </section>
+
+            <section class="admin-view" data-view="security" hidden>
+              <h3>Sealed credential vault</h3>
+              <p class="panel-note">Bearer credentials Pythia must <em>use</em> — chiefly the hub HMAC secret — are encrypted at rest (AES-256-GCM) under a master key from the deploy env (<code>PYTHIA_MASTER_KEY</code>), which lives off the data volume. Secret <b>values</b> are set in <a href="#connectors/stoachain">Blockchain Connectors → StoaChain → Observation Pool</a> (they seal through this vault); the master key is an ops action, never entered here.</p>
+              <div class="sec-status" id="sec-status">
+                <span class="sec-badge" id="sec-badge">…</span>
+                <span class="sec-fingerprint" id="sec-fingerprint"></span>
+              </div>
+              <p class="panel-note" id="sec-explain"></p>
+
+              <h3>Sealed credentials</h3>
+              <div class="sec-creds" id="sec-creds"></div>
+
+              <h3>Danger zone</h3>
+              <p class="panel-note">Clear the vault — delete every sealed credential (decommission). The hub feed then has no secret until one is re-set. Cannot be undone.</p>
+              <div class="conn-actions">
+                <button type="button" id="sec-clear-btn" class="btn btn--danger">Clear vault</button>
+              </div>
+              <p class="conn-error" id="sec-clear-error" hidden></p>
+            </section>
           </div>
         </div>
       </div>

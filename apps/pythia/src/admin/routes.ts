@@ -16,6 +16,7 @@ import {
 import type { ConnectorStore } from "../connectors/store.js";
 import type { TxSenderStore } from "../txsenders/store.js";
 import type { VerifierStore } from "../verifiers/store.js";
+import type { SecurityStatus } from "./settingsStore.js";
 
 // The verified admin session is exposed to gated handlers via the Hono context.
 declare module "hono" {
@@ -195,12 +196,22 @@ export interface PythAdminControls {
   setReportEnabled(on: boolean): void;
 }
 
+/** The runtime controls the `ancient`-gated "Security" panel drives: read the
+ * sealed-vault status, and clear (decommission) the sealed creds. Secret VALUES
+ * are set/rotated in the Hub-feed panel (which writes through the vault); master-key
+ * handling is an ops action, never a browser field. */
+export interface SecurityAdminControls {
+  status(): SecurityStatus;
+  clear(): void;
+}
+
 /** Optional admin subsystems wired when present. */
 export interface AdminExtras {
   hubAdmin?: HubAdminControls;
   txSenders?: TxSenderStore;
   verifiers?: VerifierStore;
   pyth?: PythAdminControls;
+  security?: SecurityAdminControls;
 }
 
 export function registerAdmin(
@@ -210,7 +221,7 @@ export function registerAdmin(
   extras: AdminExtras = {},
 ): void {
   const gate = createAdminGate(cfg);
-  const { hubAdmin, txSenders, verifiers, pyth } = extras;
+  const { hubAdmin, txSenders, verifiers, pyth, security } = extras;
 
   app.get("/admin/login", async (c) => {
     const { discovery } = await getDiscovery(cfg.issuer);
@@ -505,6 +516,20 @@ export function registerAdmin(
       }
       pyth.setReportEnabled(body.enabled);
       return c.json({ ok: true, reportToHub: pyth.reportEnabled() });
+    });
+  }
+
+  // ── ancient-gated "Security" — sealed-vault status + decommission ───────────
+  if (security) {
+    // The sealed-vault status: mode (sealed / plaintext-fallback / locked), the
+    // master-key fingerprint, and the sealed creds by name (never the values).
+    app.get("/admin/security", gate, (c) => c.json(security.status()));
+
+    // Clear (decommission) every sealed cred. Destructive; ancient-gated. Returns
+    // the fresh status so the UI re-renders.
+    app.post("/admin/security/clear", gate, (c) => {
+      security.clear();
+      return c.json(security.status());
     });
   }
 }
