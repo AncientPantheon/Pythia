@@ -609,6 +609,28 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .sec-cred-name { font-weight: 600; color: var(--ink); }
 .sec-cred-mask { font-size: 13px; color: var(--ink-mute); letter-spacing: .1em; }
 
+/* Observation Pool — the advertised hub fleet */
+.hub-nodes-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 14px 0 6px; }
+.hub-nodes-title { font-weight: 700; color: var(--ink); }
+.hub-nodes-note { margin: 0; flex: 1 1 320px; }
+.hub-nodes { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.hubnode {
+  display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 10px;
+  background: rgba(255,255,255,.025); border: 1px solid var(--line);
+}
+.hubnode--down { border-color: color-mix(in srgb, #7a5a1e 60%, var(--line)); background: rgba(240,179,77,.04); }
+.hubnode-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hubnode-ip { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.hubnode-url { font-size: 12px; color: var(--ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hubnode-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.hubnode-op { color: var(--ink-soft); }
+.hubnode-tip { color: var(--gold-dim); }
+.hubnode-tip--behind { color: var(--ink-mute); }
+.hubnode-reason { color: #f0b34d; text-transform: uppercase; letter-spacing: .03em; font-size: 11px; }
+.hubnode-earn { font-size: 12px; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
+.hubnode-earn--pending { color: var(--ink-mute); font-style: italic; }
+
 /* seed-node badge — permanent, gold to distinguish from the grey "disabled" */
 .ca-badge--seed { color: var(--gold); border-color: var(--gold-dim); }
 

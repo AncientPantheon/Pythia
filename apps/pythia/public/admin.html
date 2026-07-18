@@ -102,6 +102,13 @@
                 <h3>Observation Pool</h3>
                 <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP). When the feed is off, reads use the Upload Pool.</p>
                 <div id="hub-status" class="hub-status"></div>
+
+                <div class="hub-nodes-head">
+                  <span class="hub-nodes-title">Hub fleet</span>
+                  <span class="panel-note hub-nodes-note">Reachability is probed from Pythia's own vantage (<code>GET /info</code>). A red node can't serve reads — hover it for why. Earnings show when the hub reports them.</span>
+                </div>
+                <div id="hub-nodes" class="hub-nodes"></div>
+
                 <form id="hub-config-form" class="conn-form">
                   <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
                   <div class="conn-field">
@@ -150,10 +157,10 @@
               </div>
             </section>
 
-            <!-- UPDATE & DEPLOY — version/seed-pair health readout + on-box blue-green deploy -->
+            <!-- UPDATE & DEPLOY — live version readout + on-box blue-green deploy -->
             <section class="admin-view" data-view="update-deploy" hidden>
-              <h3>Version &amp; seed-pair health</h3>
-              <p class="panel-note">The live gateway version plus reachability, read from <code>/healthz</code> — which reports only the two config seed nodes, so it can differ from the pool actually serving reads.</p>
+              <h3>Live version</h3>
+              <p class="panel-note">The gateway version currently serving, read from <code>/healthz</code>. Per-node reachability lives in <a href="#connectors/stoachain">Blockchain Connectors → StoaChain → Observation Pool</a>, where the whole advertised hub fleet is shown.</p>
               <div id="version-network"></div>
 
               <h3>On-box deploy</h3>

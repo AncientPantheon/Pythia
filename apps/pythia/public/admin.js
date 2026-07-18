@@ -166,6 +166,7 @@ const VIEW_LOADERS = {
   connectors: () => {}, // static chain list — rendered up front, nothing to load
   "connectors/stoachain": () => {
     loadHubStatus();
+    loadHubNodes();
     loadTxSenders();
     renderStoachainRules();
   },
@@ -615,6 +616,91 @@ async function loadHubStatus() {
   }
 }
 
+// ── Observation Pool: the advertised hub fleet, probed for reachability ─────────
+// True when the hub has started returning per-node earnings (graceful degrade).
+function nodeHasEarnings(n) {
+  return (
+    n.slotStoicismEarned != null ||
+    n.slotRewardedRequests != null ||
+    n.operatorPythXP != null ||
+    n.operatorPythLevel != null
+  );
+}
+
+function renderHubNodes(el, nodes) {
+  el.textContent = "";
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "panel-note";
+    empty.textContent = "No hub nodes advertised — the feed is off/down, or the hub is serving none.";
+    el.appendChild(empty);
+    return;
+  }
+  for (const n of nodes) {
+    const row = document.createElement("div");
+    row.className = "hubnode" + (n.reachable ? "" : " hubnode--down");
+
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.setAttribute("data-color", n.reachable ? "green" : "red");
+    dot.title = n.reachable ? "reachable" : `unreachable — ${n.reason || "unknown"}`;
+
+    const main = document.createElement("span");
+    main.className = "hubnode-main";
+    const ip = document.createElement("span");
+    ip.className = "hubnode-ip";
+    ip.textContent = n.id;
+    const url = document.createElement("span");
+    url.className = "hubnode-url";
+    url.textContent = n.url;
+    main.append(ip, url);
+
+    const meta = document.createElement("span");
+    meta.className = "hubnode-meta";
+    const op = document.createElement("span");
+    op.className = "hubnode-op";
+    op.textContent = n.operator || "—";
+    const tip = document.createElement("span");
+    tip.className = "hubnode-tip" + (n.atTip ? "" : " hubnode-tip--behind");
+    tip.textContent = n.atTip ? "at tip" : "behind";
+    meta.append(op, tip);
+    if (!n.reachable) {
+      const why = document.createElement("span");
+      why.className = "hubnode-reason";
+      why.textContent = n.reason || "unreachable";
+      meta.appendChild(why);
+    }
+
+    const earn = document.createElement("span");
+    earn.className = "hubnode-earn";
+    if (nodeHasEarnings(n)) {
+      const bits = [];
+      if (n.operatorPythLevel != null) bits.push(`L${n.operatorPythLevel}`);
+      if (n.operatorPythXP != null) bits.push(`${Number(n.operatorPythXP).toLocaleString("en-US")} XP`);
+      if (n.slotStoicismEarned != null) bits.push(`${n.slotStoicismEarned} STOIC`);
+      earn.textContent = bits.join(" · ") || "—";
+    } else {
+      earn.className += " hubnode-earn--pending";
+      earn.textContent = "awaiting hub";
+    }
+
+    row.append(dot, main, meta, earn);
+    el.appendChild(row);
+  }
+}
+
+async function loadHubNodes() {
+  const el = document.getElementById("hub-nodes");
+  if (!el) return;
+  try {
+    const res = await fetch("/admin/hub-nodes", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    renderHubNodes(el, await res.json());
+  } catch {
+    /* leave as-is */
+  }
+}
+
 function wireHubConfig() {
   const form = document.getElementById("hub-config-form");
   const refresh = document.getElementById("hub-refresh");
@@ -663,6 +749,7 @@ function wireHubConfig() {
       try {
         const res = await fetch("/admin/hub-config/refresh", { method: "POST", headers: { accept: "application/json" } });
         if (res.ok && status) renderHubStatus(status, await res.json());
+        loadHubNodes(); // re-probe the fleet after a feed refresh
       } catch {
         /* ignore */
       }
@@ -947,7 +1034,8 @@ async function loadVersionNetwork() {
 
 function renderVersionNetwork(container, body) {
   container.textContent = "";
-
+  // Update & Deploy shows only the live version now. Per-node reachability lives in
+  // Observation Pool → Hub fleet, where the whole advertised fleet is shown.
   const versionLine = document.createElement("p");
   versionLine.className = "hub-stat";
   const b = document.createElement("b");
@@ -956,44 +1044,6 @@ function renderVersionNetwork(container, body) {
   v.textContent = body.version || "unknown";
   versionLine.append(b, v);
   container.appendChild(versionLine);
-
-  const sources = Array.isArray(body.sources) ? body.sources : [];
-  if (!sources.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "No sources reported.";
-    container.appendChild(empty);
-    return;
-  }
-
-  for (const s of sources) {
-    const row = document.createElement("div");
-    row.className = "txrow";
-
-    const main = document.createElement("span");
-    main.className = "txrow-main";
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    dot.setAttribute("data-color", s.reachable ? "green" : "red");
-    main.appendChild(dot);
-    const label = document.createElement("b");
-    label.className = "txrow-label";
-    label.textContent = s.id || "source";
-    main.appendChild(label);
-    if (s.role) {
-      const badge = document.createElement("span");
-      badge.className = "ca-badge";
-      badge.textContent = s.role;
-      main.appendChild(badge);
-    }
-    const url = document.createElement("span");
-    url.className = "txrow-url";
-    url.textContent = s.url || "";
-    main.appendChild(url);
-
-    row.appendChild(main);
-    container.appendChild(row);
-  }
 }
 
 // ── on-box deploy (status readout + Deploy button + SSE build-log terminal) ───

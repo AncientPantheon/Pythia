@@ -39,7 +39,7 @@ owner's (not part of this plan).
   - files: `apps/pythia/src/hub/hubNodes.ts`, `apps/pythia/src/hub/hubNodes.test.ts`, `apps/pythia/src/index.ts`, `apps/pythia/src/admin/routes.ts`, `apps/pythia/src/admin/hubNodesRoutes.test.ts`
 
 ## Wave 3 — UI (Phase 3 commit, depends on Wave 2)
-- [ ] T4: Observation Pool node table — done when: the Observation Pool panel gains a
+- [x] T4: Observation Pool node table — done when: the Observation Pool panel gains a
       `#hub-nodes` table fed by `GET /admin/hub-nodes`, one row per node: a reachability dot
       (green/red) with the `reason` as its title/label, IP (`id`), server URL, operator,
       at-tip, and earnings cells (operator PythXP/level + slot stoicism/rewarded-requests)
@@ -48,7 +48,7 @@ owner's (not part of this plan).
       `node --check apps/pythia/public/admin.js` passes and a browser check shows the table
       rendering rows with red dots + reasons.
   - files: `apps/pythia/public/admin.js`, `apps/pythia/public/admin.html`, `apps/pythia/public/styles.css`
-- [ ] T5: De-conflate Update & Deploy — done when: the Update & Deploy view no longer renders
+- [x] T5: De-conflate Update & Deploy — done when: the Update & Deploy view no longer renders
       the per-node reachability rows (the pool-aware `/healthz` pair), keeps the live
       **Version** readout and the **Deploy** controls, and the stale note ("reports only the
       two config seed nodes") is corrected to describe the live version only. Done when
