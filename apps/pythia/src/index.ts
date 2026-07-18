@@ -28,6 +28,8 @@ import type { HubAdminControls } from "./admin/routes.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
 import { statsMiddleware } from "./stats/middleware.js";
+import { PythLedger } from "./pyth/ledger.js";
+import { pythMeterMiddleware } from "./pyth/meter.js";
 
 /**
  * The Pythia gateway application.
@@ -54,6 +56,13 @@ export const app = new Hono();
 // store is exported so the server can flush it on shutdown.
 export const statsStore = new StatsStore({
   filePath: process.env.STATS_FILE || "./pythia-stats.json",
+});
+
+// The Pyth ledger: Pythia's own keyless economic odometer (petitions, pondus,
+// transactions, gas) — see pyth/ledger.ts. Persisted on the mounted volume;
+// mirrors the on-chain schema so a future Dalos flush can read the day deltas.
+export const pythLedger = new PythLedger({
+  filePath: process.env.PYTH_LEDGER_FILE || "./pythia-pyth-ledger.json",
 });
 const envConsumerMap = loadConsumerMap(process.env.PYTHIA_API_KEYS);
 
@@ -173,6 +182,11 @@ app.use("*", corsMiddleware(loadConfigFromDisk().corsOrigins));
 // (health/static/connectors are ignored) and records nothing else — keyless, it
 // never signs or broadcasts.
 app.use("*", statsMiddleware(statsStore, resolveConsumer));
+
+// Pyth-economy metering runs alongside stats — keyed reads/polls → Petitions +
+// Pondus, sends → Transactions/Gas (accepted) or Failed/Wasted (rejected). It
+// reads only response gas/bytes + the caller's gasLimit; it never signs.
+app.use("*", pythMeterMiddleware(pythLedger, resolveConsumer));
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.

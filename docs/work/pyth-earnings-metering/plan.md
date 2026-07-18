@@ -17,8 +17,8 @@ bump at the end. Test command: `npm test -w @ancientpantheon/pythia`.
       daily/nuke + persist-reload round-trip.
   - files: `apps/pythia/src/pyth/ledger.ts`, `apps/pythia/src/pyth/ledger.test.ts`
 
-## CP2 — Meter reads/polls + sends into the ledger
-- [ ] T3: wire metering — reads/polls compute pondus from the node response (gas +
+## CP2 — Meter reads/polls + sends into the ledger ✅
+- [x] T3: wire metering — reads/polls compute pondus from the node response (gas +
       bytes) → `recordRead`; sends record `recordSend(accepted, ΣgasLimit)` where
       accepted = relay ok, gasLimit parsed from each caller cmd's `meta.gasLimit`.
       Keyless (reads gas/bytes/gasLimit only). Done when: tests drive a read and a

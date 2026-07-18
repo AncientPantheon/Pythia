@@ -111,16 +111,18 @@ export class PythLedger {
     d.pondus += nonNeg(pondusValue);
   }
 
-  /** A relayed send: accepted → +1 transaction + gasLimit reserved; rejected →
-   * +1 failed-transaction + gasLimit wasted. */
-  recordSend(accepted: boolean, gasLimit: number): void {
+  /** A relayed send of `count` txs (one batch shares one relay outcome):
+   * accepted → +count transactions + gasLimit reserved; rejected → +count
+   * failed-transactions + gasLimit wasted. */
+  recordSend(accepted: boolean, gasLimit: number, count = 1): void {
     const g = nonNeg(gasLimit);
+    const n = Number.isInteger(count) && count > 0 ? count : 1;
     const d = this.todayBucket();
     if (accepted) {
-      d.transactions += 1;
+      d.transactions += n;
       d.gasReserved += g;
     } else {
-      d.failedTransactions += 1;
+      d.failedTransactions += n;
       d.wastedGasReserved += g;
     }
   }
