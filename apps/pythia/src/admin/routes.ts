@@ -17,6 +17,7 @@ import type { ConnectorStore } from "../connectors/store.js";
 import type { TxSenderStore } from "../txsenders/store.js";
 import type { VerifierStore } from "../verifiers/store.js";
 import type { SecurityStatus } from "./settingsStore.js";
+import type { EnrichedNode } from "../hub/hubNodes.js";
 
 // The verified admin session is exposed to gated handlers via the Hono context.
 declare module "hono" {
@@ -205,6 +206,12 @@ export interface SecurityAdminControls {
   clear(): void;
 }
 
+/** The runtime control the `ancient`-gated Observation Pool node table drives: the
+ * full advertised hub fleet, each probed for reachability from Pythia's vantage. */
+export interface HubNodesControls {
+  list(): Promise<EnrichedNode[]>;
+}
+
 /** Optional admin subsystems wired when present. */
 export interface AdminExtras {
   hubAdmin?: HubAdminControls;
@@ -212,6 +219,7 @@ export interface AdminExtras {
   verifiers?: VerifierStore;
   pyth?: PythAdminControls;
   security?: SecurityAdminControls;
+  hubNodes?: HubNodesControls;
 }
 
 export function registerAdmin(
@@ -221,7 +229,7 @@ export function registerAdmin(
   extras: AdminExtras = {},
 ): void {
   const gate = createAdminGate(cfg);
-  const { hubAdmin, txSenders, verifiers, pyth, security } = extras;
+  const { hubAdmin, txSenders, verifiers, pyth, security, hubNodes } = extras;
 
   app.get("/admin/login", async (c) => {
     const { discovery } = await getDiscovery(cfg.issuer);
@@ -531,5 +539,12 @@ export function registerAdmin(
       security.clear();
       return c.json(security.status());
     });
+  }
+
+  // ── ancient-gated Observation Pool node table — the advertised hub fleet ─────
+  if (hubNodes) {
+    // Every advertised hub node, probed for reachability from Pythia's vantage
+    // (id · url · operator · at-tip · reachable + reason · earnings when present).
+    app.get("/admin/hub-nodes", gate, async (c) => c.json(await hubNodes.list()));
   }
 }

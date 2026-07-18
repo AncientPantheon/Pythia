@@ -26,7 +26,7 @@ owner's (not part of this plan).
   - files: `apps/pythia/src/health/probeNodes.ts`, `apps/pythia/src/health/probeNodes.test.ts`
 
 ## Wave 2 — admin API (Phase 2 commit, depends on Wave 1)
-- [ ] T3: Ancient-gated `GET /admin/hub-nodes` + wiring — done when: `AdminExtras` gains
+- [x] T3: Ancient-gated `GET /admin/hub-nodes` + wiring — done when: `AdminExtras` gains
       `hubNodes?: { list(): Promise<EnrichedNode[]> }`; `index.ts` wires it to probe
       `nodePool.advertisedSlots()` via `probeNodes` and merge into `EnrichedNode`
       (`id,url,operator,atTip,height,reachable,reason` + any earnings fields passed through),
@@ -34,8 +34,9 @@ owner's (not part of this plan).
       `operatorPythXP`, else reachable-first then `id`; `routes.ts` registers
       `GET /admin/hub-nodes` behind `gate` returning the list. Tests (a
       `hubNodesRoutes.test.ts`): gated GET returns the injected enriched list; unauth→401;
-      non-ancient→403.
-  - files: `apps/pythia/src/index.ts`, `apps/pythia/src/admin/routes.ts`, `apps/pythia/src/admin/hubNodesRoutes.test.ts`
+      non-ancient→403. The merge+sort lives in a pure, unit-tested `enrichHubNodes`
+      helper (not inlined in the route wiring).
+  - files: `apps/pythia/src/hub/hubNodes.ts`, `apps/pythia/src/hub/hubNodes.test.ts`, `apps/pythia/src/index.ts`, `apps/pythia/src/admin/routes.ts`, `apps/pythia/src/admin/hubNodesRoutes.test.ts`
 
 ## Wave 3 — UI (Phase 3 commit, depends on Wave 2)
 - [ ] T4: Observation Pool node table — done when: the Observation Pool panel gains a

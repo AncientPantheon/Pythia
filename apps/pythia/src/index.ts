@@ -26,6 +26,8 @@ import { loadConfigFromDisk } from "./config/index.js";
 import { loadHubConfig, HubServiceClient } from "./hub/serviceClient.js";
 import { detectEgressIp, cachedEgressIp } from "./hub/egressIp.js";
 import { NodePool } from "./pool/nodePool.js";
+import { probeNodes } from "./health/probeNodes.js";
+import { enrichHubNodes } from "./hub/hubNodes.js";
 import type { HubAdminControls } from "./admin/routes.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
@@ -292,6 +294,15 @@ if (oidcConfig) {
     security: {
       status: () => settingsStore.securityStatus(),
       clear: () => sealedVault.clear(),
+    },
+    // The Observation Pool node table: every advertised hub node, probed for
+    // reachability from Pythia's own vantage (the contract the hub feed must meet).
+    hubNodes: {
+      list: async () => {
+        const advertised = nodePool.advertisedSlots();
+        const reach = await probeNodes(advertised.map((s) => s.url));
+        return enrichHubNodes(advertised, reach);
+      },
     },
   });
   // On-box blue-green Deploy API (Update & Deploy panel backend): ancient-gated,
