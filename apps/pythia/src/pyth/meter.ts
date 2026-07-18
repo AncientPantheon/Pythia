@@ -18,27 +18,43 @@ export function gasFromLocalResponse(bodyText: string): number {
   }
 }
 
-/** Count the txs and sum the reserved gasLimit across a send's caller-SIGNED
- * cmds. Keyless — it only READS `meta.gasLimit` from the caller's own command;
- * a malformed cmd is still counted (a tx) but contributes no gas. */
-export function reservedGasForCmds(cmds: unknown): {
-  txCount: number;
-  gasLimit: number;
-} {
-  if (!Array.isArray(cmds)) return { txCount: 0, gasLimit: 0 };
-  let gasLimit = 0;
-  for (const c of cmds) {
+/** The reserved gasLimit of each caller-SIGNED cmd, one entry per cmd (0 for a
+ * malformed cmd). Keyless — it only READS `meta.gasLimit` from the caller's own
+ * command. Parallel to the cmds array, so it pairs positionally with the send
+ * response's requestKeys. */
+export function gasLimitsForCmds(cmds: unknown): number[] {
+  if (!Array.isArray(cmds)) return [];
+  return cmds.map((c) => {
     try {
       const cmdStr = (c as { cmd?: unknown }).cmd;
-      if (typeof cmdStr !== "string") continue;
-      const meta = (JSON.parse(cmdStr) as { meta?: { gasLimit?: unknown } }).meta;
-      const gl = meta?.gasLimit;
-      if (typeof gl === "number" && Number.isFinite(gl) && gl > 0) gasLimit += gl;
+      if (typeof cmdStr !== "string") return 0;
+      const gl = (JSON.parse(cmdStr) as { meta?: { gasLimit?: unknown } }).meta?.gasLimit;
+      return typeof gl === "number" && Number.isFinite(gl) && gl > 0 ? gl : 0;
     } catch {
-      /* skip a malformed cmd */
+      return 0;
     }
+  });
+}
+
+/** Count + total reserved gas across a send's cmds (derived from {@link gasLimitsForCmds}). */
+export function reservedGasForCmds(cmds: unknown): { txCount: number; gasLimit: number } {
+  const arr = gasLimitsForCmds(cmds);
+  return { txCount: arr.length, gasLimit: arr.reduce((a, b) => a + b, 0) };
+}
+
+/** The requestKeys chainweb returned for an accepted send batch (order matches cmds). */
+export function requestKeysFromSendResponse(bodyText: string): string[] {
+  try {
+    const rk = (JSON.parse(bodyText) as { requestKeys?: unknown }).requestKeys;
+    return Array.isArray(rk) ? rk.filter((k): k is string => typeof k === "string") : [];
+  } catch {
+    return [];
   }
-  return { txCount: cmds.length, gasLimit };
+}
+
+/** The tracker the meter hands accepted-send requestKeys to (see pyth/txTracker.ts). */
+export interface TxTrackerLike {
+  track(entries: Array<{ requestKey: string; gasLimit: number }>): void;
 }
 
 /**
@@ -57,6 +73,7 @@ export function reservedGasForCmds(cmds: unknown): {
 export function pythMeterMiddleware(
   ledger: PythLedger,
   resolveConsumer: ConsumerResolver,
+  tracker?: TxTrackerLike,
 ) {
   return async (c: Context, next: Next): Promise<void> => {
     const match = OPERATIONAL.exec(c.req.path);
@@ -85,9 +102,28 @@ export function pythMeterMiddleware(
       // send — only 2xx (accepted) or 502 (relay-rejected) is a real relay attempt.
       if (status < 200 || (status >= 300 && status !== 502)) return;
       const parsed = (await c.req.json().catch(() => null)) as { cmds?: unknown } | null;
-      const { txCount, gasLimit } = reservedGasForCmds(parsed?.cmds);
-      if (txCount === 0) return;
-      ledger.recordSend(status >= 200 && status < 300, gasLimit, txCount);
+      const gasLimits = gasLimitsForCmds(parsed?.cmds);
+      if (gasLimits.length === 0) return;
+      const sum = gasLimits.reduce((a, b) => a + b, 0);
+
+      if (status >= 200 && status < 300) {
+        // ACCEPTED. With a tracker wired, hand each requestKey to it for the
+        // execution-level outcome (counted once it mines) instead of counting
+        // here — no double count. Without a tracker (or with no requestKeys in
+        // the response), fall back to the relay-level optimistic count.
+        if (tracker) {
+          const rks = requestKeysFromSendResponse(await c.res.clone().text());
+          const entries = rks.map((requestKey, i) => ({ requestKey, gasLimit: gasLimits[i] ?? 0 }));
+          if (entries.length > 0) {
+            tracker.track(entries);
+            return;
+          }
+        }
+        ledger.recordSend(true, sum, gasLimits.length);
+        return;
+      }
+      // 502 — relay-rejected (never entered the mempool): failed + wasted at relay.
+      ledger.recordSend(false, sum, gasLimits.length);
     } catch {
       /* metering is best-effort — never let it touch the response */
     }

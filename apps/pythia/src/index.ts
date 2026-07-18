@@ -31,6 +31,8 @@ import { loadConsumerMap } from "./stats/consumers.js";
 import { statsMiddleware } from "./stats/middleware.js";
 import { PythLedger } from "./pyth/ledger.js";
 import { pythMeterMiddleware } from "./pyth/meter.js";
+import { TxTracker } from "./pyth/txTracker.js";
+import { pollExecution } from "./reads/index.js";
 
 /**
  * The Pythia gateway application.
@@ -127,6 +129,19 @@ export const nodePool = new NodePool({
   uploadNodes: () => txSenderStore.enabledNodes(),
 });
 
+// The self-polling tx-outcome tracker: relay-accepted sends are handed here, and
+// it polls chainweb (keyless — a plain read over the pool) until each tx mines,
+// then records the REAL outcome into the Pyth ledger (success → transaction +
+// actual gas; revert → failed + wasted gas; never-mined → timed out as failed).
+export const txTracker = new TxTracker({
+  ledger: pythLedger,
+  poll: async (requestKeys) => {
+    const pair = nodePool.pickReadPair();
+    if (!pair) return new Map();
+    return pollExecution(requestKeys, 0, { primary: pair.primary, fallback: pair.fallback });
+  },
+});
+
 // Detect Pythia's public egress IP (the hub allowlist target) at boot; refreshed
 // on admin refresh. Non-blocking — the value populates shortly after start.
 void detectEgressIp();
@@ -187,7 +202,7 @@ app.use("*", statsMiddleware(statsStore, resolveConsumer));
 // Pyth-economy metering runs alongside stats — keyed reads/polls → Petitions +
 // Pondus, sends → Transactions/Gas (accepted) or Failed/Wasted (rejected). It
 // reads only response gas/bytes + the caller's gasLimit; it never signs.
-app.use("*", pythMeterMiddleware(pythLedger, resolveConsumer));
+app.use("*", pythMeterMiddleware(pythLedger, resolveConsumer, txTracker));
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
@@ -209,6 +224,9 @@ registerVerifiers(app, { store: verifierStore });
 
 // Begin polling the hub feed (no-op when the HMAC secret is unset → seed-only).
 nodePool.start();
+
+// Begin the tx-outcome resolution loop (records execution-level send metrics).
+txTracker.start();
 
 // The human admin surface (connector manager) is gated on the AncientHoldings
 // hub OIDC IdP. It is OPTIONAL: only wired when the deploy-time OIDC secrets are

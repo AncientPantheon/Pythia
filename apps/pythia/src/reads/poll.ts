@@ -84,6 +84,55 @@ async function pollKeys(
   )) as PollResponse;
 }
 
+/** Execution outcome of a MINED tx: whether the Pact command succeeded and the
+ * ACTUAL gas it burned. */
+export interface ExecutionOutcome {
+  success: boolean;
+  gas: number;
+}
+
+/**
+ * Poll a batch of request keys for their EXECUTION outcome (not just inclusion).
+ * The chainweb poll record carries each mined tx's `result.status`
+ * ("success"/"failure") and actual `gas`; an unmined key is absent from the
+ * response — and so from the returned map. A plain read over Pythia's dial() —
+ * keyless, never a broadcast/signing client. Used by the tx-outcome tracker.
+ */
+export async function pollExecution(
+  requestKeys: string[],
+  chainId: number,
+  deps: PollDeps,
+): Promise<Map<string, ExecutionOutcome>> {
+  const response = await dial(
+    {
+      chainId,
+      buildRequest: (host) => [
+        pollPath(host, chainId),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ requestKeys }),
+        },
+      ],
+    },
+    { primary: deps.primary, fallback: deps.fallback, fetchImpl: deps.fetchImpl },
+  );
+  const raw = (await readJson(response, pollPath(deps.primary.url, chainId))) as Record<
+    string,
+    { result?: { status?: unknown }; gas?: unknown } | undefined
+  >;
+  const out = new Map<string, ExecutionOutcome>();
+  for (const [rk, rec] of Object.entries(raw)) {
+    if (!rec || typeof rec !== "object") continue;
+    const status = rec.result?.status;
+    if (status === "success" || status === "failure") {
+      const gas = typeof rec.gas === "number" && Number.isFinite(rec.gas) ? rec.gas : 0;
+      out.set(rk, { success: status === "success", gas });
+    }
+  }
+  return out;
+}
+
 /** Read the current height of `chainId` from the chainweb cut over dial(). */
 async function currentHeight(chainId: number, deps: PollDeps): Promise<number> {
   const response = await dial(

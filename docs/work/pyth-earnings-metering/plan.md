@@ -43,8 +43,8 @@ bump at the end. Test command: `npm test -w @ancientpantheon/pythia`.
   - files: `apps/pythia/src/admin/routes.ts`, `apps/pythia/src/admin/settingsStore.ts`,
     `apps/pythia/src/admin/*.test.ts`, `apps/pythia/public/admin.html`, `apps/pythia/public/admin.js`
 
-## CP5 — Self-polling tx-outcome tracker (execution level)
-- [ ] T6: after a relay-accepted send, capture requestKey(s) + gasLimit; a background
+## CP5 — Self-polling tx-outcome tracker (execution level) ✅
+- [x] T6: after a relay-accepted send, capture requestKey(s) + gasLimit; a background
       poller polls chainweb until mined (or times out), then records execution
       success/fail + actual gas, upgrading the tx metrics. Keyless (poll = read). Done
       when: tests simulate poll→success and poll→fail and assert the ledger reflects

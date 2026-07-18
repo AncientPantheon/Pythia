@@ -1,7 +1,8 @@
 export { PythiaUnsupportedChainError, PythiaUpstreamError } from "./errors.js";
 export { readJson } from "./readJson.js";
 export { assertStoachain, requireNonEmpty } from "./validate.js";
-export { pollConfirmations } from "./poll.js";
+export { pollConfirmations, pollExecution } from "./poll.js";
+export type { ExecutionOutcome } from "./poll.js";
 export type {
   PollInput,
   PollDeps,

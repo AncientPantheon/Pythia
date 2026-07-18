@@ -141,6 +141,39 @@ describe("pythMeterMiddleware", () => {
     expect(t.failedTransactions).toBe(0);
   });
 
+  it("with a tracker, an accepted send's requestKeys go to the tracker (NOT counted at relay)", async () => {
+    const l = ledger();
+    const tracked: Array<{ requestKey: string; gasLimit: number }> = [];
+    const tracker = { track: (e: Array<{ requestKey: string; gasLimit: number }>) => tracked.push(...e) };
+    const app = new Hono();
+    app.use("*", pythMeterMiddleware(l, resolve, tracker));
+    app.post("/stoachain/send", (c) => c.json({ requestKeys: ["RK-A", "RK-B"] }));
+    const cmds = [
+      { cmd: JSON.stringify({ meta: { gasLimit: 800 } }) },
+      { cmd: JSON.stringify({ meta: { gasLimit: 200 } }) },
+    ];
+    await app.request("/stoachain/send", { method: "POST", body: JSON.stringify({ cmds }) });
+    expect(l.total().transactions).toBe(0); // the tracker owns the outcome now
+    expect(tracked).toEqual([
+      { requestKey: "RK-A", gasLimit: 800 },
+      { requestKey: "RK-B", gasLimit: 200 },
+    ]);
+  });
+
+  it("with a tracker, a relay-rejected send is still counted failed at relay", async () => {
+    const l = ledger();
+    const tracker = { track: () => {} };
+    const app = new Hono();
+    app.use("*", pythMeterMiddleware(l, resolve, tracker));
+    app.post("/stoachain/send", (c) => c.json({ error: "x" }, 502));
+    await app.request("/stoachain/send", {
+      method: "POST",
+      body: JSON.stringify({ cmds: [{ cmd: JSON.stringify({ meta: { gasLimit: 500 } }) }] }),
+    });
+    expect(l.total().failedTransactions).toBe(1);
+    expect(l.total().wastedGasReserved).toBe(500);
+  });
+
   it("ignores non-operational paths", async () => {
     const l = ledger();
     const app = new Hono();

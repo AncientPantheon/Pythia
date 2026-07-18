@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { app, statsStore, nodePool, pythLedger } from "./index.js";
+import { app, statsStore, nodePool, pythLedger, txTracker } from "./index.js";
 import { resolvePort } from "./port.js";
 
 const port = resolvePort();
@@ -19,6 +19,7 @@ function shutdown(signal: string): void {
   statsStore.stop();
   pythLedger.persist();
   pythLedger.stop();
+  txTracker.stop();
   nodePool.stop();
   process.exit(0);
 }
