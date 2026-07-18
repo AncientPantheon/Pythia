@@ -1155,17 +1155,70 @@ async function loadEarnings() {
   }
 }
 
+// A themed confirm modal (reuses the .modal-overlay/.modal styling) — an in-theme
+// replacement for the browser's window.confirm. Resolves true on confirm, false
+// on Cancel / Escape / backdrop. Focus moves into the dialog and restores on close.
+function confirmDialog({ title, message, confirmLabel = "Confirm", danger = false }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    const prevFocus = document.activeElement;
+    const onKey = (e) => { if (e.key === "Escape") done(false); };
+    const done = (result) => {
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
+      resolve(result);
+    };
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) done(false); });
+    document.addEventListener("keydown", onKey);
+
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+
+    const h = document.createElement("h3");
+    h.className = "modal-h";
+    h.textContent = title;
+    const p = document.createElement("p");
+    p.className = "modal-note";
+    p.textContent = message;
+
+    const actions = document.createElement("div");
+    actions.className = "modal-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn btn--ghost";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => done(false));
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "btn" + (danger ? " btn--danger" : " btn--primary");
+    confirm.textContent = confirmLabel;
+    confirm.addEventListener("click", () => done(true));
+    actions.append(cancel, confirm);
+
+    modal.append(h, p, actions);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    confirm.focus();
+  });
+}
+
 function wireEarnings() {
   const nukeBtn = document.getElementById("earn-nuke-btn");
   const nukeErr = document.getElementById("earn-nuke-error");
   if (nukeBtn) {
     nukeBtn.addEventListener("click", async () => {
-      if (
-        !window.confirm(
-          "Reset the Pyth ledger to zero? This erases the local Petitions / Pondus / transaction counts and cannot be undone.",
-        )
-      )
-        return;
+      const ok = await confirmDialog({
+        title: "Nuke the Pyth ledger?",
+        message:
+          "This resets every counter — Petitions, Pondus, transactions, gas — to zero. It erases the local counts and cannot be undone.",
+        confirmLabel: "Nuke it",
+        danger: true,
+      });
+      if (!ok) return;
       if (nukeErr) nukeErr.hidden = true;
       try {
         const res = await fetch("/admin/pyth/nuke", { method: "POST", headers: { accept: "application/json" } });
