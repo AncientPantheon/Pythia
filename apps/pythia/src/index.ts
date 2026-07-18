@@ -9,6 +9,7 @@ import { registerSend } from "./routes/send.js";
 import { registerPoll } from "./routes/poll.js";
 import { registerConnectors } from "./routes/connectors.js";
 import { registerStats } from "./routes/stats.js";
+import { registerPyth } from "./routes/pyth.js";
 import { registerPools } from "./routes/pools.js";
 import { registerConnectorVerify } from "./routes/connectorVerify.js";
 import { registerVerifiers } from "./routes/verifiers.js";
@@ -196,6 +197,7 @@ registerSend(app, { store: txSenderStore });
 registerPoll(app, { pool: nodePool });
 registerConnectors(app, { store: connectorStore });
 registerStats(app, statsStore);
+registerPyth(app, pythLedger);
 registerPools(app, { pool: nodePool, txSenders: txSenderStore });
 // Connector-linking ownership verification (keyless Apollo-half proof). Reads the
 // half's on-chain pubkey — preferring the operator's own Upload-Pool nodes as the

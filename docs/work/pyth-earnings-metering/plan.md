@@ -26,8 +26,8 @@ bump at the end. Test command: `npm test -w @ancientpantheon/pythia`.
   - files: `apps/pythia/src/pyth/meter.ts`, `apps/pythia/src/pyth/meter.test.ts`,
     `apps/pythia/src/routes/relay.ts`, `apps/pythia/src/routes/send.ts`, `apps/pythia/src/index.ts`
 
-## CP3 — Activity shows Petitions/Pondus + Transactions/Gas
-- [ ] T4: expose the ledger totals + daily via an endpoint (`GET /pyth` or extend
+## CP3 — Activity shows Petitions/Pondus + Transactions/Gas ✅
+- [x] T4: expose the ledger totals + daily via an endpoint (`GET /pyth` or extend
       `/stats`); rework the StoaChain Activity view — headline Petitions · Pondus +
       Transactions · Gas relayed; remove the Errors card and the Poll metric. Done
       when: the endpoint returns the six counters and Activity renders them (browser-

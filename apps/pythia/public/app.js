@@ -1535,75 +1535,61 @@ function buildActivityChart(daily) {
   return svg;
 }
 
-function buildConsumerTable(byConsumer) {
-  const entries = Object.entries(byConsumer).sort((a, b) => b[1] - a[1]);
-  const table = el("table", "stats-table");
-  const thead = el("thead");
-  const hr = el("tr");
-  hr.appendChild(el("th", null, "Consumer"));
-  const thn = el("th", "num", "Requests");
-  hr.appendChild(thn);
-  thead.appendChild(hr);
-  table.appendChild(thead);
-  const tbody = el("tbody");
-  for (const [name, count] of entries) {
-    const tr = el("tr");
-    tr.appendChild(el("td", null, name));
-    tr.appendChild(el("td", "num", String(count)));
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-  return table;
+// Format a pondus decimal for display (up to 3 dp, thousands-separated).
+function fmtPondus(x) {
+  return (Number(x) || 0).toLocaleString("en-US", { maximumFractionDigits: 3 });
+}
+function fmtInt(x) {
+  return (Number(x) || 0).toLocaleString("en-US");
 }
 
-function renderStats(container, stats) {
+// Render the StoaChain Pyth-economy ledger into the Activity body: the earning
+// pair (Petitions · Pondus) + the send service (Transactions · Gas relayed), a
+// daily-petitions chart, and the send-failure pair. Fleet-wide, keyless.
+function renderPyth(container, data) {
   container.textContent = "";
-  const totals = stats.totals || { requests: 0, read: 0, send: 0, poll: 0, errors: 0 };
+  const total = (data && data.total) || {};
+  const daily = Array.isArray(data && data.daily) ? data.daily : [];
 
-  if (!stats.since || totals.requests === 0) {
-    container.appendChild(el("p", "empty", "No activity yet."));
+  const empty =
+    !total.petitions && !total.transactions && !total.failedTransactions && daily.length === 0;
+  if (empty) {
+    container.appendChild(
+      el("p", "empty", "No activity yet — Petitions and Pondus accrue as Pythia serves keyed reads."),
+    );
     return;
   }
 
-  const daily = Array.isArray(stats.daily) ? stats.daily : [];
-  const today = daily.length ? daily[daily.length - 1].requests : 0;
-
-  const headline = el("div", "stat-cards");
-  headline.appendChild(statNumber("total requests", totals.requests));
-  headline.appendChild(statNumber("requests today", today));
-  headline.appendChild(statNumber("errors", totals.errors));
+  const headline = el("div", "stat-cards stat-cards--four");
+  headline.appendChild(statNumber("petitions", fmtInt(total.petitions)));
+  headline.appendChild(statNumber("pondus", fmtPondus(total.pondus)));
+  headline.appendChild(statNumber("transactions", fmtInt(total.transactions)));
+  headline.appendChild(statNumber("gas relayed", fmtInt(total.gasReserved)));
   container.appendChild(headline);
 
   const chartWrap = el("div", "stats-chart");
-  chartWrap.appendChild(el("h4", "stats-sub", "Daily requests"));
-  chartWrap.appendChild(buildActivityChart(daily));
+  chartWrap.appendChild(el("h4", "stats-sub", "Daily petitions"));
+  chartWrap.appendChild(
+    buildActivityChart(daily.map((d) => ({ day: d.day, requests: d.petitions || 0 }))),
+  );
   container.appendChild(chartWrap);
 
-  const verbs = el("div", "stat-cards stat-cards--verbs");
-  verbs.appendChild(statNumber("read", totals.read));
-  verbs.appendChild(statNumber("send", totals.send));
-  verbs.appendChild(statNumber("poll", totals.poll));
-  container.appendChild(verbs);
-
-  const byConsumer = stats.byConsumer || {};
-  if (Object.keys(byConsumer).length > 0) {
-    const cWrap = el("div", "stats-consumers");
-    cWrap.appendChild(el("h4", "stats-sub", "By consumer"));
-    cWrap.appendChild(buildConsumerTable(byConsumer));
-    container.appendChild(cWrap);
-  }
+  const outs = el("div", "stat-cards stat-cards--two");
+  outs.appendChild(statNumber("failed transactions", fmtInt(total.failedTransactions)));
+  outs.appendChild(statNumber("wasted gas reserved", fmtInt(total.wastedGasReserved)));
+  container.appendChild(outs);
 }
 
-async function loadStats() {
+async function loadPyth() {
   const container = document.getElementById("stats-body");
   if (!container) return;
   try {
-    const res = await fetch("/stats", { headers: { accept: "application/json" } });
+    const res = await fetch("/pyth", { headers: { accept: "application/json" } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    renderStats(container, await res.json());
+    renderPyth(container, await res.json());
   } catch {
     container.textContent = "";
-    container.appendChild(el("p", "empty", "Stats unavailable."));
+    container.appendChild(el("p", "empty", "Ledger unavailable."));
   }
 }
 
@@ -1659,10 +1645,10 @@ function showActivityChain(id) {
   if (soon) soon.hidden = live;
   if (note) {
     note.textContent = live
-      ? `Usage on ${chain.name} — reads, broadcasts, and polls. Attributed by consumer, never per request.`
+      ? `${chain.name} — Petitions & Pondus served (keyed reads) plus Transactions & Gas relayed. Fleet-wide, keyless.`
       : `${chain.name} is not live yet — no usage to report.`;
   }
-  if (live) loadStats();
+  if (live) loadPyth();
   else renderActivitySoon(chain);
 }
 
@@ -1773,6 +1759,6 @@ wireConnectors();
 selectChain(currentChainId); // render the initial chain module (selector is in the header tier-2)
 startHealthPill();
 loadMe(); // /api/me → renders the header (+ an Admin link for ancients → /admin)
-loadStats();
+loadPyth();
 showTab("chains");
 resumePendingVerify(); // if we just came back from a verifier, restore + light up Link

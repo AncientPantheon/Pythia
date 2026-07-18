@@ -455,6 +455,8 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
 }
 .stat-cards--verbs { grid-template-columns: repeat(3, 1fr); }
+.stat-cards--four { grid-template-columns: repeat(4, 1fr); }
+.stat-cards--two { grid-template-columns: repeat(2, 1fr); }
 .stat-card {
   display: flex; flex-direction: column; gap: 3px;
   padding: 11px 14px; border-radius: 12px;
