@@ -9,6 +9,14 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.12.1] — 2026-07-18
+
+### Changed
+- **StoaChain connectors: a dedicated "Hub Feed" tab.** The hub base URL + HMAC secret
+  form now lives in its own first sub-tab (**Hub Feed · Observation Pool · Upload Pool ·
+  Routing Rules**), so connecting to the hub is separated from observing the fleet.
+  Observation Pool is now purely the hub-fleet node table.
+
 ## [1.12.0] — 2026-07-18
 
 ### Added

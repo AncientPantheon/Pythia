@@ -91,23 +91,18 @@
                 </div>
               </div>
 
-              <!-- Sub-tabs, wired by wireChainSubtabs() in admin.js. Default: Observation Pool. -->
+              <!-- Sub-tabs, wired by wireChainSubtabs() in admin.js. Default: Hub Feed. -->
               <div class="subtabs">
-                <button type="button" class="subtab subtab--active" data-subtab="observation">Observation Pool</button>
+                <button type="button" class="subtab subtab--active" data-subtab="feed">Hub Feed</button>
+                <button type="button" class="subtab" data-subtab="observation">Observation Pool</button>
                 <button type="button" class="subtab" data-subtab="upload">Upload Pool</button>
                 <button type="button" class="subtab" data-subtab="rules">Routing Rules</button>
               </div>
 
-              <div class="subpanel" data-subpanel="observation">
-                <h3>Observation Pool</h3>
-                <p class="panel-note">The hub-fed read fleet. Activate the AncientHub feed and reads fan out across the hub's StoaChain nodes (they earn PythXP). When the feed is off, reads use the Upload Pool.</p>
+              <div class="subpanel" data-subpanel="feed">
+                <h3>Hub Feed</h3>
+                <p class="panel-note">How Pythia connects to the AncientHub node feed. Set the hub URL + the M2M HMAC secret, then Save &amp; activate — reads fan out across the hub's advertised StoaChain nodes (see them in Observation Pool). When the feed is off, reads use the Upload Pool.</p>
                 <div id="hub-status" class="hub-status"></div>
-
-                <div class="hub-nodes-head">
-                  <span class="hub-nodes-title">Hub fleet</span>
-                  <span class="panel-note hub-nodes-note">Reachability is probed from Pythia's own vantage (<code>GET /info</code>). A red node can't serve reads — hover it for why. Earnings show when the hub reports them.</span>
-                </div>
-                <div id="hub-nodes" class="hub-nodes"></div>
 
                 <form id="hub-config-form" class="conn-form">
                   <label class="conn-field">Hub base URL<input name="hubBaseUrl" type="url" placeholder="https://ancientholdings.eu" /></label>
@@ -125,6 +120,15 @@
                   </div>
                   <p class="conn-error" id="hub-config-error" hidden></p>
                 </form>
+              </div>
+
+              <div class="subpanel" data-subpanel="observation" hidden>
+                <h3>Observation Pool</h3>
+                <p class="panel-note">The hub-fed read fleet, as advertised by the feed configured in <b>Hub Feed</b>. Reachability is probed from Pythia's own vantage (<code>GET /info</code>) — a red node can't serve reads; hover it for why. Earnings show when the hub reports them.</p>
+                <div class="hub-nodes-head">
+                  <span class="hub-nodes-title">Hub fleet</span>
+                </div>
+                <div id="hub-nodes" class="hub-nodes"></div>
               </div>
 
               <div class="subpanel" data-subpanel="upload" hidden>
