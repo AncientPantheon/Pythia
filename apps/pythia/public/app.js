@@ -3,7 +3,7 @@
 // its own self-contained module (node pool + dirty-read console + endpoints).
 // Adding a chain = adding one entry to CHAINS.
 
-import { renderIdentity, setVersion } from "./pantheon-header.js";
+import { renderIdentity, setVersion, confirmDialog } from "./pantheon-header.js";
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -1213,7 +1213,13 @@ async function setTxSenderEnabled(id, enabled) {
 }
 
 async function removeTxSender(id, name) {
-  if (!window.confirm(`Remove upload-pool node "${name}"? Sends will stop using it.`)) return;
+  const ok = await confirmDialog({
+    title: "Remove upload-pool node?",
+    message: `Sends will stop using "${name}".`,
+    confirmLabel: "Remove",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     const res = await fetch(`/admin/tx-senders/${encodeURIComponent(id)}`, {
       method: "DELETE",

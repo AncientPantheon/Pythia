@@ -4,7 +4,7 @@
 // GET /api/me (the mutations all hit ancient-gated /admin/* APIs), so serving the
 // shell to anyone is safe.
 
-import { renderIdentity, setVersion } from "./pantheon-header.js";
+import { renderIdentity, setVersion, confirmDialog } from "./pantheon-header.js";
 
 // ── auth / session ───────────────────────────────────────────────────────────
 // `null` until GET /api/me resolves (the gate's "checking…" state); an object
@@ -464,7 +464,13 @@ async function setVerifierEnabled(id, enabled) {
 }
 
 async function removeVerifier(id, name) {
-  if (!window.confirm(`Remove verifier "${name}"? The Verify popup will stop offering it.`)) return;
+  const ok = await confirmDialog({
+    title: "Remove verifier?",
+    message: `"${name}" will no longer be offered in the Connectors Verify popup.`,
+    confirmLabel: "Remove",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     const res = await fetch(`/admin/verifiers/${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -771,7 +777,13 @@ async function setTxSenderEnabled(id, enabled) {
 }
 
 async function removeTxSender(id, name) {
-  if (!window.confirm(`Remove upload-pool node "${name}"? Sends will stop using it.`)) return;
+  const ok = await confirmDialog({
+    title: "Remove upload-pool node?",
+    message: `Sends will stop using "${name}".`,
+    confirmLabel: "Remove",
+    danger: true,
+  });
+  if (!ok) return;
   try {
     const res = await fetch(`/admin/tx-senders/${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -1041,7 +1053,12 @@ function wireDeployButton() {
   const err = document.getElementById("deploy-error");
   if (!btn) return;
   btn.addEventListener("click", async () => {
-    if (!window.confirm("Rebuild Pythia from origin/main on the box and swap colors with zero downtime?")) return;
+    const ok = await confirmDialog({
+      title: "Deploy Pythia?",
+      message: "Rebuild from origin/main on the box and swap blue↔green with zero downtime.",
+      confirmLabel: "Deploy",
+    });
+    if (!ok) return;
     if (err) err.hidden = true;
     btn.disabled = true; // stays disabled while the deploy streams; done re-enables
     try {
@@ -1153,57 +1170,6 @@ async function loadEarnings() {
   } catch {
     /* leave as-is */
   }
-}
-
-// A themed confirm modal (reuses the .modal-overlay/.modal styling) — an in-theme
-// replacement for the browser's window.confirm. Resolves true on confirm, false
-// on Cancel / Escape / backdrop. Focus moves into the dialog and restores on close.
-function confirmDialog({ title, message, confirmLabel = "Confirm", danger = false }) {
-  return new Promise((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    const prevFocus = document.activeElement;
-    const onKey = (e) => { if (e.key === "Escape") done(false); };
-    const done = (result) => {
-      document.removeEventListener("keydown", onKey);
-      overlay.remove();
-      if (prevFocus && typeof prevFocus.focus === "function") prevFocus.focus();
-      resolve(result);
-    };
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) done(false); });
-    document.addEventListener("keydown", onKey);
-
-    const modal = document.createElement("div");
-    modal.className = "modal";
-    modal.setAttribute("role", "dialog");
-    modal.setAttribute("aria-modal", "true");
-
-    const h = document.createElement("h3");
-    h.className = "modal-h";
-    h.textContent = title;
-    const p = document.createElement("p");
-    p.className = "modal-note";
-    p.textContent = message;
-
-    const actions = document.createElement("div");
-    actions.className = "modal-actions";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.className = "btn btn--ghost";
-    cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => done(false));
-    const confirm = document.createElement("button");
-    confirm.type = "button";
-    confirm.className = "btn" + (danger ? " btn--danger" : " btn--primary");
-    confirm.textContent = confirmLabel;
-    confirm.addEventListener("click", () => done(true));
-    actions.append(cancel, confirm);
-
-    modal.append(h, p, actions);
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-    confirm.focus();
-  });
 }
 
 function wireEarnings() {
