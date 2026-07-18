@@ -52,7 +52,9 @@ bump at the end. Test command: `npm test -w @ancientpantheon/pythia`.
   - files: `apps/pythia/src/pyth/txTracker.ts`, `apps/pythia/src/pyth/txTracker.test.ts`,
     `apps/pythia/src/routes/send.ts`, `apps/pythia/src/index.ts`
 
-## CP6 — Per-slot usage reporter (§4.3, money path)
+## CP6 — Per-slot usage reporter (§4.3, money path) ⏸ DEFERRED to its own sprint
+> Needs servedSlotId plumbing into the core dial (doesn't exist yet) + the money-path
+> window contract → dedicated care + live-hub validation. Report toggle already ships (CP4).
 - [ ] T7: `stats/slotUsage.ts` windowed per-slot meter (keyed/anon/ok + keyedPondus);
       `hub/serviceClient.ts` gains `postUsage(report)`; `stats/usageReporter.ts` ~60s
       timer drains + reports signed non-overlapping windows, honoring idempotency +
@@ -61,8 +63,8 @@ bump at the end. Test command: `npm test -w @ancientpantheon/pythia`.
   - files: `apps/pythia/src/stats/slotUsage.ts`, `apps/pythia/src/stats/usageReporter.ts`,
     `apps/pythia/src/hub/serviceClient.ts`, `apps/pythia/src/stats/*.test.ts`, `apps/pythia/src/index.ts`
 
-## CP7 — Release 1.8.0
-- [ ] T8: bump 1.7.0 → 1.8.0 in the four version files (versionConsistency test),
+## CP7 — Release 1.8.0 ✅
+- [x] T8: bump 1.7.0 → 1.8.0 in the four version files (versionConsistency test),
       CHANGELOG entry. Done when: `versionConsistency.test.ts` green, full suite green,
       build clean. THEN: push + blue-green deploy + live verify.
   - files: the four version files, `CHANGELOG.md`
