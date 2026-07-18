@@ -232,7 +232,7 @@ app.use(
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
-registerHealthz(app);
+registerHealthz(app, { pool: nodePool }); // pool-aware: reflects the nodes actually serving reads
 registerRead(app, { pool: nodePool });
 registerSend(app, { store: txSenderStore });
 registerPoll(app, { pool: nodePool });

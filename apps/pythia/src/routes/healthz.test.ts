@@ -93,3 +93,28 @@ describe("GET /healthz", () => {
     expect(tuples.size).toBe(3);
   });
 });
+
+describe("GET /healthz — pool-aware", () => {
+  it("checks the live read pair (not the config seeds) when a pool is wired", async () => {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("{}", { status: 200 })) as typeof fetch;
+    try {
+      const pool = {
+        pickReadPair: () => ({
+          primary: { id: "hub-x", url: "https://hub-x.example" },
+          fallback: { id: "up-y", url: "https://up-y.example" },
+        }),
+      };
+      const app = new Hono();
+      registerHealthz(app, { pool });
+      const res = await app.request("/healthz");
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as HealthzBody;
+      // the POOL's nodes are what /healthz reports, not stoachain-primary/fallback
+      expect(body.sources.map((s) => s.id)).toContain("hub-x");
+      expect(body.sources.some((s) => s.id.startsWith("stoachain-"))).toBe(false);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
+});

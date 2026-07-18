@@ -110,3 +110,45 @@ describe("NodePool.operatorForSlot", () => {
     pool.stop();
   });
 });
+
+describe("NodePool refresh cadence + staleness TTL", () => {
+  it("nextPollDelayMs honors the feed's refreshAfter, clamped to min/max", async () => {
+    let after = 30;
+    const pool = new NodePool({
+      client: stubClient(() => Promise.resolve({ slots: [], refreshAfter: after })),
+      uploadNodes: () => UPLOAD,
+    });
+    expect(pool.nextPollDelayMs()).toBe(60_000); // no poll yet → default
+    await pool.refreshNow();
+    expect(pool.nextPollDelayMs()).toBe(30_000);
+    after = 5;
+    await pool.refreshNow();
+    expect(pool.nextPollDelayMs()).toBe(15_000); // clamped to min
+    after = 9999;
+    await pool.refreshNow();
+    expect(pool.nextPollDelayMs()).toBe(300_000); // clamped to max
+  });
+
+  it("drops stale hub slots after the TTL when the feed keeps failing", async () => {
+    let now = 1000;
+    let ok = true;
+    const pool = new NodePool({
+      client: stubClient(() => (ok ? Promise.resolve(hubFeed(["s1"])) : Promise.reject(new Error("feed down")))),
+      uploadNodes: () => UPLOAD,
+      clock: () => now,
+      staleMs: 100_000,
+    });
+    await pool.refreshNow(); // good at t=1000
+    expect(pool.hubSlotCount()).toBe(1);
+
+    ok = false;
+    now = 1000 + 99_999;
+    await pool.refreshNow(); // within TTL → keep the last-good slots
+    expect(pool.hubSlotCount()).toBe(1);
+
+    now = 1000 + 100_000;
+    await pool.refreshNow(); // past TTL → drop; reads fall back to the Upload Pool
+    expect(pool.hubSlotCount()).toBe(0);
+    expect(pool.pickReadPair()?.primary.id).toMatch(/^up-/);
+  });
+});

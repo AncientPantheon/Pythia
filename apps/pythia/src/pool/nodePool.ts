@@ -42,10 +42,19 @@ export class NodePool {
   private rot = 0;
   private lastRefreshOk = false;
   private lastRefreshError: string | null = null;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private running = false;
   private client: HubServiceClient | null;
   private readonly refreshMs: number;
   private readonly uploadNodes: () => DialNode[];
+  private readonly clock: () => number;
+  private readonly staleMs: number;
+  private readonly minRefreshMs: number;
+  private readonly maxRefreshMs: number;
+  /** ms-epoch of the last SUCCESSFUL feed poll (0 = never). */
+  private lastGoodAt = 0;
+  /** The hub's advised next-poll delay (ms) from the last feed, or null. */
+  private lastRefreshAfterMs: number | null = null;
 
   constructor(opts: {
     client?: HubServiceClient | null;
@@ -54,23 +63,52 @@ export class NodePool {
      * when the hub feed is off/down, the read pool ITSELF — there is no separate
      * config-seed tier (the Upload Pool is seeded from the config on first run). */
     uploadNodes?: () => DialNode[];
+    /** Injected clock (ms epoch) for deterministic staleness tests. */
+    clock?: () => number;
+    /** Drop the last-good hub slots once the last SUCCESSFUL poll is this old, so
+     * a de-listed node stops receiving reads after an outage. Default 3 min. */
+    staleMs?: number;
+    minRefreshMs?: number;
+    maxRefreshMs?: number;
   }) {
     this.client = opts.client ?? null;
     this.refreshMs = opts.refreshMs ?? 60_000;
     this.uploadNodes = opts.uploadNodes ?? (() => []);
+    this.clock = opts.clock ?? (() => Date.now());
+    this.staleMs = opts.staleMs ?? 180_000;
+    this.minRefreshMs = opts.minRefreshMs ?? 15_000;
+    this.maxRefreshMs = opts.maxRefreshMs ?? 300_000;
   }
 
   /** Begin polling the hub feed. No-op when no client is configured (the read
    * pool then serves from the Upload Pool). */
+  /** The next-poll delay: the hub's advised `refreshAfter` from the last feed
+   * (clamped to a sane min/max), or the default when the hub hasn't advised one. */
+  nextPollDelayMs(): number {
+    const advised = this.lastRefreshAfterMs ?? this.refreshMs;
+    return Math.min(this.maxRefreshMs, Math.max(this.minRefreshMs, advised));
+  }
+
   start(): void {
-    if (!this.client || this.timer) return;
-    void this.refreshNow();
-    this.timer = setInterval(() => void this.refreshNow(), this.refreshMs);
+    if (!this.client || this.running) return;
+    this.running = true;
+    // Self-rescheduling loop so the hub can TUNE the poll cadence via refreshAfter
+    // (a fixed setInterval ignored it). `running` guards against rescheduling after
+    // stop()/reconfigure() while a poll is in flight.
+    const loop = async () => {
+      await this.refreshNow();
+      if (this.running && this.client) {
+        this.timer = setTimeout(loop, this.nextPollDelayMs());
+        this.timer.unref?.();
+      }
+    };
+    void loop();
   }
 
   stop(): void {
+    this.running = false;
     if (this.timer) {
-      clearInterval(this.timer);
+      clearTimeout(this.timer);
       this.timer = null;
     }
   }
@@ -112,11 +150,20 @@ export class NodePool {
       const feed = await this.client.fetchNodes();
       this.hubSlots = feed.slots.map(slotToSource);
       this.slotOperators = new Map(feed.slots.map((s) => [s.id, s.operator ?? null]));
+      this.lastGoodAt = this.clock();
+      this.lastRefreshAfterMs = feed.refreshAfter > 0 ? feed.refreshAfter * 1000 : null;
       this.lastRefreshOk = true;
       this.lastRefreshError = null;
     } catch (err) {
       this.lastRefreshOk = false;
       this.lastRefreshError = err instanceof Error ? err.message : String(err);
+      // TTL: once the last GOOD poll is too old, stop serving the frozen last-good
+      // hub slots — a de-listed node must not keep receiving reads after an outage.
+      // Reads fall back to the Upload Pool until the feed recovers.
+      if (this.hubSlots.length > 0 && this.clock() - this.lastGoodAt >= this.staleMs) {
+        this.hubSlots = [];
+        this.slotOperators.clear();
+      }
       console.error(`pythia pool: hub feed refresh failed — ${this.lastRefreshError}`);
     }
   }
