@@ -37,8 +37,8 @@ Test command: `npm test -w @ancientpantheon/pythia`.
     `apps/pythia/src/stats/usageReporter.ts`, `apps/pythia/src/stats/usageReporter.test.ts`,
     `apps/pythia/src/index.ts`, `apps/pythia/src/server.ts`
 
-## CP4 — Release 1.9.0
-- [ ] T4: bump 1.8.0 → 1.9.0 (four version files + CHANGELOG, version gate green),
+## CP4 — Release 1.9.0 ✅
+- [x] T4: bump 1.8.0 → 1.9.0 (four version files + CHANGELOG, version gate green),
       full suite + build green, live-hub validation of one real report, then push +
       blue-green deploy + verify.
   - files: the four version files, `CHANGELOG.md`

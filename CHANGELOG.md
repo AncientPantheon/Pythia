@@ -9,6 +9,29 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.9.0] — 2026-07-18
+
+### Added
+- **Hub usage reporting (the minting feed).** Pythia now reports her served reads to
+  the AncientHub so node operators actually mint — the outbound half of the Pyth
+  economy. Every ~60s she drains a **per-slot** window (`keyedRequests` /
+  `anonRequests` / `ok` + `keyedPondus`, attributed to each hub node by slot id) and
+  POSTs a signed report to `POST /api/pythia/usage/`. Only **keyed reads served by
+  hub-pool nodes** earn; Upload-Pool/seed reads, sends, and polls never do.
+  - **Execution-accurate weight.** The report carries `keyedPondus` (PONDUS_V1) +
+    `pondusVersion: 1`, so heavier reads earn more, from row one.
+  - **Money-path safety.** Windows are contiguous, non-overlapping, and immutable; a
+    failed POST is retried unchanged (idempotent, first-write-wins on the hub); empty
+    windows are skipped.
+  - **Honours the Report-to-hub toggle** (StoaChain Earnings): OFF keeps counting
+    locally but reports nothing — that span never mints — while Pythia's own fleet
+    ledger keeps accruing.
+
+### Changed
+- `dial()` gains an optional `onServed(node)` hook (surgical; the 15 callers are
+  byte-identical without it) so a read can be attributed to the hub slot that served
+  it; `NodePool` now exposes `operatorForSlot(id)`.
+
 ## [1.8.0] — 2026-07-18
 
 ### Added
