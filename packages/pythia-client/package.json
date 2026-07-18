@@ -1,6 +1,6 @@
 {
   "name": "@ancientpantheon/pythia-client",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Pythia client SDK — the dependency-light consumer surface for the AncientPantheon keyless transport gateway: generic dirty read, keyless broadcast, and tx-status poll.",
   "type": "module",
   "main": "./dist/index.js",

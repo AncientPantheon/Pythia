@@ -9,6 +9,23 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.9.1] — 2026-07-18
+
+### Changed
+- **Pool robustness.** `/healthz` is now **pool-aware** — it reports the nodes actually
+  serving reads (the live hub pair or the Upload Pool), not just the two config seed
+  nodes, so its status can't contradict the real read path. The node pool now **honors
+  the hub feed's `refreshAfter`** (a self-rescheduling poll, clamped 15s–5m) instead of
+  a fixed 60s cadence, and **drops stale hub slots after a TTL** (3m) so a de-listed
+  node stops receiving reads after an outage (reads fall back to the Upload Pool).
+- **In-theme confirmations everywhere.** Every destructive/confirm action (Deploy,
+  Nuke the Pyth ledger, remove verifier/upload-pool node) now uses the site's themed
+  modal instead of the browser's `window.confirm`.
+
+### Removed
+- ~396 lines of dead hub/txsender code in the landing's `app.js` (superseded by the
+  `/admin` dashboard); two stale code comments corrected.
+
 ## [1.9.0] — 2026-07-18
 
 ### Added
