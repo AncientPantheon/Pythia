@@ -15,19 +15,43 @@ function stubClient(feed: NodesFeed | (() => Promise<NodesFeed>)): HubServiceCli
   return { fetchNodes } as unknown as HubServiceClient;
 }
 
-function hubFeed(ids: string[]): NodesFeed {
-  return {
-    slots: ids.map((id) => ({
-      id,
-      url: `https://${id}:1848`,
-      networkId: "stoa",
-      operator: null,
-      atTip: true,
-      height: 1,
-    })),
-    refreshAfter: 60,
-  };
+function slotsFor(ids: string[]) {
+  return ids.map((id) => ({
+    id,
+    url: `https://${id}:1848`,
+    networkId: "stoa",
+    operator: null,
+    atTip: true,
+    height: 1,
+  }));
 }
+
+function hubFeed(ids: string[]): NodesFeed {
+  const slots = slotsFor(ids);
+  return { slots, advertised: slots, refreshAfter: 60 };
+}
+
+describe("NodePool.advertisedSlots", () => {
+  it("is empty when the feed is off, and reflects the last feed's advertised list", async () => {
+    const pool = new NodePool({ uploadNodes: () => UPLOAD });
+    expect(pool.advertisedSlots()).toEqual([]); // no client → nothing advertised
+
+    const withHub = new NodePool({
+      client: stubClient({
+        slots: slotsFor(["1.1.1.1"]),
+        advertised: [
+          ...slotsFor(["1.1.1.1"]),
+          // a not-at-tip node the hub advertises but the pool won't read from
+          { id: "2.2.2.2", url: "https://2.2.2.2:1848", networkId: "stoa", operator: "k:b", atTip: false, height: 0 },
+        ],
+        refreshAfter: 60,
+      }),
+      uploadNodes: () => UPLOAD,
+    });
+    await withHub.refreshNow();
+    expect(withHub.advertisedSlots().map((s) => s.id)).toEqual(["1.1.1.1", "2.2.2.2"]);
+  });
+});
 
 describe("NodePool.pickReadPair", () => {
   it("returns null with no feed AND an empty Upload Pool (→ read 503)", () => {
@@ -95,13 +119,11 @@ describe("NodePool.pickReadPair", () => {
 
 describe("NodePool.operatorForSlot", () => {
   it("returns the operator for a hub slot, null for unearning, undefined for a non-hub id", async () => {
-    const feed: NodesFeed = {
-      slots: [
-        { id: "s1", url: "https://s1:1848", networkId: "stoa", operator: "k:abc", atTip: true, height: 1 },
-        { id: "s2", url: "https://s2:1848", networkId: "stoa", operator: null, atTip: true, height: 1 },
-      ],
-      refreshAfter: 60,
-    };
+    const slots = [
+      { id: "s1", url: "https://s1:1848", networkId: "stoa", operator: "k:abc", atTip: true, height: 1 },
+      { id: "s2", url: "https://s2:1848", networkId: "stoa", operator: null, atTip: true, height: 1 },
+    ];
+    const feed: NodesFeed = { slots, advertised: slots, refreshAfter: 60 };
     const pool = new NodePool({ client: stubClient(feed), uploadNodes: () => UPLOAD });
     await pool.refreshNow();
     expect(pool.operatorForSlot("s1")).toBe("k:abc");
@@ -115,7 +137,7 @@ describe("NodePool refresh cadence + staleness TTL", () => {
   it("nextPollDelayMs honors the feed's refreshAfter, clamped to min/max", async () => {
     let after = 30;
     const pool = new NodePool({
-      client: stubClient(() => Promise.resolve({ slots: [], refreshAfter: after })),
+      client: stubClient(() => Promise.resolve({ slots: [], advertised: [], refreshAfter: after })),
       uploadNodes: () => UPLOAD,
     });
     expect(pool.nextPollDelayMs()).toBe(60_000); // no poll yet → default

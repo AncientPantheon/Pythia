@@ -84,6 +84,41 @@ describe("HubServiceClient.fetchNodes", () => {
 
     expect(feed.refreshAfter).toBe(60);
     expect(feed.slots.map((s) => s.id)).toEqual(["1.2.3.4"]); // only the at-tip https slot survives
+    // advertised keeps every https slot for DISPLAY (incl. not-at-tip), drops the http one.
+    expect(feed.advertised.map((s) => s.id)).toEqual(["1.2.3.4", "5.6.7.8"]);
+  });
+
+  it("advertised preserves unknown earnings fields so a future hub rollout passes through", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            slots: [
+              {
+                id: "1.2.3.4",
+                url: "https://1.2.3.4:1848",
+                networkId: "stoa",
+                operator: "k:a",
+                atTip: true,
+                height: 5,
+                operatorPythXP: 48210,
+                operatorPythLevel: 7,
+                slotStoicismEarned: "1234.5678",
+              },
+            ],
+            refreshAfter: 60,
+          }),
+          { status: 200 },
+        ),
+    );
+    const client = new HubServiceClient({ baseUrl: "https://hub.test", secret: "s" }, fetchMock);
+    const feed = await client.fetchNodes();
+    expect(feed.advertised[0]).toMatchObject({
+      id: "1.2.3.4",
+      operatorPythXP: 48210,
+      operatorPythLevel: 7,
+      slotStoicismEarned: "1234.5678",
+    });
   });
 
   it("throws on a non-200 (so the pool keeps its last-good slots)", async () => {

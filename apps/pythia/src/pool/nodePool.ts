@@ -1,6 +1,6 @@
 import type { SourceConfig } from "../config/index.js";
 import { STOA_NETWORK, type DialNode } from "../dial/index.js";
-import type { HubServiceClient, HubSlot } from "../hub/serviceClient.js";
+import type { AdvertisedSlot, HubServiceClient, HubSlot } from "../hub/serviceClient.js";
 
 /** The {primary, fallback} pair the two-host dial consumes for one read. */
 export interface ReadPair {
@@ -36,6 +36,9 @@ function slotToSource(slot: HubSlot): SourceConfig {
  */
 export class NodePool {
   private hubSlots: SourceConfig[] = [];
+  /** Every advertised slot from the last feed (incl. not-at-tip) — for the admin
+   * node table only; the read path uses `hubSlots`. Cleared with the hub slots. */
+  private advertised: AdvertisedSlot[] = [];
   /** slotId → operator (string, or null for a usable-but-unearning slot). Only
    * ids present here are hub slots; an absent id is an Upload-Pool/seed node. */
   private slotOperators = new Map<string, string | null>();
@@ -123,6 +126,7 @@ export class NodePool {
     this.stop();
     this.client = client;
     this.hubSlots = [];
+    this.advertised = [];
     this.slotOperators.clear();
     if (client) this.start();
   }
@@ -149,6 +153,7 @@ export class NodePool {
     try {
       const feed = await this.client.fetchNodes();
       this.hubSlots = feed.slots.map(slotToSource);
+      this.advertised = feed.advertised ?? [];
       this.slotOperators = new Map(feed.slots.map((s) => [s.id, s.operator ?? null]));
       this.lastGoodAt = this.clock();
       this.lastRefreshAfterMs = feed.refreshAfter > 0 ? feed.refreshAfter * 1000 : null;
@@ -162,6 +167,7 @@ export class NodePool {
       // Reads fall back to the Upload Pool until the feed recovers.
       if (this.hubSlots.length > 0 && this.clock() - this.lastGoodAt >= this.staleMs) {
         this.hubSlots = [];
+        this.advertised = [];
         this.slotOperators.clear();
       }
       console.error(`pythia pool: hub feed refresh failed — ${this.lastRefreshError}`);
@@ -171,6 +177,12 @@ export class NodePool {
   /** Count of hub slots currently in the pool (for boot logs / future directory). */
   hubSlotCount(): number {
     return this.hubSlots.length;
+  }
+
+  /** Every advertised slot from the last good feed (incl. not-at-tip), for the
+   * admin node table. Empty when the feed is off/down. Read-only snapshot. */
+  advertisedSlots(): AdvertisedSlot[] {
+    return this.advertised;
   }
 
   /** Feed health for the admin bullet: whether a client is configured, whether

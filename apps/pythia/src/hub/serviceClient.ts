@@ -23,8 +23,24 @@ export interface HubSlot {
   height: number;
 }
 
+/** A slot as advertised for DISPLAY — the base {@link HubSlot} fields plus the
+ * optional earnings fields the hub MAY add later (passed through untouched; absent
+ * until the hub ships them — see docs/HANDOFF-hub-nodepool-earnings.md). */
+export interface AdvertisedSlot extends HubSlot {
+  operatorPythXP?: number;
+  operatorPythLevel?: number;
+  slotRewardedRequests?: number;
+  slotStoicismEarned?: string;
+  earnedSince?: string;
+}
+
 export interface NodesFeed {
+  /** Usable-for-reads slots: at-tip + https. The read pool rotates across these. */
   slots: HubSlot[];
+  /** Every advertised slot with an id + https url, INCLUDING not-at-tip ones — for
+   * the admin's node table (so the operator sees the whole fleet, red dots and all).
+   * Earnings fields pass through when present. */
+  advertised: AdvertisedSlot[];
   refreshAfter: number;
 }
 
@@ -118,15 +134,21 @@ export function loadHubConfig(env: NodeJS.ProcessEnv = process.env): HubConfig |
 }
 
 function isUsableSlot(s: unknown): s is HubSlot {
-  const slot = s as HubSlot;
+  return isAdvertisableSlot(s) && s.atTip === true;
+}
+
+/** A slot Pythia can DISPLAY: identifiable (`id`) + probeable (`https://` url).
+ * Drops the at-tip requirement (a not-at-tip node still shows, dimmed) — but not
+ * the https requirement (a non-https url can't be a valid read endpoint). */
+function isAdvertisableSlot(s: unknown): s is AdvertisedSlot {
+  const slot = s as AdvertisedSlot;
   return (
     !!slot &&
     typeof slot === "object" &&
     typeof slot.id === "string" &&
     slot.id.length > 0 &&
     typeof slot.url === "string" &&
-    slot.url.startsWith("https://") &&
-    slot.atTip === true
+    slot.url.startsWith("https://")
   );
 }
 
@@ -155,12 +177,14 @@ export class HubServiceClient {
       throw new Error(`hub /nodes ${res.status}: ${detail.slice(0, 160)}`);
     }
     const body = (await res.json()) as Partial<NodesFeed>;
-    const slots = Array.isArray(body.slots) ? body.slots.filter(isUsableSlot) : [];
+    const raw = Array.isArray(body.slots) ? body.slots : [];
+    const slots = raw.filter(isUsableSlot);
+    const advertised = raw.filter(isAdvertisableSlot);
     const refreshAfter =
       typeof body.refreshAfter === "number" && body.refreshAfter > 0
         ? body.refreshAfter
         : 60;
-    return { slots, refreshAfter };
+    return { slots, advertised, refreshAfter };
   }
 
   /**
