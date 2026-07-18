@@ -36,6 +36,9 @@ function slotToSource(slot: HubSlot): SourceConfig {
  */
 export class NodePool {
   private hubSlots: SourceConfig[] = [];
+  /** slotId → operator (string, or null for a usable-but-unearning slot). Only
+   * ids present here are hub slots; an absent id is an Upload-Pool/seed node. */
+  private slotOperators = new Map<string, string | null>();
   private rot = 0;
   private lastRefreshOk = false;
   private lastRefreshError: string | null = null;
@@ -82,7 +85,16 @@ export class NodePool {
     this.stop();
     this.client = client;
     this.hubSlots = [];
+    this.slotOperators.clear();
     if (client) this.start();
+  }
+
+  /** The operator attributed to a served node id: a string, `null` for a
+   * usable-but-unearning hub slot, or `undefined` when the id is NOT a current
+   * hub slot (an Upload-Pool/seed node — which never earns and is not reported). */
+  operatorForSlot(id: string): string | null | undefined {
+    if (!this.slotOperators.has(id)) return undefined;
+    return this.slotOperators.get(id) ?? null;
   }
 
   /**
@@ -99,6 +111,7 @@ export class NodePool {
     try {
       const feed = await this.client.fetchNodes();
       this.hubSlots = feed.slots.map(slotToSource);
+      this.slotOperators = new Map(feed.slots.map((s) => [s.id, s.operator ?? null]));
       this.lastRefreshOk = true;
       this.lastRefreshError = null;
     } catch (err) {

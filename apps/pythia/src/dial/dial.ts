@@ -43,6 +43,9 @@ export interface DialDeps {
   /** Any config sources beyond primary+fallback. Accepted for signature
    * completeness but deliberately never dialled — the pool is two-host only. */
   extras?: SourceConfig[];
+  /** Called with the node whose response ARRIVED (transport OK), for per-slot
+   * usage attribution. Optional — absent, the dial is byte-identical. */
+  onServed?: (node: DialNode) => void;
 }
 
 /**
@@ -95,6 +98,7 @@ export async function dial(
     nodes: [deps.primary, deps.fallback],
     fetchImpl: deps.fetchImpl,
     timeoutMs: deps.timeoutMs,
+    onServed: deps.onServed,
   });
 }
 
@@ -110,6 +114,10 @@ export interface DialNodesDeps {
   nodes: DialNode[];
   fetchImpl?: FetchImpl;
   timeoutMs?: number;
+  /** Called with the node whose response ARRIVED (transport OK) — for per-slot
+   * usage attribution. Optional; a throw inside is swallowed so it can never
+   * break the response path. */
+  onServed?: (node: DialNode) => void;
 }
 
 /**
@@ -139,7 +147,15 @@ export async function dialNodes(
         ? AbortSignal.any([init.signal, timeoutSignal])
         : timeoutSignal;
     try {
-      return await fetchImpl(url, { ...init, signal });
+      const response = await fetchImpl(url, { ...init, signal });
+      if (deps.onServed) {
+        try {
+          deps.onServed(node);
+        } catch {
+          /* attribution is best-effort — never let it break the response */
+        }
+      }
+      return response;
     } catch (cause) {
       if (!isTransportFailure(cause)) {
         // A non-transport throw (e.g. a programming error in buildRequest) is

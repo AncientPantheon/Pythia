@@ -16,6 +16,14 @@ import {
   type RelayDeps,
 } from "./relay.js";
 
+// The node id that served a read, stashed on the context for per-slot usage
+// attribution (CP6). Global Hono augmentation — merges with the admin one.
+declare module "hono" {
+  interface ContextVariableMap {
+    servedSlotId: string;
+  }
+}
+
 export interface ReadDeps extends RelayDeps {
   /** Default gas ceiling applied when the request body omits `gasLimit`.
    * Injectable so tests avoid disk; defaults to the config-resolved value. */
@@ -126,7 +134,14 @@ export function registerRead(app: Hono, deps: ReadDeps = {}): void {
               },
             ],
           },
-          { primary, fallback, fetchImpl: deps.fetchImpl },
+          {
+            primary,
+            fallback,
+            fetchImpl: deps.fetchImpl,
+            // Stash which node served the read, for per-slot usage attribution
+            // (the reporter joins it to an operator; non-hub ids never earn).
+            onServed: (node) => c.set("servedSlotId", node.id),
+          },
         );
         return passthrough(response);
       } catch (err) {

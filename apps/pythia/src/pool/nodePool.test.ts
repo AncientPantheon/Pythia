@@ -92,3 +92,21 @@ describe("NodePool.pickReadPair", () => {
     expect(pool.feedHealth()).toMatchObject({ configured: true, ok: true, slots: 1 });
   });
 });
+
+describe("NodePool.operatorForSlot", () => {
+  it("returns the operator for a hub slot, null for unearning, undefined for a non-hub id", async () => {
+    const feed: NodesFeed = {
+      slots: [
+        { id: "s1", url: "https://s1:1848", networkId: "stoa", operator: "k:abc", atTip: true, height: 1 },
+        { id: "s2", url: "https://s2:1848", networkId: "stoa", operator: null, atTip: true, height: 1 },
+      ],
+      refreshAfter: 60,
+    };
+    const pool = new NodePool({ client: stubClient(feed), uploadNodes: () => UPLOAD });
+    await pool.refreshNow();
+    expect(pool.operatorForSlot("s1")).toBe("k:abc");
+    expect(pool.operatorForSlot("s2")).toBeNull();
+    expect(pool.operatorForSlot("up-a")).toBeUndefined();
+    pool.stop();
+  });
+});

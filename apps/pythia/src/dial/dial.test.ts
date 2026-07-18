@@ -245,3 +245,46 @@ describe("dial (two-host primary/fallback failover)", () => {
     );
   });
 });
+
+describe("dial onServed — per-slot attribution hook", () => {
+  it("fires onServed with the node whose response arrived (primary)", async () => {
+    const served: string[] = [];
+    await dial(
+      { buildRequest: (host) => [host, {}] },
+      {
+        primary,
+        fallback,
+        fetchImpl: async () => okResponse({ ok: true }),
+        onServed: (n) => served.push(n.id),
+      },
+    );
+    expect(served).toEqual(["stoachain-primary"]);
+  });
+
+  it("fires onServed with the FALLBACK when the primary fails transport", async () => {
+    const served: string[] = [];
+    const fetchImpl = async (url: string, _init?: RequestInit): Promise<Response> => {
+      if (url.includes("primary")) throw new TypeError("fetch failed");
+      return okResponse({ ok: true });
+    };
+    await dial(
+      { buildRequest: (host) => [host, {}] },
+      { primary, fallback, fetchImpl, onServed: (n) => served.push(n.id) },
+    );
+    expect(served).toEqual(["stoachain-fallback"]);
+  });
+
+  it("does NOT fire onServed when both hosts fail transport", async () => {
+    const served: string[] = [];
+    const fetchImpl = async (): Promise<Response> => {
+      throw new TypeError("fetch failed");
+    };
+    await expect(
+      dial(
+        { buildRequest: (host) => [host, {}] },
+        { primary, fallback, fetchImpl, onServed: (n) => served.push(n.id) },
+      ),
+    ).rejects.toBeInstanceOf(PythiaPoolExhaustedError);
+    expect(served).toEqual([]);
+  });
+});
