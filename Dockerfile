@@ -48,9 +48,14 @@ ENV STATS_FILE=/data/stats.json
 # Runtime connector registry (admin-managed) — also on the /data volume so
 # registered connectors + their key hashes survive redeploys.
 ENV CONNECTORS_FILE=/data/connectors.json
-# Admin-managed runtime settings (hub feed URL + HMAC secret) — on the /data
-# volume so an admin-activated feed survives redeploys.
+# Admin-managed runtime settings (hub feed URL) — on the /data volume so an
+# admin-activated feed survives redeploys.
 ENV SETTINGS_FILE=/data/settings.json
+# The sealed credential vault (the hub HMAC secret, encrypted at rest under
+# PYTHIA_MASTER_KEY) — MUST be on the /data volume and co-located with SETTINGS_FILE:
+# migration strips the plaintext from settings and seals it here, so a vault on the
+# ephemeral container FS would lose the secret on the next deploy.
+ENV VAULT_FILE=/data/vault.json
 # The Upload Pool (dedicated signed-tx sender nodes) — on the /data volume so the
 # admin-curated sender list survives redeploys.
 ENV TXSENDERS_FILE=/data/txsenders.json

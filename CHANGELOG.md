@@ -9,6 +9,16 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.10.1] — 2026-07-18
+
+### Fixed
+- **Sealed vault now persists across deploys.** `VAULT_FILE` was unset, so the vault
+  defaulted to the ephemeral container filesystem (`/app/pythia-vault.json`) while
+  settings live on the `/data` volume — the boot migration stripped the plaintext hub
+  secret from persistent settings and sealed it into a file that a redeploy would wipe.
+  The Dockerfile now bakes `VAULT_FILE=/data/vault.json`, co-located with
+  `SETTINGS_FILE`, so the sealed credential survives redeploys.
+
 ## [1.10.0] — 2026-07-18
 
 ### Added

@@ -37,7 +37,7 @@ a `master key #<fingerprint>`. `Plaintext fallback` means the key was not picked
 
 ## First run against an existing (plaintext) secret
 On the first boot *with* a master key, any hub secret previously stored plaintext in
-`pythia-settings.json` is automatically re-sealed into `pythia-vault.json` and removed
+`/data/settings.json` is automatically re-sealed into `/data/vault.json` and removed
 from the settings file. No action needed — confirm the Security badge shows **Sealed ✓**.
 
 ## Rotating the master key
@@ -50,7 +50,7 @@ handling the safety rules forbid). Procedure:
    under the new key with the tested primitive — e.g. a one-off node script on the host:
    ```js
    import { SealedVault } from "./dist/admin/sealedVault.js";
-   const v = new SealedVault({ filePath: "/data/pythia-vault.json", masterKey: OLD });
+   const v = new SealedVault({ filePath: "/data/vault.json", masterKey: OLD });
    v.rotateMasterKey(OLD, NEW);   // re-seals every cred; old ciphertext no longer decrypts
    ```
 3. Update `PYTHIA_MASTER_KEY` to the **new** key in the deploy env and roll a deploy.
