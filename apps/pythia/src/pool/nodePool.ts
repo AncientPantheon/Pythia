@@ -83,8 +83,6 @@ export class NodePool {
     this.maxRefreshMs = opts.maxRefreshMs ?? 300_000;
   }
 
-  /** Begin polling the hub feed. No-op when no client is configured (the read
-   * pool then serves from the Upload Pool). */
   /** The next-poll delay: the hub's advised `refreshAfter` from the last feed
    * (clamped to a sane min/max), or the default when the hub hasn't advised one. */
   nextPollDelayMs(): number {
@@ -92,6 +90,8 @@ export class NodePool {
     return Math.min(this.maxRefreshMs, Math.max(this.minRefreshMs, advised));
   }
 
+  /** Begin polling the hub feed. No-op when no client is configured (the read
+   * pool then serves from the Upload Pool). */
   start(): void {
     if (!this.client || this.running) return;
     this.running = true;

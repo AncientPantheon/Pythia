@@ -162,15 +162,18 @@ describe("NodePool refresh cadence + staleness TTL", () => {
     });
     await pool.refreshNow(); // good at t=1000
     expect(pool.hubSlotCount()).toBe(1);
+    expect(pool.advertisedSlots()).toHaveLength(1);
 
     ok = false;
     now = 1000 + 99_999;
     await pool.refreshNow(); // within TTL → keep the last-good slots
     expect(pool.hubSlotCount()).toBe(1);
+    expect(pool.advertisedSlots()).toHaveLength(1);
 
     now = 1000 + 100_000;
     await pool.refreshNow(); // past TTL → drop; reads fall back to the Upload Pool
     expect(pool.hubSlotCount()).toBe(0);
+    expect(pool.advertisedSlots()).toEqual([]); // the admin node table clears too
     expect(pool.pickReadPair()?.primary.id).toMatch(/^up-/);
   });
 });

@@ -34,16 +34,27 @@ describe("probeNodes", () => {
     expect(r).toMatchObject({ reachable: false, reason: "http 308" });
   });
 
-  it("classifies an abort as timeout", async () => {
+  it("classifies an abort as timeout (real DOMException shape, NOT instanceof Error)", async () => {
+    // Node's fetch rejects an aborted request with a DOMException — which is not
+    // `instanceof Error`. A plain Error stub would hide the misclassification.
     const fetchImpl = fetchWith({
       "https://slow.test": async () => {
-        const e = new Error("aborted");
-        e.name = "AbortError";
-        throw e;
+        throw new DOMException("The operation was aborted.", "AbortError");
       },
     });
     const [r] = await probeNodes(["https://slow.test"], { fetchImpl });
     expect(r).toMatchObject({ reachable: false, reason: "timeout" });
+  });
+
+  it("classifies a connect-timeout code as timeout and an unknown code as unreachable", async () => {
+    const fetchImpl = fetchWith({
+      "https://ct.test": async () => Promise.reject(causeErr("UND_ERR_CONNECT_TIMEOUT")),
+      "https://weird.test": async () => Promise.reject(causeErr("EHOSTUNREACH")),
+    });
+    const res = await probeNodes(["https://ct.test", "https://weird.test"], { fetchImpl });
+    const by = Object.fromEntries(res.map((r) => [r.url, r.reason]));
+    expect(by["https://ct.test"]).toBe("timeout");
+    expect(by["https://weird.test"]).toBe("unreachable");
   });
 
   it("classifies ECONNREFUSED as refused, ENOTFOUND as dns, and a TLS cert code as cert", async () => {

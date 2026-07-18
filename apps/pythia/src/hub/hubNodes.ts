@@ -11,12 +11,16 @@ export interface EnrichedNode extends AdvertisedSlot {
 /** Highest-earning-first when the hub returns earnings; else reachable-first then id.
  * `slotStoicismEarned` is a decimal STRING (token units) — compare numerically. */
 function compareNodes(a: EnrichedNode, b: EnrichedNode): number {
-  const earn = (n: EnrichedNode): number | null => {
-    if (n.slotStoicismEarned !== undefined) return Number(n.slotStoicismEarned);
-    if (n.slotRewardedRequests !== undefined) return n.slotRewardedRequests;
-    if (n.operatorPythXP !== undefined) return n.operatorPythXP;
-    return null;
+  // A hub-supplied value that isn't a finite number (garbage decimal, NaN) is
+  // treated as absent — never let it reach the comparator, which would return NaN
+  // and corrupt the whole sort.
+  const finite = (x: number | string | undefined): number | null => {
+    if (x === undefined) return null;
+    const v = Number(x);
+    return Number.isFinite(v) ? v : null;
   };
+  const earn = (n: EnrichedNode): number | null =>
+    finite(n.slotStoicismEarned) ?? finite(n.slotRewardedRequests) ?? finite(n.operatorPythXP);
   const ea = earn(a);
   const eb = earn(b);
   if (ea !== null || eb !== null) return (eb ?? -1) - (ea ?? -1); // earnings desc

@@ -48,6 +48,18 @@ describe("enrichHubNodes", () => {
     expect(nodes.map((n) => n.id)).toEqual(["a-up", "b-up", "z-down"]);
   });
 
+  it("treats a non-numeric earnings value as absent (no NaN in the comparator)", () => {
+    const nodes = enrichHubNodes(
+      [
+        slot({ id: "garbage", url: "https://g", slotStoicismEarned: "1,000 STOIC" }), // unparseable
+        slot({ id: "real", url: "https://r", slotStoicismEarned: "50" }),
+      ],
+      [reach("https://g", true), reach("https://r", true)],
+    );
+    // The real earner sorts first; the garbage value doesn't corrupt the order.
+    expect(nodes.map((n) => n.id)).toEqual(["real", "garbage"]);
+  });
+
   it("passes earnings fields through to the enriched node", () => {
     const [n] = enrichHubNodes(
       [slot({ id: "x", url: "https://x", operatorPythXP: 48210, operatorPythLevel: 7, slotStoicismEarned: "9.9" })],

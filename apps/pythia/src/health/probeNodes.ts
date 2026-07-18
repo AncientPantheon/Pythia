@@ -46,7 +46,9 @@ function causeCode(err: unknown): string | undefined {
 }
 
 function classify(err: unknown): NodeReachabilityReason {
-  if (err instanceof Error && err.name === "AbortError") return "timeout";
+  // The abort rejects with a DOMException in Node — which is NOT `instanceof Error`
+  // — so match the name by duck-typing, not the class.
+  if ((err as { name?: string })?.name === "AbortError") return "timeout";
   const code = causeCode(err);
   if (code === "ECONNREFUSED") return "refused";
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "dns";
@@ -63,11 +65,19 @@ async function probeOne(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetchImpl(`${url}/info`, { signal: controller.signal });
+    // `redirect: "manual"` — a reachability probe wants the node to serve /info
+    // directly; it must not be bounced (a compromised feed could redirect the
+    // probe elsewhere, and a 3xx isn't "reachable" for our purposes anyway).
+    const res = await fetchImpl(`${url}/info`, {
+      signal: controller.signal,
+      redirect: "manual",
+    });
     if (res.ok) return { url, reachable: true, reason: null };
     return { url, reachable: false, reason: `http ${res.status}` };
   } catch (err) {
-    return { url, reachable: false, reason: classify(err) };
+    // The deadline firing is definitive regardless of the thrown error's shape.
+    const reason = controller.signal.aborted ? "timeout" : classify(err);
+    return { url, reachable: false, reason };
   } finally {
     clearTimeout(timer);
   }
