@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.12.0] — 2026-07-18
+
+### Added
+- **Update & Deploy shows installed → available.** The panel now reads the version
+  running vs. the version a deploy would build (the repo's `main`, read from public
+  GitHub), Mnemosyne-style: `Installed v1.11.0 → v1.12.0 · update available`, or "up to
+  date" when equal, or "latest: unreachable" if the repo can't be read. Served by a new
+  ancient-gated `GET /admin/version-info`.
+
+### Fixed
+- **Observation Pool node row no longer overflows on a long operator.** The hub is
+  currently sending a garbled/over-long `operator` value; the row now truncates it (with
+  the full value on hover) instead of letting it overflow and overlap the node's IP.
+
 ## [1.11.0] — 2026-07-18
 
 ### Added
