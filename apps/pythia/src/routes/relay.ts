@@ -22,8 +22,8 @@ export interface RelayDeps {
   fetchImpl?: FetchImpl;
   /** The live read-node pool. When present (and no explicit `sources`), READ and
    * POLL draw a rotating {primary, fallback} pair from the hub fleet via
-   * {@link resolveReadPair}. SEND deliberately does NOT use it — signed txs stay
-   * on the seed nodes (later: a dedicated tx-sender list). */
+   * {@link resolveReadPair}. SEND deliberately does NOT use it — signed txs go
+   * only to the Upload Pool (the dedicated, ancient-managed tx-sender list). */
   pool?: NodePool;
 }
 

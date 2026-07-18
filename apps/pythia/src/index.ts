@@ -116,8 +116,9 @@ export const verifierStore = new VerifierStore({
 
 // The read node-pool (Observation): the hub's advertised StoaChain fleet (polled
 // ~60s over the signed HMAC feed) enlarges the READ pool. When the feed is off or
-// down, reads are REDIRECTED to the Upload Pool (the operator's dedicated nodes),
-// with the checked-in seeds as the absolute last resort. OPTIONAL feed: only polls
+// down, reads are REDIRECTED to the Upload Pool (the operator's dedicated nodes —
+// itself seeded from the checked-in config on first run; there is no separate seed
+// tier). OPTIONAL feed: only polls
 // when a hub HMAC secret is present (admin settings win over the env). SEND stays
 // on the Upload Pool only. Exported so the server stops the poller on shutdown.
 function currentHubConfig() {
