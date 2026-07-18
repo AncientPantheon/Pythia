@@ -174,6 +174,73 @@ describe("pythMeterMiddleware", () => {
     expect(l.total().wastedGasReserved).toBe(500);
   });
 
+  it("records a hub-slot keyed read into the per-slot meter", async () => {
+    const l = ledger();
+    const recorded: unknown[][] = [];
+    const slot = {
+      usage: { record: (...a: unknown[]) => recorded.push(a) },
+      operatorForSlot: (id: string) => (id === "s1" ? "k:op" : undefined),
+    };
+    const app = new Hono();
+    app.use("*", pythMeterMiddleware(l, resolve, undefined, slot));
+    app.post("/stoachain/read", (c) => {
+      c.set("servedSlotId", "s1");
+      return c.json({ gas: 100, result: {} });
+    });
+    await app.request("/stoachain/read", {
+      method: "POST",
+      headers: { "x-pythia-key": "K" },
+      body: "{}",
+    });
+    expect(recorded).toHaveLength(1);
+    const [slotId, operator, keyed, ok] = recorded[0];
+    expect(slotId).toBe("s1");
+    expect(operator).toBe("k:op");
+    expect(keyed).toBe(true);
+    expect(ok).toBe(true);
+  });
+
+  it("records an anonymous hub-slot read (anon, no pondus) but leaves the fleet ledger untouched", async () => {
+    const l = ledger();
+    const recorded: unknown[][] = [];
+    const slot = {
+      usage: { record: (...a: unknown[]) => recorded.push(a) },
+      operatorForSlot: () => null,
+    };
+    const app = new Hono();
+    app.use("*", pythMeterMiddleware(l, resolve, undefined, slot));
+    app.post("/stoachain/read", (c) => {
+      c.set("servedSlotId", "s2");
+      return c.json({ gas: 100, result: {} });
+    });
+    await app.request("/stoachain/read", { method: "POST", body: "{}" }); // no key → anon
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0][2]).toBe(false); // keyed
+    expect(recorded[0][1]).toBe(null); // operator
+    expect(l.total().petitions).toBe(0); // anon never earns in the fleet ledger
+  });
+
+  it("does NOT record a read served by a non-hub node (operatorForSlot undefined)", async () => {
+    const l = ledger();
+    const recorded: unknown[][] = [];
+    const slot = {
+      usage: { record: (...a: unknown[]) => recorded.push(a) },
+      operatorForSlot: () => undefined,
+    };
+    const app = new Hono();
+    app.use("*", pythMeterMiddleware(l, resolve, undefined, slot));
+    app.post("/stoachain/read", (c) => {
+      c.set("servedSlotId", "upload-x");
+      return c.json({ gas: 100, result: {} });
+    });
+    await app.request("/stoachain/read", {
+      method: "POST",
+      headers: { "x-pythia-key": "K" },
+      body: "{}",
+    });
+    expect(recorded).toHaveLength(0);
+  });
+
   it("ignores non-operational paths", async () => {
     const l = ledger();
     const app = new Hono();

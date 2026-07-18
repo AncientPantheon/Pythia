@@ -57,6 +57,14 @@ export interface TxTrackerLike {
   track(entries: Array<{ requestKey: string; gasLimit: number }>): void;
 }
 
+/** The per-slot windowed meter + the slot→operator lookup (see stats/slotUsage.ts,
+ * pool/nodePool.ts). `operatorForSlot` returns the operator, `null` (unearning
+ * hub slot), or `undefined` (not a hub slot — an Upload-Pool/seed node, skipped). */
+export interface SlotMeter {
+  usage: { record(slotId: string, operator: string | null, keyed: boolean, ok: boolean, pondus: number): void };
+  operatorForSlot(id: string): string | null | undefined;
+}
+
 /**
  * Keyless Pyth-economy metering. After each operational request it records the
  * six ledger counters:
@@ -74,6 +82,7 @@ export function pythMeterMiddleware(
   ledger: PythLedger,
   resolveConsumer: ConsumerResolver,
   tracker?: TxTrackerLike,
+  slot?: SlotMeter,
 ) {
   return async (c: Context, next: Next): Promise<void> => {
     const match = OPERATIONAL.exec(c.req.path);
@@ -89,13 +98,33 @@ export function pythMeterMiddleware(
       const status = c.res.status;
 
       if (endpoint === "read" || endpoint === "poll") {
-        if (status >= 400) return; // nothing served
-        if (resolveConsumer(c.req.header(CONSUMER_HEADER)) === "direct") return; // anon never earns
-        const bodyText = await c.res.clone().text();
-        const responseBytes = Buffer.byteLength(bodyText, "utf8");
-        const classBase = endpoint === "read" ? CLASS_BASE.read : CLASS_BASE.poll;
-        const gasUsed = endpoint === "read" ? gasFromLocalResponse(bodyText) : 0;
-        ledger.recordRead(pondus({ classBase, gasUsed, responseBytes }));
+        if (status >= 400) return; // not served
+        const keyed = resolveConsumer(c.req.header(CONSUMER_HEADER)) !== "direct";
+
+        // Compute pondus once (only when keyed — anon reads earn nothing). Feeds
+        // the fleet ledger (keyed reads/polls) and the per-slot keyedPondus.
+        let pondusVal = 0;
+        if (keyed) {
+          const bodyText = await c.res.clone().text();
+          const responseBytes = Buffer.byteLength(bodyText, "utf8");
+          const classBase = endpoint === "read" ? CLASS_BASE.read : CLASS_BASE.poll;
+          const gasUsed = endpoint === "read" ? gasFromLocalResponse(bodyText) : 0;
+          pondusVal = pondus({ classBase, gasUsed, responseBytes });
+          ledger.recordRead(pondusVal); // fleet ledger — keyed reads/polls only
+        }
+
+        // Per-slot usage (the money path): hub-slot READS only (§4.3 excludes
+        // polls), keyed AND anon. operatorForSlot is undefined for a non-hub id
+        // (Upload-Pool/seed) — those never earn and are not reported.
+        if (slot && endpoint === "read") {
+          const slotId = c.get("servedSlotId");
+          if (slotId) {
+            const operator = slot.operatorForSlot(slotId);
+            if (operator !== undefined) {
+              slot.usage.record(slotId, operator, keyed, true, keyed ? pondusVal : 0);
+            }
+          }
+        }
         return;
       }
 

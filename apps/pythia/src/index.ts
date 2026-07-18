@@ -33,6 +33,7 @@ import { PythLedger } from "./pyth/ledger.js";
 import { pythMeterMiddleware } from "./pyth/meter.js";
 import { TxTracker } from "./pyth/txTracker.js";
 import { pollExecution } from "./reads/index.js";
+import { SlotUsageMeter } from "./stats/slotUsage.js";
 
 /**
  * The Pythia gateway application.
@@ -142,6 +143,11 @@ export const txTracker = new TxTracker({
   },
 });
 
+// The per-slot windowed usage meter (the money path) — hub-slot reads only,
+// keyed/anon/ok + keyedPondus. Drained + reported to the hub by the usage
+// reporter (CP3), gated by the report toggle.
+export const slotUsage = new SlotUsageMeter();
+
 // Detect Pythia's public egress IP (the hub allowlist target) at boot; refreshed
 // on admin refresh. Non-blocking — the value populates shortly after start.
 void detectEgressIp();
@@ -202,7 +208,13 @@ app.use("*", statsMiddleware(statsStore, resolveConsumer));
 // Pyth-economy metering runs alongside stats — keyed reads/polls → Petitions +
 // Pondus, sends → Transactions/Gas (accepted) or Failed/Wasted (rejected). It
 // reads only response gas/bytes + the caller's gasLimit; it never signs.
-app.use("*", pythMeterMiddleware(pythLedger, resolveConsumer, txTracker));
+app.use(
+  "*",
+  pythMeterMiddleware(pythLedger, resolveConsumer, txTracker, {
+    usage: slotUsage,
+    operatorForSlot: (id) => nodePool.operatorForSlot(id),
+  }),
+);
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.

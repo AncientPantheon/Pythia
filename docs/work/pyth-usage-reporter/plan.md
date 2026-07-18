@@ -15,8 +15,8 @@ Test command: `npm test -w @ancientpantheon/pythia`.
     `apps/pythia/src/pool/nodePool.ts`, `apps/pythia/src/pool/nodePool.test.ts`,
     `apps/pythia/src/routes/read.ts`, `apps/pythia/src/routes/poll.ts`
 
-## CP2 — Per-slot windowed meter (slotUsage)
-- [ ] T2: `stats/slotUsage.ts` — `SlotUsageMeter`: record(slotId, operator, keyed,
+## CP2 — Per-slot windowed meter (slotUsage) ✅
+- [x] T2: `stats/slotUsage.ts` — `SlotUsageMeter`: record(slotId, operator, keyed,
       ok, pondus) for hub-slot READS only; `drain()` → `{period:{from,to}, slots:[…]}`
       + reset; a middleware/hook records from the context's servedSlotId +
       operatorForSlot + the read's pondus (keyed → keyedPondus). Done when: tests
