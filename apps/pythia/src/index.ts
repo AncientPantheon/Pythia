@@ -21,6 +21,8 @@ import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
 import { SettingsStore } from "./admin/settingsStore.js";
 import { SealedVault } from "./admin/sealedVault.js";
+import { fetchAvailableVersion, isNewer } from "./admin/versionInfo.js";
+import { PYTHIA_VERSION } from "./version.js";
 import { TxSenderStore } from "./txsenders/store.js";
 import { loadConfigFromDisk } from "./config/index.js";
 import { loadHubConfig, HubServiceClient } from "./hub/serviceClient.js";
@@ -302,6 +304,18 @@ if (oidcConfig) {
         const advertised = nodePool.advertisedSlots();
         const reach = await probeNodes(advertised.map((s) => s.url));
         return enrichHubNodes(advertised, reach);
+      },
+    },
+    // Update & Deploy version readout: what's running vs what a deploy would build
+    // (the repo's `main`). Best-effort — `available` is null if the repo is unreachable.
+    versionInfo: {
+      get: async () => {
+        const available = await fetchAvailableVersion();
+        return {
+          installed: PYTHIA_VERSION,
+          available,
+          updateAvailable: available ? isNewer(available, PYTHIA_VERSION) : false,
+        };
       },
     },
   });

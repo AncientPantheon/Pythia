@@ -660,6 +660,7 @@ function renderHubNodes(el, nodes) {
     const op = document.createElement("span");
     op.className = "hubnode-op";
     op.textContent = n.operator || "—";
+    if (n.operator) op.title = n.operator; // full value on hover — it may be long
     const tip = document.createElement("span");
     tip.className = "hubnode-tip" + (n.atTip ? "" : " hubnode-tip--behind");
     tip.textContent = n.atTip ? "at tip" : "behind";
@@ -1019,31 +1020,57 @@ async function loadVersionNetwork() {
   const container = document.getElementById("version-network");
   if (!container) return;
   try {
-    const res = await fetch("/healthz", { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(`healthz ${res.status}`);
-    const body = await res.json();
-    renderVersionNetwork(container, body);
+    const res = await fetch("/admin/version-info", { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(`version-info ${res.status}`);
+    renderVersionNetwork(container, await res.json());
   } catch {
     container.textContent = "";
     const p = document.createElement("p");
     p.className = "empty";
-    p.textContent = "Could not read /healthz — version and source reachability are unavailable.";
+    p.textContent = "Could not read version info.";
     container.appendChild(p);
   }
 }
 
-function renderVersionNetwork(container, body) {
+// Installed → available, Mnemosyne-style: what's running vs what a deploy would build
+// (the repo's main). Shows an update badge when available is newer, "up to date" when
+// equal, or "latest: unreachable" when the repo couldn't be read.
+function renderVersionNetwork(container, info) {
   container.textContent = "";
-  // Update & Deploy shows only the live version now. Per-node reachability lives in
-  // Observation Pool → Hub fleet, where the whole advertised fleet is shown.
-  const versionLine = document.createElement("p");
-  versionLine.className = "hub-stat";
-  const b = document.createElement("b");
-  b.textContent = "Version: ";
-  const v = document.createElement("span");
-  v.textContent = body.version || "unknown";
-  versionLine.append(b, v);
-  container.appendChild(versionLine);
+  const row = document.createElement("div");
+  row.className = "ver-row";
+
+  const label = document.createElement("span");
+  label.className = "ver-label";
+  label.textContent = "Installed";
+  const installed = document.createElement("span");
+  installed.className = "ver-installed";
+  installed.textContent = `v${info.installed || "unknown"}`;
+  row.append(label, installed);
+
+  if (info.available && info.updateAvailable) {
+    const arrow = document.createElement("span");
+    arrow.className = "ver-arrow";
+    arrow.textContent = "→";
+    const target = document.createElement("span");
+    target.className = "ver-available";
+    target.textContent = `v${info.available}`;
+    const badge = document.createElement("span");
+    badge.className = "ver-badge";
+    badge.textContent = "update available";
+    row.append(arrow, target, badge);
+  } else if (info.available) {
+    const ok = document.createElement("span");
+    ok.className = "ver-uptodate";
+    ok.textContent = "up to date";
+    row.appendChild(ok);
+  } else {
+    const unk = document.createElement("span");
+    unk.className = "ver-unknown";
+    unk.textContent = "latest: unreachable";
+    row.appendChild(unk);
+  }
+  container.appendChild(row);
 }
 
 // ── on-box deploy (status readout + Deploy button + SSE build-log terminal) ───

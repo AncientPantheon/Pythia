@@ -623,13 +623,26 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .hubnode-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hubnode-ip { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
 .hubnode-url { font-size: 12px; color: var(--ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hubnode-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
-.hubnode-op { color: var(--ink-soft); }
+.hubnode-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; min-width: 0; max-width: 240px; }
+.hubnode-op { color: var(--ink-soft); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hubnode-tip { color: var(--gold-dim); }
 .hubnode-tip--behind { color: var(--ink-mute); }
 .hubnode-reason { color: #f0b34d; text-transform: uppercase; letter-spacing: .03em; font-size: 11px; }
 .hubnode-earn { font-size: 12px; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .hubnode-earn--pending { color: var(--ink-mute); font-style: italic; }
+
+/* Update & Deploy — installed → available version row */
+.ver-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 2px; font-size: 15px; }
+.ver-label { color: var(--ink-mute); font-size: 13px; }
+.ver-installed { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.ver-arrow { color: var(--gold-dim); font-weight: 700; }
+.ver-available { font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+.ver-badge {
+  padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  color: #1a1204; background: linear-gradient(180deg, var(--gold) 0%, var(--gold-dim) 100%);
+}
+.ver-uptodate { color: var(--ink-mute); font-size: 13px; }
+.ver-unknown { color: #f0b34d; font-size: 13px; }
 
 /* seed-node badge — permanent, gold to distinguish from the grey "disabled" */
 .ca-badge--seed { color: var(--gold); border-color: var(--gold-dim); }

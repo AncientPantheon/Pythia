@@ -212,6 +212,12 @@ export interface HubNodesControls {
   list(): Promise<EnrichedNode[]>;
 }
 
+/** The installed-vs-available version readout the Update & Deploy panel shows:
+ * what's running vs what a deploy would build (the repo's `main`). */
+export interface VersionInfoControls {
+  get(): Promise<{ installed: string; available: string | null; updateAvailable: boolean }>;
+}
+
 /** Optional admin subsystems wired when present. */
 export interface AdminExtras {
   hubAdmin?: HubAdminControls;
@@ -220,6 +226,7 @@ export interface AdminExtras {
   pyth?: PythAdminControls;
   security?: SecurityAdminControls;
   hubNodes?: HubNodesControls;
+  versionInfo?: VersionInfoControls;
 }
 
 export function registerAdmin(
@@ -229,7 +236,7 @@ export function registerAdmin(
   extras: AdminExtras = {},
 ): void {
   const gate = createAdminGate(cfg);
-  const { hubAdmin, txSenders, verifiers, pyth, security, hubNodes } = extras;
+  const { hubAdmin, txSenders, verifiers, pyth, security, hubNodes, versionInfo } = extras;
 
   app.get("/admin/login", async (c) => {
     const { discovery } = await getDiscovery(cfg.issuer);
@@ -546,5 +553,10 @@ export function registerAdmin(
     // Every advertised hub node, probed for reachability from Pythia's vantage
     // (id · url · operator · at-tip · reachable + reason · earnings when present).
     app.get("/admin/hub-nodes", gate, async (c) => c.json(await hubNodes.list()));
+  }
+
+  // ── ancient-gated version readout — installed vs available (repo main) ───────
+  if (versionInfo) {
+    app.get("/admin/version-info", gate, async (c) => c.json(await versionInfo.get()));
   }
 }
