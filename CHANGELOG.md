@@ -9,6 +9,24 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.10.0] — 2026-07-18
+
+### Added
+- **Sealed credential vault.** The bearer credentials Pythia must *use* — chiefly the
+  hub M2M HMAC secret — are now **encrypted at rest** (AES-256-GCM) under a master key
+  taken from the deploy env (`PYTHIA_MASTER_KEY`), which lives off the data volume. A
+  leaked volume/backup no longer exposes the secret; you also need the master key. The
+  key auto-unlocks the vault on boot, so the hub feed keeps signing across restarts with
+  no human present — the admin login gates *management*, not decryption. Any pre-existing
+  plaintext secret is migrated into the vault and stripped on first load. With no master
+  key set (dev), the store transparently keeps the old plaintext behavior, surfaced in
+  the UI so it is never silent. Master-key rotation is a tested `rotateMasterKey` op +
+  a documented procedure ([`docs/OPS-master-key.md`](docs/OPS-master-key.md)) — never a
+  browser field.
+- **"Security" admin tab** (ancient-gated): the vault status (Sealed / Plaintext-fallback
+  / Locked), the master-key fingerprint, the sealed credentials listed by name (masked —
+  never the value), and a themed-confirm **Clear vault** decommission action.
+
 ## [1.9.1] — 2026-07-18
 
 ### Changed
