@@ -16,6 +16,9 @@ import type { HubConfig } from "../hub/serviceClient.js";
 export interface HubSettings {
   hubBaseUrl?: string;
   hmacSecret?: string;
+  /** Whether Pythia reports served usage to the hub (drives minting). Default ON;
+   * only `false` when the ancient admin explicitly turns it off. */
+  reportToHub?: boolean;
 }
 
 const DEFAULT_HUB_BASE_URL = "https://ancientholdings.eu";
@@ -68,6 +71,18 @@ export class SettingsStore {
       const v = patch.hmacSecret.trim();
       this.settings.hmacSecret = v || undefined;
     }
+    this.persist();
+  }
+
+  /** Whether Pythia should report usage to the hub (default ON — reporting is the
+   * normal behaviour; only an explicit `false` turns it off). */
+  reportEnabled(): boolean {
+    return this.settings.reportToHub !== false;
+  }
+
+  /** Turn hub usage reporting on/off. Persists atomically. */
+  setReportEnabled(on: boolean): void {
+    this.settings.reportToHub = on;
     this.persist();
   }
 

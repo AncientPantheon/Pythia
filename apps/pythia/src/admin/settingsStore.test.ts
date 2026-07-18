@@ -48,3 +48,16 @@ describe("SettingsStore hub config", () => {
     expect(reloaded.hubConfig()).toEqual({ baseUrl: "https://hub.test", secret: "abc123" });
   });
 });
+
+describe("SettingsStore report toggle", () => {
+  it("defaults to ON (report enabled)", () => {
+    expect(fresh().reportEnabled()).toBe(true);
+  });
+
+  it("turns off and on, persisting across reloads", () => {
+    fresh().setReportEnabled(false);
+    expect(fresh().reportEnabled()).toBe(false);
+    fresh().setReportEnabled(true);
+    expect(fresh().reportEnabled()).toBe(true);
+  });
+});

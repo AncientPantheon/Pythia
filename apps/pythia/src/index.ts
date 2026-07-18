@@ -220,6 +220,13 @@ if (oidcConfig) {
     hubAdmin,
     txSenders: txSenderStore,
     verifiers: verifierStore,
+    // The "StoaChain Earnings" panel: reset the Pyth ledger + toggle hub reporting.
+    pyth: {
+      total: () => pythLedger.total() as unknown as Record<string, number>,
+      nuke: () => pythLedger.nuke(),
+      reportEnabled: () => settingsStore.reportEnabled(),
+      setReportEnabled: (on) => settingsStore.setReportEnabled(on),
+    },
   });
   // On-box blue-green Deploy API (Update & Deploy panel backend): ancient-gated,
   // same OIDC config as the rest of the admin surface. See ./routes/adminDeploy.ts.

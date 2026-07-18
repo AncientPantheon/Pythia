@@ -35,8 +35,8 @@ bump at the end. Test command: `npm test -w @ancientpantheon/pythia`.
   - files: `apps/pythia/src/routes/pyth.ts`, `apps/pythia/src/routes/pyth.test.ts`,
     `apps/pythia/public/index.html`, `apps/pythia/public/app.js`, `apps/pythia/public/styles.css`
 
-## CP4 — "StoaChain Earnings" admin tab
-- [ ] T5: ancient-gated admin section: `POST /admin/pyth/nuke` (reset ledger,
+## CP4 — "StoaChain Earnings" admin tab ✅
+- [x] T5: ancient-gated admin section: `POST /admin/pyth/nuke` (reset ledger,
       server-enforced ancient) + a report-to-hub on/off setting (`GET/POST
       /admin/pyth/report`), persisted; admin UI tab (nuke button + toggle). Done when:
       non-ancient is rejected server-side; nuke zeroes the ledger; toggle persists.

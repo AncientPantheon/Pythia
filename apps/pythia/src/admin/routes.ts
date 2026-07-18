@@ -186,11 +186,21 @@ export interface HubAdminControls {
   revealSecret(): string | null;
 }
 
+/** The runtime controls the `ancient`-gated "StoaChain Earnings" panel drives:
+ * the Pyth ledger totals + reset, and the hub-report on/off toggle. */
+export interface PythAdminControls {
+  total(): Record<string, number>;
+  nuke(): void;
+  reportEnabled(): boolean;
+  setReportEnabled(on: boolean): void;
+}
+
 /** Optional admin subsystems wired when present. */
 export interface AdminExtras {
   hubAdmin?: HubAdminControls;
   txSenders?: TxSenderStore;
   verifiers?: VerifierStore;
+  pyth?: PythAdminControls;
 }
 
 export function registerAdmin(
@@ -200,7 +210,7 @@ export function registerAdmin(
   extras: AdminExtras = {},
 ): void {
   const gate = createAdminGate(cfg);
-  const { hubAdmin, txSenders, verifiers } = extras;
+  const { hubAdmin, txSenders, verifiers, pyth } = extras;
 
   app.get("/admin/login", async (c) => {
     const { discovery } = await getDiscovery(cfg.issuer);
@@ -469,6 +479,32 @@ export function registerAdmin(
     app.delete("/admin/verifiers/:id", gate, (c) => {
       const ok = verifiers.remove(c.req.param("id"));
       return c.json({ ok }, ok ? 200 : 404);
+    });
+  }
+
+  // ── ancient-gated "StoaChain Earnings" — Pyth ledger + hub-report toggle ─────
+  if (pyth) {
+    // The current fleet-wide totals + whether Pythia reports usage to the hub.
+    app.get("/admin/pyth", gate, (c) =>
+      c.json({ total: pyth.total(), reportToHub: pyth.reportEnabled() }),
+    );
+
+    // Nuke the ledger — reset every counter to zero. Destructive; ancient-gated.
+    app.post("/admin/pyth/nuke", gate, (c) => {
+      pyth.nuke();
+      return c.json({ ok: true, total: pyth.total() });
+    });
+
+    // Turn hub usage reporting on/off (Pythia keeps counting locally either way).
+    app.post("/admin/pyth/report", gate, async (c) => {
+      const body = (await c.req.json().catch(() => null)) as
+        | { enabled?: unknown }
+        | null;
+      if (typeof body?.enabled !== "boolean") {
+        return c.json({ error: "enabled must be a boolean" }, 400);
+      }
+      pyth.setReportEnabled(body.enabled);
+      return c.json({ ok: true, reportToHub: pyth.reportEnabled() });
     });
   }
 }

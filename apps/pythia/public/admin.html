@@ -166,6 +166,27 @@
               <p class="hub-stat" id="deploy-stream-status" hidden></p>
               <pre id="deploy-log" class="console-out" hidden></pre>
             </section>
+
+            <!-- STOACHAIN EARNINGS — the Pyth ledger totals + reset + hub-report toggle -->
+            <section class="admin-view" data-view="earnings" hidden>
+              <h3>Pyth ledger — fleet-wide</h3>
+              <p class="panel-note">What Pythia has served on StoaChain: <b>Petitions</b> &amp; <b>Pondus</b> (keyed reads) and <b>Transactions</b> &amp; <b>Gas</b> relayed. Counted locally; a future daily Dalos flush (<code>ouronet-ns.PYTHIA.A_Flush</code>) persists it on chain.</p>
+              <div id="earnings-totals" class="earn-totals"></div>
+
+              <h3>Report to the hub</h3>
+              <p class="panel-note">When ON, Pythia reports served usage to the AncientHub so it mints B.UNA / Stoicism to node operators. When OFF, Pythia keeps counting locally but reports nothing — that span never mints.</p>
+              <div class="conn-actions">
+                <label class="earn-toggle"><input type="checkbox" id="earn-report-toggle" /> <span id="earn-report-label">…</span></label>
+              </div>
+              <p class="conn-error" id="earn-report-error" hidden></p>
+
+              <h3>Danger zone</h3>
+              <p class="panel-note">Reset every counter to zero — start the ledger from 0. This erases the local counts and cannot be undone.</p>
+              <div class="conn-actions">
+                <button type="button" id="earn-nuke-btn" class="btn btn--danger">Nuke the Pyth ledger</button>
+              </div>
+              <p class="conn-error" id="earn-nuke-error" hidden></p>
+            </section>
           </div>
         </div>
       </div>

@@ -122,6 +122,14 @@ const TILES = [
     enabled: true,
   },
   {
+    id: "earnings",
+    icon: "📜",
+    title: "StoaChain Earnings",
+    blurb: "The Pyth ledger — Petitions & Pondus served — plus reset and hub reporting.",
+    hash: "#earnings",
+    enabled: true,
+  },
+  {
     id: "security",
     icon: "🔑",
     title: "Security",
@@ -165,6 +173,7 @@ const VIEW_LOADERS = {
     loadVersionNetwork();
     loadDeployStatus();
   },
+  earnings: loadEarnings,
 };
 
 // Legacy (topic-2) flat hashes → their new nested homes, so old bookmarks land.
@@ -1098,6 +1107,100 @@ function openDeployStream(id) {
   });
 }
 
+// ── StoaChain Earnings (the Pyth ledger) ─────────────────────────────────────
+function renderEarningsTotals(el, t) {
+  if (!el) return;
+  el.textContent = "";
+  const int = (x) => (Number(x) || 0).toLocaleString("en-US");
+  const dec = (x) => (Number(x) || 0).toLocaleString("en-US", { maximumFractionDigits: 3 });
+  const card = (label, value) => {
+    const d = document.createElement("div");
+    d.className = "earn-card";
+    const v = document.createElement("span");
+    v.className = "earn-value";
+    v.textContent = value;
+    const l = document.createElement("span");
+    l.className = "earn-label";
+    l.textContent = label;
+    d.append(v, l);
+    return d;
+  };
+  el.append(
+    card("petitions", int(t.petitions)),
+    card("pondus", dec(t.pondus)),
+    card("transactions", int(t.transactions)),
+    card("gas reserved", int(t.gasReserved)),
+    card("failed tx", int(t.failedTransactions)),
+    card("wasted gas", int(t.wastedGasReserved)),
+  );
+}
+
+async function loadEarnings() {
+  const totals = document.getElementById("earnings-totals");
+  const toggle = document.getElementById("earn-report-toggle");
+  const label = document.getElementById("earn-report-label");
+  try {
+    const res = await fetch("/admin/pyth", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderEarningsTotals(totals, data.total || {});
+    if (toggle) toggle.checked = !!data.reportToHub;
+    if (label) {
+      label.textContent = data.reportToHub
+        ? "Reporting ON — served usage flows to the hub (mints)"
+        : "Reporting OFF — counting locally only (no minting)";
+    }
+  } catch {
+    /* leave as-is */
+  }
+}
+
+function wireEarnings() {
+  const nukeBtn = document.getElementById("earn-nuke-btn");
+  const nukeErr = document.getElementById("earn-nuke-error");
+  if (nukeBtn) {
+    nukeBtn.addEventListener("click", async () => {
+      if (
+        !window.confirm(
+          "Reset the Pyth ledger to zero? This erases the local Petitions / Pondus / transaction counts and cannot be undone.",
+        )
+      )
+        return;
+      if (nukeErr) nukeErr.hidden = true;
+      try {
+        const res = await fetch("/admin/pyth/nuke", { method: "POST", headers: { accept: "application/json" } });
+        if (!res.ok) {
+          if (nukeErr) { nukeErr.textContent = "Nuke failed — is your ancient session still valid?"; nukeErr.hidden = false; }
+          return;
+        }
+        loadEarnings();
+      } catch {
+        if (nukeErr) { nukeErr.textContent = "Network error."; nukeErr.hidden = false; }
+      }
+    });
+  }
+
+  const toggle = document.getElementById("earn-report-toggle");
+  const toggleErr = document.getElementById("earn-report-error");
+  if (toggle) {
+    toggle.addEventListener("change", async () => {
+      if (toggleErr) toggleErr.hidden = true;
+      try {
+        const res = await fetch("/admin/pyth/report", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({ enabled: toggle.checked }),
+        });
+        if (!res.ok) throw new Error("failed");
+        loadEarnings();
+      } catch {
+        toggle.checked = !toggle.checked; // revert the optimistic flip
+        if (toggleErr) { toggleErr.textContent = "Could not update the setting."; toggleErr.hidden = false; }
+      }
+    });
+  }
+}
+
 // ── init ─────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".admin-back").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -1116,6 +1219,7 @@ wireHubConfig();
 wireTxSenderForm();
 wireTxSenderBulk();
 wireDeployButton();
+wireEarnings();
 loadVersion(); // fill the brand's version chip from /healthz
 applyGate(); // render the "checking…" state before /api/me resolves
 loadMe();
