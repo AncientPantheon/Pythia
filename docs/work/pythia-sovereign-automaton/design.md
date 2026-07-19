@@ -87,10 +87,22 @@ keyed part behind a hard boundary.
    installed → available (Mnemosyne `UpdateDeployPage` pattern).
 6. **v2.0.0-release** — the major bump + changelog once the above land.
 
+## The full Codex organ — UI and everything, like Mnemosyne (IN scope)
+Pythia gets the **complete Mnemosyne Codex functionality baked in**, not a headless import:
+- The **`@ancientpantheon/codex` UI** mounted in the admin — the ancient is presented with an
+  **empty codex** they can start adding keys to, or **load** an existing codex into.
+- **Download** the codex, **re-encrypting it on the spot under a password of their choice**
+  (the export flow); **reload** a codex file, which **re-seals it under the codex key Pythia
+  holds** (the load-and-adopt flow) — the same download/reencrypt/reload cycle Mnemosyne has.
+- The **server Codex adapter** (the `MnemosyneServerCodexAdapter` shape) persists the snapshot
+  **master-key sealed via Pythia's canonical libsodium vault** (Topic 1); server-held
+  auto-unlock. `rekeyCodex` powers the download-reencrypt and load-adopt password swaps.
+- Since Pythia's admin is vanilla JS (not Next.js/React), this brings a **React island +
+  bundler** for the codex admin surface — that infrastructure is part of the work.
+
 ## Out of scope
-- A general-purpose wallet / arbitrary signing — only the two scoped autonomous actions.
+- A general-purpose wallet / arbitrary signing beyond what her cronotons need.
 - Holding or managing a gas balance (the Ouronet gas station funds).
-- A human-operated Codex signing UI like Mnemosyne's (Pythia's signing is autonomous, not manual).
 - Reward/PythXP minting — still the hub's job, unchanged.
 - Renaming the `@ancientpantheon/pythia-client` npm reads library (its consumers are external);
   the "Pythieyes" term applies to the service's constructor face + the automaton-triad organ name.

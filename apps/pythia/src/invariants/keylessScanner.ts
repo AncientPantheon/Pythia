@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 
 /**
  * Broadcast/signing symbols the KEYLESS gateway must never reference in its own
@@ -161,12 +161,21 @@ const AUTOMATON_IMPORT_RE =
   /(?:from\s+|require\s*\(\s*|import\s*\(\s*|import\s+)["']((?:\.{1,2}\/)?(?:[^"']*\/)?automaton(?:\/[^"']*)?)["']/;
 
 /**
- * Scan the CONSTRUCTOR-face files (everything except the `automaton/` boundary) for
- * any import that reaches into the keyed automaton core. Zero violations is the
- * isolation guarantee: the client request path cannot touch the Codex/signing.
+ * The composition root MAY wire the automaton core — that is its job (assembling the
+ * app, not serving a client request). Everything else (the request handlers, the
+ * dial, the keyless routes) must not reach it. These basenames are exempt from the
+ * isolation scan; the guarantee still holds for every request-path module.
+ */
+const COMPOSITION_ROOT = new Set(["index.ts", "server.ts"]);
+
+/**
+ * Scan the CONSTRUCTOR-face files (everything except the `automaton/` boundary and the
+ * composition root) for any import that reaches into the keyed automaton core. Zero
+ * violations is the isolation guarantee: the client request path cannot touch the
+ * Codex/signing.
  */
 export function scanForAutomatonImports(srcDir: string): IsolationViolation[] {
-  const files = collectConstructorFiles(srcDir);
+  const files = collectConstructorFiles(srcDir).filter((f) => !COMPOSITION_ROOT.has(basename(f)));
   const violations: IsolationViolation[] = [];
   for (const file of files) {
     const lines = readFileSync(file, "utf8").split(/\r?\n/);
