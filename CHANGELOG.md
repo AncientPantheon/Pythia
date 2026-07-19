@@ -9,6 +9,17 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.13.0] — 2026-07-19
+
+### Changed
+- **Every landing view now has its own URL** (Pantheonic Architecture §3.7). The landing's
+  Tier-1 sections and Tier-2 sub-views are addressable, deep-linkable, and back-navigable —
+  `#chains`, `#activity/arweave`, `#connectors/register`, etc. The URL hash is the source of
+  truth: the shown view is derived from it on load and on every `hashchange` (Back/forward
+  and programmatic nav), instead of flipping panels in memory behind a single opaque URL. A
+  bare section (`#connectors`) resolves deterministically to its first sub-view, so the same
+  URL always renders the same view. (The admin already followed this model.)
+
 ## [1.12.2] — 2026-07-19
 
 ### Changed

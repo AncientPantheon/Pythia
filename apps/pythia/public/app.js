@@ -700,8 +700,7 @@ async function resumePendingVerify() {
   }
   if (!pending || !pending.standard || !pending.smart) return;
 
-  showTab("connectors");
-  showConnectorSubview("register"); // switch to the register sub-panel + its tier-2 state
+  goTo("#connectors/register"); // addressable: switch to connectors + the register sub-view
   await loadHalves(); // authoritative reload to re-point selection against
   regState.selStd = regState.halves.find((h) => h["apollo-account"] === pending.standard) || null;
   regState.selSmart = regState.halves.find((h) => h["apollo-account"] === pending.smart) || null;
@@ -1300,14 +1299,39 @@ function renderTier2(name) {
     btn.dataset.tier2 = item.key;
     btn.textContent = item.label;
     btn.addEventListener("click", () => {
-      cfg.select(item.key); // the header button IS the control
-      nav.querySelectorAll("[data-tier2]").forEach((b) => b.classList.toggle("ph-btn--active", b === btn));
+      goTo("#" + name + "/" + item.key); // the URL drives the sub-view switch (§3.7)
     });
     nav.appendChild(btn);
   }
 }
 
-function showTab(name) {
+// ── URL is the source of truth for the active view (§3.7 Pantheonic Architecture) ──
+// Every Tier-1 section (#chains) and Tier-2 sub-view (#chains/stoachain) is its own
+// deep-linkable, back-navigable URL. Nav controls set location.hash; the hash drives
+// what renders — never in-memory panel flipping behind a static, opaque URL.
+const SECTIONS = ["chains", "activity", "connectors", "developers"];
+const DEFAULT_SECTION = "chains";
+
+function parseHash() {
+  const [section, sub] = location.hash.replace(/^#/, "").split("/");
+  return { section, sub };
+}
+
+// Navigate by URL: set the hash (fires hashchange → routeFromHash). When the hash is
+// already the target (no event fires), route directly so the click still acts.
+function goTo(hash) {
+  if (location.hash === hash) routeFromHash();
+  else location.hash = hash;
+}
+
+// The router: derive the shown section + sub-view FROM the URL. Runs on load and on
+// every hashchange (Back/forward + programmatic nav), so the URL and the view can't drift.
+function routeFromHash() {
+  const { section, sub } = parseHash();
+  showTab(SECTIONS.includes(section) ? section : DEFAULT_SECTION, sub);
+}
+
+function showTab(name, wantSub) {
   // Tier-1 section nav lives in the header (.ph-tier1); mark the active button.
   document.querySelectorAll(".ph-tier1 [data-tab]").forEach((t) => {
     t.classList.toggle("ph-btn--active", t.dataset.tab === name);
@@ -1315,12 +1339,24 @@ function showTab(name) {
   document.querySelectorAll(".tabpanel").forEach((p) => {
     p.hidden = p.dataset.panel !== name;
   });
-  renderTier2(name); // repopulate the header's tier-2 sub-nav for this section
   // The work-area scrolls internally on the landing — reset it to the top so a
   // new section starts at its head, not wherever the previous one was scrolled.
   const wa = document.querySelector(".work-area");
   if (wa) wa.scrollTop = 0;
-  if (name === "activity") showActivityChain(currentActivityChain); // per-chain usage view
+
+  // Apply the Tier-2 sub-view named in the URL (or the section's current/first).
+  // Done BEFORE renderTier2 so its active-marking reads the state we just set.
+  const cfg = TIER2[name];
+  if (cfg) {
+    const keys = cfg.items().map((i) => i.key);
+    // A bare section URL (#connectors) resolves to its FIRST sub deterministically —
+    // never to last-used in-memory state, so the same URL always renders the same view.
+    const sub = wantSub && keys.includes(wantSub) ? wantSub : keys[0];
+    if (sub) cfg.select(sub); // selectChain / showActivityChain / showConnectorSubview
+  }
+  renderTier2(name); // repopulate the header's tier-2 sub-nav for this section
+
+  // Section-entry loads not owned by a sub-view.
   if (name === "connectors") {
     loadDualLinks(); // default sub-tab; halves load lazily on the register tab
     if (regState.loaded) loadHalves();
@@ -1332,7 +1368,7 @@ function wireTabs() {
   document.querySelectorAll("[data-tab]").forEach((elm) => {
     elm.addEventListener("click", (e) => {
       if (elm.tagName === "A") e.preventDefault(); // hero CTAs are tab switchers
-      showTab(elm.dataset.tab);
+      goTo("#" + elm.dataset.tab); // the URL drives the switch (§3.7)
     });
   });
 }
@@ -1366,9 +1402,11 @@ function wireArtToggle() {
 wireTabs();
 wireArtToggle();
 wireConnectors();
-selectChain(currentChainId); // render the initial chain module (selector is in the header tier-2)
 startHealthPill();
 loadMe(); // /api/me → renders the header (+ an Admin link for ancients → /admin)
 loadPyth();
-showTab("chains");
+// The URL is the source of truth: derive the initial view from the hash, and re-derive
+// on every hashchange (Back/forward + programmatic nav). Replaces the fixed default tab.
+window.addEventListener("hashchange", routeFromHash);
+routeFromHash();
 resumePendingVerify(); // if we just came back from a verifier, restore + light up Link
