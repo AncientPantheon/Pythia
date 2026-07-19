@@ -9,6 +9,16 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.13.1] — 2026-07-19
+
+### Fixed
+- **The Pyth ledger now survives redeploys.** `PYTH_LEDGER_FILE` was never set, so the
+  Activity/Earnings ledger (Petitions/Pondus + Transactions/Gas) defaulted to the ephemeral
+  container filesystem — every deploy or restart started a fresh container with an empty
+  ledger, so accumulated reads vanished. The Dockerfile now bakes
+  `PYTH_LEDGER_FILE=/data/pyth-ledger.json`, co-located with the other `/data` stores, so
+  the counts persist across deploys. (Unrelated to the 1.13.0 deep-link change.)
+
 ## [1.13.0] — 2026-07-19
 
 ### Changed

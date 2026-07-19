@@ -1,6 +1,6 @@
 {
   "name": "@ancientpantheon/pythia",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "description": "Pythia gateway service — the private Hono runtime that serves the pooled, failover-safe read API. Deployed, never published.",
   "private": true,
   "type": "module",

@@ -45,6 +45,10 @@ ENV PORT=8080
 # volume so counts survive redeploys (see DEPLOY.md). Attribution keys come from
 # PYTHIA_API_KEYS at deploy (kept out of the image).
 ENV STATS_FILE=/data/stats.json
+# The Pyth-economy ledger (Petitions/Pondus + Transactions/Gas, the Activity view) —
+# MUST be on the /data volume or every redeploy resets it (a fresh container starts
+# with an empty ledger). This is the counter behind StoaChain Activity/Earnings.
+ENV PYTH_LEDGER_FILE=/data/pyth-ledger.json
 # Runtime connector registry (admin-managed) — also on the /data volume so
 # registered connectors + their key hashes survive redeploys.
 ENV CONNECTORS_FILE=/data/connectors.json
