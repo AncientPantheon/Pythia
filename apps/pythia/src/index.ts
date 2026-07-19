@@ -21,6 +21,8 @@ import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
 import { SettingsStore } from "./admin/settingsStore.js";
 import { SealedStore } from "./codex/sealedStore.js";
+import { CodexStore } from "./automaton/codexStore.js";
+import { registerCodexAdmin } from "./automaton/codexAdmin.js";
 import { fetchAvailableVersion, isNewer } from "./admin/versionInfo.js";
 import { PYTHIA_VERSION } from "./version.js";
 import { TxSenderStore } from "./txsenders/store.js";
@@ -322,6 +324,11 @@ if (oidcConfig) {
   // On-box blue-green Deploy API (Update & Deploy panel backend): ancient-gated,
   // same OIDC config as the rest of the admin surface. See ./routes/adminDeploy.ts.
   registerAdminDeploy(app, oidcConfig);
+
+  // The Codex organ (the keyed sovereign half): the server-custody adapter + the
+  // load/download/reload flows behind the codex-ui. Composition-root wiring of the
+  // automaton core — the client request path never reaches it. See src/automaton/.
+  registerCodexAdmin(app, oidcConfig, new CodexStore(sealedVault));
 }
 
 // The dedicated ancient-admin dashboard page. Served as its own document at
