@@ -137,6 +137,14 @@ const TILES = [
     hash: "#security",
     enabled: true,
   },
+  {
+    id: "codex",
+    icon: "📓",
+    title: "Codex",
+    blurb: "Pythia's sovereign key vault — add/load keys, download & reload, sealed at rest.",
+    hash: "#codex",
+    enabled: true,
+  },
 ];
 
 // The chains the Blockchain Connectors list offers (future chains slot in here).
@@ -176,6 +184,7 @@ const VIEW_LOADERS = {
   },
   earnings: loadEarnings,
   security: loadSecurity,
+  codex: loadCodexIsland,
 };
 
 // Legacy (topic-2) flat hashes → their new nested homes, so old bookmarks land.
@@ -1407,6 +1416,27 @@ function wireSecurity() {
       if (err) { err.textContent = "Network error."; err.hidden = false; }
     }
   });
+}
+
+// ── Codex island (the React codex-ui, lazy-loaded on first open) ──────────────
+// The 1.9MB bundle only loads when the Codex section is first opened. It mounts
+// itself into #codex-island (replacing the loading note) — see codex-ui/index.tsx.
+let codexIslandLoaded = false;
+function loadCodexIsland() {
+  if (codexIslandLoaded) return;
+  codexIslandLoaded = true;
+  const css = document.createElement("link");
+  css.rel = "stylesheet";
+  css.href = "/codex-island.css";
+  document.head.appendChild(css);
+  const js = document.createElement("script");
+  js.type = "module";
+  js.src = "/codex-island.js";
+  js.onerror = () => {
+    const el = document.getElementById("codex-loading");
+    if (el) el.textContent = "Could not load the Codex bundle — run `npm run build:island`.";
+  };
+  document.body.appendChild(js);
 }
 
 // ── init ─────────────────────────────────────────────────────────────────────

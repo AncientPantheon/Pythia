@@ -1,0 +1,66 @@
+/* Pythia Codex island chrome — the shell around the @ancientpantheon/codex UI
+ * (ported from Mnemosyne's app/codex/app.css `cxpg-*` + the modal). The package's
+ * own component styles come from @ancientpantheon/codex/ui.css. Pythia theme tokens. */
+
+.cxpg-container { color: var(--ink, #e8ecf6); font-size: 14px; }
+
+.cxpg-topbar {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; margin-bottom: 14px;
+}
+.cxpg-topbar-left { min-width: 0; }
+.cxpg-topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cxpg-titlerow { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.cxpg-brand { margin: 0; font-size: 18px; font-weight: 700; color: var(--ink, #e8ecf6); display: inline-flex; gap: 6px; align-items: baseline; }
+.cxpg-brand-mark { color: var(--gold, #e6be6a); }
+.cxpg-badge {
+  padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--gold, #e6be6a);
+  border: 1px solid var(--gold-dim, #b8912f); background: rgba(230,190,106,.08);
+}
+.cxpg-tagline { margin: 0; font-size: 12px; color: var(--ink-mute, #8a93ad); }
+
+.cxpg-viewtabs { display: inline-flex; gap: 6px; margin-top: 10px; }
+.cxpg-viewtab {
+  padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--line, #24304f); background: rgba(255,255,255,.03); color: var(--ink-soft, #c3cbe0);
+}
+.cxpg-viewtab--active { border-color: var(--gold-dim, #b8912f); color: var(--gold, #e6be6a); background: rgba(230,190,106,.07); }
+
+.cxpg-bodycard {
+  border: 1px solid var(--line, #24304f); border-radius: 14px;
+  background: color-mix(in srgb, var(--panel, #10162e) 82%, transparent); padding: 16px;
+}
+.cxpg-separator { height: 1px; background: var(--line, #24304f); margin: 14px 0; }
+.cxpg-codexbar-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+
+.cxpg-card { border: 1px solid var(--line, #24304f); border-radius: 12px; background: rgba(255,255,255,.025); padding: 16px; }
+.cxpg-card--status { max-width: 520px; margin: 24px auto; text-align: center; }
+.cxpg-app.cxpg-landing { padding: 20px 0; }
+.cxpg-title { margin: 0 0 8px; color: var(--ink, #e8ecf6); }
+.cxpg-note { margin: 0 0 10px; font-size: 13px; color: var(--ink-mute, #8a93ad); }
+.cxpg-status { color: var(--ink-soft, #c3cbe0); }
+.cxpg-error { color: #f0736b; font-size: 13px; margin: 8px 0 0; }
+
+.cxpg-btn {
+  padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--line, #24304f); background: rgba(255,255,255,.03); color: var(--ink, #e8ecf6);
+}
+.cxpg-btn:hover { border-color: var(--gold-dim, #b8912f); }
+.cxpg-btn--sm { padding: 4px 10px; font-size: 12px; }
+.cxpg-btn--ghost { background: rgba(255,255,255,.03); }
+.cxpg-btn--primary { border-color: transparent; color: #1a1204; background: linear-gradient(180deg, var(--gold, #e6be6a) 0%, var(--gold-dim, #b8912f) 100%); }
+.cxpg-btn:disabled { opacity: .55; cursor: default; }
+
+/* Download / Load modal */
+.pyth-modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+  background: rgba(4,6,14,.72); padding: 20px;
+}
+.pyth-modal { width: min(440px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.pyth-modal-input {
+  width: 100%; padding: 9px 11px; border-radius: 8px; font-size: 14px;
+  border: 1px solid var(--line, #24304f); background: var(--bg-2, #131a34); color: var(--ink, #e8ecf6);
+}
+.pyth-modal-ack { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft, #c3cbe0); }
+.pyth-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }

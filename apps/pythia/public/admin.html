@@ -218,6 +218,13 @@
               </div>
               <p class="conn-error" id="sec-clear-error" hidden></p>
             </section>
+
+            <section class="admin-view" data-view="codex" hidden>
+              <!-- Pythia's sovereign Codex (the keyed automaton half). The React
+                   codex-ui island (public/codex-island.js) mounts into #codex-island,
+                   lazy-loaded on first open by loadCodexIsland() in admin.js. -->
+              <div id="codex-island"><p class="panel-note" id="codex-loading">Opening the Codex…</p></div>
+            </section>
           </div>
         </div>
       </div>

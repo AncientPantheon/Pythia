@@ -57,3 +57,7 @@ pythia-txsenders.json
 # local dev OIDC env — holds a localhost-only OIDC client; NEVER commit (repo is
 # public). Loaded by scripts/localhost-dev.mjs (the `npm run dev` start path).
 *.local.env
+
+# codex-ui island bundle (built by scripts/build-codex-island.mjs)
+apps/pythia/public/codex-island.js
+apps/pythia/public/codex-island.css
