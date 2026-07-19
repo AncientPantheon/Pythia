@@ -68,9 +68,11 @@ export interface SlotMeter {
 /**
  * Keyless Pyth-economy metering. After each operational request it records the
  * six ledger counters:
- *  - keyed **read/poll** (HTTP <400) → a Petition + its Pondus weight (read
- *    classBase 10 + node gas + response bytes; poll classBase 5, no gas).
- *    Anonymous reads are served but never earn, so they are not metered.
+ *  - **read/poll** (HTTP <400) → a Petition + its Pondus weight (read classBase 10 +
+ *    node gas + response bytes; poll classBase 5, no gas) in Pythia's OWN fleet
+ *    ledger — for EVERY served read, anonymous included (observation). Only KEYED
+ *    reads' pondus flows onward to the per-slot hub report (the minting path); an
+ *    anonymous read counts for Pythia but earns no operator any PythXP.
  *  - **send** → a relay of N txs: HTTP 2xx = accepted (transactions + reserved
  *    gas); HTTP 502 = relay-rejected (failed-transactions + wasted gas). A
  *    400/413/503 is not a relay attempt and is skipped.
@@ -101,21 +103,21 @@ export function pythMeterMiddleware(
         if (status >= 400) return; // not served
         const keyed = resolveConsumer(c.req.header(CONSUMER_HEADER)) !== "direct";
 
-        // Compute pondus once (only when keyed — anon reads earn nothing). Feeds
-        // the fleet ledger (keyed reads/polls) and the per-slot keyedPondus.
-        let pondusVal = 0;
-        if (keyed) {
-          const bodyText = await c.res.clone().text();
-          const responseBytes = Buffer.byteLength(bodyText, "utf8");
-          const classBase = endpoint === "read" ? CLASS_BASE.read : CLASS_BASE.poll;
-          const gasUsed = endpoint === "read" ? gasFromLocalResponse(bodyText) : 0;
-          pondusVal = pondus({ classBase, gasUsed, responseBytes });
-          ledger.recordRead(pondusVal); // fleet ledger — keyed reads/polls only
-        }
+        // Compute pondus for EVERY served read/poll and record it in Pythia's OWN
+        // fleet ledger — anonymous (non-Pythia-keyed) reads count toward her
+        // Petitions/Pondus too, for observation. They just never earn: only KEYED
+        // pondus flows to the per-slot hub report (the minting path) below.
+        const bodyText = await c.res.clone().text();
+        const responseBytes = Buffer.byteLength(bodyText, "utf8");
+        const classBase = endpoint === "read" ? CLASS_BASE.read : CLASS_BASE.poll;
+        const gasUsed = endpoint === "read" ? gasFromLocalResponse(bodyText) : 0;
+        const pondusVal = pondus({ classBase, gasUsed, responseBytes });
+        ledger.recordRead(pondusVal); // fleet ledger — ALL served reads/polls
 
         // Per-slot usage (the money path): hub-slot READS only (§4.3 excludes
-        // polls), keyed AND anon. operatorForSlot is undefined for a non-hub id
-        // (Upload-Pool/seed) — those never earn and are not reported.
+        // polls), keyed AND anon recorded, but only KEYED pondus earns.
+        // operatorForSlot is undefined for a non-hub id (Upload-Pool/seed) — those
+        // never earn and are not reported.
         if (slot && endpoint === "read") {
           const slotId = c.get("servedSlotId");
           if (slotId) {

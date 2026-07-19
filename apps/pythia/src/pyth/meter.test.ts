@@ -80,11 +80,13 @@ describe("pythMeterMiddleware", () => {
     expect(t.pondus).toBeGreaterThan(363); // 10 + √500000/2 + bytes/4096
   });
 
-  it("does NOT meter an anonymous read (no key)", async () => {
+  it("meters an anonymous read into Pythia's OWN ledger (observational — counts, never earns)", async () => {
     const l = ledger();
     const app = appWith(l, (c) => c.json({ gas: 100, result: {} }));
-    await app.request("/stoachain/read", { method: "POST", body: "{}" });
-    expect(l.total().petitions).toBe(0);
+    await app.request("/stoachain/read", { method: "POST", body: "{}" }); // no key → anon
+    const t = l.total();
+    expect(t.petitions).toBe(1); // anonymous reads now move Pythia's Petitions...
+    expect(t.pondus).toBeGreaterThan(10); // ...and Pondus (classBase 10 + gas + bytes)
   });
 
   it("meters a keyed poll with classBase 5 and no gas", async () => {
@@ -200,7 +202,7 @@ describe("pythMeterMiddleware", () => {
     expect(ok).toBe(true);
   });
 
-  it("records an anonymous hub-slot read (anon, no pondus) but leaves the fleet ledger untouched", async () => {
+  it("records an anonymous hub-slot read with ZERO earning pondus, but still counts it in Pythia's ledger", async () => {
     const l = ledger();
     const recorded: unknown[][] = [];
     const slot = {
@@ -215,9 +217,10 @@ describe("pythMeterMiddleware", () => {
     });
     await app.request("/stoachain/read", { method: "POST", body: "{}" }); // no key → anon
     expect(recorded).toHaveLength(1);
-    expect(recorded[0][2]).toBe(false); // keyed
+    expect(recorded[0][2]).toBe(false); // keyed = false
     expect(recorded[0][1]).toBe(null); // operator
-    expect(l.total().petitions).toBe(0); // anon never earns in the fleet ledger
+    expect(recorded[0][4]).toBe(0); // per-slot EARNING pondus is 0 for anon — never mints
+    expect(l.total().petitions).toBe(1); // ...but Pythia's own ledger counts it
   });
 
   it("does NOT record a read served by a non-hub node (operatorForSlot undefined)", async () => {

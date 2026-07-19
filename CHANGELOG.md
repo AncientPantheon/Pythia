@@ -9,6 +9,17 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [1.12.2] — 2026-07-19
+
+### Changed
+- **Anonymous reads now count in Pythia's own ledger.** Every served read/poll — including
+  anonymous (non-Pythia-keyed) ones — now moves Pythia's **Petitions + Pondus** (her own
+  service volume, observational). The **minting path is unchanged**: only *keyed* reads
+  served by *hub* nodes contribute earning Pondus to the per-slot hub report, so an
+  anonymous read counts for Pythia but earns no operator any PythXP. Sends remain
+  Transactions/Gas and never mint. (Previously anonymous reads were served but not metered
+  at all, so a plain dirty read left the ledger at zero.)
+
 ## [1.12.1] — 2026-07-18
 
 ### Changed
