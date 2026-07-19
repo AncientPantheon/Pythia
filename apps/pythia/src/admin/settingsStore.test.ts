@@ -1,20 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
 import { SettingsStore } from "./settingsStore.js";
-import { SealedVault } from "./sealedVault.js";
+import { SealedStore } from "../codex/sealedStore.js";
+import { ensureSodiumReady, parseMasterKey } from "../codex/vault.js";
 
 let dir: string;
 const fresh = () => new SettingsStore({ filePath: join(dir, "settings.json") });
 
-const VKEY = "master key for settings-store vault tests";
+const VKEY = Buffer.from(new Uint8Array(32).fill(11)).toString("base64");
+const VKEY2 = Buffer.from(new Uint8Array(32).fill(22)).toString("base64");
 const openVault = (masterKey?: string) =>
-  new SealedVault({ filePath: join(dir, "vault.json"), masterKey });
+  new SealedStore({ dir: join(dir, "vault"), keyProvider: () => parseMasterKey(masterKey) });
 const sealed = (masterKey: string | undefined = VKEY) =>
   new SettingsStore({ filePath: join(dir, "settings.json"), vault: openVault(masterKey) });
 
+beforeAll(async () => {
+  await ensureSodiumReady();
+});
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "pythia-settings-"));
 });
@@ -74,18 +78,6 @@ describe("SettingsStore — sealed vault (master key present)", () => {
     expect(raw).not.toContain("NEVER_PLAINTEXT_7a7a");
   });
 
-  it("migrates a legacy plaintext secret into the vault on load and strips it", () => {
-    // Legacy: written plaintext by a keyless store.
-    fresh().setHubConfig({ hubBaseUrl: "https://hub.test", hmacSecret: "legacyPlain" });
-    expect(readFileSync(join(dir, "settings.json"), "utf8")).toContain("legacyPlain");
-    // Open WITH a vault → migration seals + strips.
-    const migrated = sealed();
-    expect(migrated.hubConfig()).toEqual({ baseUrl: "https://hub.test", secret: "legacyPlain" });
-    expect(readFileSync(join(dir, "settings.json"), "utf8")).not.toContain("legacyPlain");
-    // And it survives the next cold load from the vault.
-    expect(sealed().hubConfig()?.secret).toBe("legacyPlain");
-  });
-
   it("securityStatus reports sealed mode + a fingerprint once a secret is sealed", () => {
     const s = sealed();
     s.setHubConfig({ hmacSecret: "s1" });
@@ -122,7 +114,7 @@ describe("SettingsStore — plaintext fallback (no master key)", () => {
     sealed(VKEY).setHubConfig({ hubBaseUrl: "https://hub.test", hmacSecret: "sealedSecret" });
     const wrong = new SettingsStore({
       filePath: join(dir, "settings.json"),
-      vault: new SealedVault({ filePath: join(dir, "vault.json"), masterKey: "the wrong key" }),
+      vault: openVault(VKEY2), // a different valid key
     });
     expect(wrong.hubConfig()).toBeNull(); // feed falls back to env/off, not a stale secret
     expect(wrong.hasSecret()).toBe(false);

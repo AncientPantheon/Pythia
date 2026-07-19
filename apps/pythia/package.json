@@ -16,11 +16,15 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.0",
     "@noble/hashes": "^1.8.0",
     "@stoachain/dalos-crypto": "^4.0.3",
     "hono": "^4.12.0",
-    "@hono/node-server": "^2.0.0",
-    "jose": "^5.9.6"
+    "jose": "^5.9.6",
+    "libsodium-wrappers": "^0.8.4"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/libsodium-wrappers": "^0.7.14"
+  }
 }

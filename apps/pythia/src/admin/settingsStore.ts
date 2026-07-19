@@ -1,14 +1,14 @@
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { HubConfig } from "../hub/serviceClient.js";
-import type { SealedVault, VaultStatus } from "./sealedVault.js";
+import type { SealedStore, SealedStoreStatus } from "../codex/sealedStore.js";
 
-/** The name the hub HMAC secret is sealed under inside the vault. */
+/** The name the hub HMAC secret is sealed under inside the canonical vault. */
 const HUB_SECRET_NAME = "hubHmacSecret";
 
 /** The vault status the Security admin panel renders, plus whether the store is
  * currently operating in plaintext-fallback (no master key) rather than sealing. */
-export interface SecurityStatus extends VaultStatus {
+export interface SecurityStatus extends SealedStoreStatus {
   plaintextFallback: boolean;
 }
 
@@ -19,11 +19,10 @@ export interface SecurityStatus extends VaultStatus {
  * temp+rename (modelled on `connectors/store.ts`).
  *
  * The hub HMAC secret is a bearer credential Pythia must USE to sign feed requests,
- * so it cannot be hashed. When a {@link SealedVault} is injected AND unlocked (a
- * `PYTHIA_MASTER_KEY` is set), the secret is SEALED at rest in the vault and never
- * written to this file — and any legacy plaintext secret found here is migrated
- * into the vault and stripped on load. With no master key (dev), it falls back to
- * plaintext in this file, exactly as before. Either way the file lives on the
+ * so it cannot be hashed. When a {@link SealedStore} is injected AND unlocked (a
+ * `PYTHIA_MASTER_KEY` is set), the secret is SEALED at rest in the canonical vault
+ * (libsodium, `automaton/02`) and never written to this file. With no master key
+ * (dev), it falls back to plaintext in this file. Either way the file lives on the
  * container-private `/data` volume (never the repo); the UI treats the secret
  * write-only (masked, never returned to the browser).
  */
@@ -40,13 +39,12 @@ const DEFAULT_HUB_BASE_URL = "https://ancientholdings.eu";
 export class SettingsStore {
   private settings: HubSettings = {};
   private readonly filePath: string;
-  private readonly vault?: SealedVault;
+  private readonly vault?: SealedStore;
 
-  constructor(opts: { filePath: string; vault?: SealedVault }) {
+  constructor(opts: { filePath: string; vault?: SealedStore }) {
     this.filePath = opts.filePath;
     this.vault = opts.vault;
     this.load();
-    this.migratePlaintextIntoVault();
   }
 
   private load(): void {
@@ -61,17 +59,6 @@ export class SettingsStore {
   /** True when the store is sealing (a vault is injected and its master key is set). */
   private sealing(): boolean {
     return this.vault?.isUnlocked() === true;
-  }
-
-  /** One-time on load: if we can seal and a legacy plaintext secret is present in
-   * settings.json, move it into the vault and strip it from the plaintext file. */
-  private migratePlaintextIntoVault(): void {
-    const legacy = this.settings.hmacSecret?.trim();
-    if (this.sealing() && legacy) {
-      this.vault!.set(HUB_SECRET_NAME, legacy);
-      this.settings.hmacSecret = undefined;
-      this.persist();
-    }
   }
 
   /** The effective secret regardless of storage mode: the vault when sealing, else
@@ -125,7 +112,7 @@ export class SettingsStore {
   /** The vault status (for the ancient-gated Security panel) + whether the store is
    * currently in plaintext-fallback (no master key) rather than sealing. */
   securityStatus(): SecurityStatus {
-    const base: VaultStatus = this.vault
+    const base: SealedStoreStatus = this.vault
       ? this.vault.status()
       : { mode: "empty", unlocked: false, fingerprint: null, sealedCount: 0, names: [] };
     return { ...base, plaintextFallback: !this.sealing() };

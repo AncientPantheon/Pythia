@@ -1,29 +1,37 @@
 import { serve } from "@hono/node-server";
-import { app, statsStore, nodePool, pythLedger, txTracker, usageReporter } from "./index.js";
 import { resolvePort } from "./port.js";
+import { ensureSodiumReady } from "./codex/vault.js";
 
-const port = resolvePort();
+// Boot the wired read gateway. libsodium must be initialised BEFORE `./index.js` is
+// evaluated, because the vault-backed stores it constructs seal/unseal through it —
+// so index.js is a dynamic import AFTER `ensureSodiumReady()`.
+async function main(): Promise<void> {
+  await ensureSodiumReady();
+  const { app, statsStore, nodePool, pythLedger, txTracker, usageReporter } =
+    await import("./index.js");
 
-// Boot the wired read gateway over @hono/node-server. This is the entry the
-// Dockerfile `CMD` runs (node dist/server.js) and the `start` script mirrors.
-serve({ fetch: app.fetch, port }, (info) => {
-  // Structured boot line so the container logs show the live bind address.
-  console.log(`pythia listening on http://0.0.0.0:${info.port}`);
-});
+  const port = resolvePort();
+  serve({ fetch: app.fetch, port }, (info) => {
+    // Structured boot line so the container logs show the live bind address.
+    console.log(`pythia listening on http://0.0.0.0:${info.port}`);
+  });
 
-// Persist the usage-analytics snapshot before the container tears down so the
-// in-flight aggregates survive a restart. Flush is atomic + non-fatal.
-function shutdown(signal: string): void {
-  console.log(`pythia received ${signal} — flushing stats and exiting`);
-  statsStore.flush();
-  statsStore.stop();
-  pythLedger.persist();
-  pythLedger.stop();
-  txTracker.stop();
-  usageReporter.stop();
-  nodePool.stop();
-  process.exit(0);
+  // Persist the usage-analytics snapshot before the container tears down so the
+  // in-flight aggregates survive a restart. Flush is atomic + non-fatal.
+  function shutdown(signal: string): void {
+    console.log(`pythia received ${signal} — flushing stats and exiting`);
+    statsStore.flush();
+    statsStore.stop();
+    pythLedger.persist();
+    pythLedger.stop();
+    txTracker.stop();
+    usageReporter.stop();
+    nodePool.stop();
+    process.exit(0);
+  }
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+void main();

@@ -20,7 +20,7 @@ import { loadOidcConfig } from "./admin/oidcConfig.js";
 import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
 import { SettingsStore } from "./admin/settingsStore.js";
-import { SealedVault } from "./admin/sealedVault.js";
+import { SealedStore } from "./codex/sealedStore.js";
 import { fetchAvailableVersion, isNewer } from "./admin/versionInfo.js";
 import { PYTHIA_VERSION } from "./version.js";
 import { TxSenderStore } from "./txsenders/store.js";
@@ -95,14 +95,14 @@ function resolveConsumer(key?: string): string {
   return "direct";
 }
 
-// The sealed credential vault: bearer creds Pythia must USE (the hub HMAC secret)
-// are encrypted at rest under a master key from the deploy env (PYTHIA_MASTER_KEY,
-// off the /data volume), so a volume leak alone never yields them. With no master
-// key set (dev), the vault is locked and the settings store falls back to today's
-// plaintext path. Persisted on the `/data` volume alongside the other stores.
-export const sealedVault = new SealedVault({
-  filePath: process.env.VAULT_FILE || "./pythia-vault.json",
-  masterKey: process.env.PYTHIA_MASTER_KEY,
+// The canonical Pantheonic vault (`automaton/02`, libsodium — the same scheme as the
+// hub + Mnemosyne). Bearer creds Pythia must USE (the hub HMAC secret; soon the Codex
+// snapshot + password) are sealed at rest under `PYTHIA_MASTER_KEY` (32-byte base64),
+// server-held auto-unlock. Requires `ensureSodiumReady()` before use — server.ts awaits
+// it before this module is imported. With no master key (dev), the store is locked and
+// the settings store falls back to plaintext. Persisted on the `/data` volume.
+export const sealedVault = new SealedStore({
+  dir: process.env.PYTHIA_VAULT_DIR || "./pythia-vault",
 });
 
 // Runtime admin settings (the hub feed URL + HMAC secret), set from the
