@@ -79,9 +79,20 @@ function bannedImportPatternFor(mod: string): RegExp {
 // so it is excluded from the scan to avoid flagging its own roster.
 const SCANNER_FILENAME = "keylessScanner.ts";
 
+/**
+ * The KEYED automaton core — the sovereign half of Pythia (`automaton/02`): the
+ * Codex (signing keys) + the Khronoton (scheduled autonomous signing). The keyless
+ * invariant applies to the CONSTRUCTOR face (the client request path — "Pythiaeyes"),
+ * NOT to this directory. It is signing code by design and is proven UNREACHABLE from
+ * the constructor path by a separate isolation test, so the symbol/import scans skip
+ * it. Any dir named `automaton` anywhere in the tree is the boundary.
+ */
+export const AUTOMATON_CORE_DIR = "automaton";
+
 function collectTsFiles(dir: string, acc: string[]): void {
   for (const entry of readdirSync(dir)) {
     if (entry === "node_modules") continue;
+    if (entry === AUTOMATON_CORE_DIR) continue; // keyed core — see above.
     if (entry === SCANNER_FILENAME) continue;
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
@@ -90,6 +101,17 @@ function collectTsFiles(dir: string, acc: string[]): void {
       acc.push(full);
     }
   }
+}
+
+/**
+ * Collect the CONSTRUCTOR-face `.ts` files that must never import the keyed
+ * automaton core — every `.ts` under `srcDir` except the `automaton/` boundary
+ * itself. Used by the isolation check (the client path can't reach the keys).
+ */
+export function collectConstructorFiles(srcDir: string): string[] {
+  const acc: string[] = [];
+  collectTsFiles(srcDir, acc);
+  return acc;
 }
 
 /**
@@ -127,6 +149,35 @@ export function scanForBannedSymbols(srcDir: string): Violation[] {
  * (named, default, or bare side-effect) and CJS `require(...)`. Same
  * `node_modules`/self-exclusion walk as {@link scanForBannedSymbols}.
  */
+export interface IsolationViolation {
+  file: string;
+  specifier: string;
+  line: number;
+}
+
+// Matches an import/require whose specifier reaches the automaton core: a relative
+// `./automaton` / `../automaton[/...]` or any path segment `/automaton/`.
+const AUTOMATON_IMPORT_RE =
+  /(?:from\s+|require\s*\(\s*|import\s*\(\s*|import\s+)["']((?:\.{1,2}\/)?(?:[^"']*\/)?automaton(?:\/[^"']*)?)["']/;
+
+/**
+ * Scan the CONSTRUCTOR-face files (everything except the `automaton/` boundary) for
+ * any import that reaches into the keyed automaton core. Zero violations is the
+ * isolation guarantee: the client request path cannot touch the Codex/signing.
+ */
+export function scanForAutomatonImports(srcDir: string): IsolationViolation[] {
+  const files = collectConstructorFiles(srcDir);
+  const violations: IsolationViolation[] = [];
+  for (const file of files) {
+    const lines = readFileSync(file, "utf8").split(/\r?\n/);
+    lines.forEach((text, i) => {
+      const m = AUTOMATON_IMPORT_RE.exec(text);
+      if (m) violations.push({ file, specifier: m[1], line: i + 1 });
+    });
+  }
+  return violations;
+}
+
 export function scanForBannedImports(srcDir: string): ImportViolation[] {
   const files: string[] = [];
   collectTsFiles(srcDir, files);

@@ -10,6 +10,7 @@ import {
   BANNED_IMPORT_MODULES,
   scanForBannedSymbols,
   scanForBannedImports,
+  scanForAutomatonImports,
 } from "../src/invariants/keylessScanner.js";
 
 const SERVICE_SRC = join(
@@ -157,6 +158,7 @@ describe("keyless invariant scanner", () => {
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir)) {
         if (entry === "node_modules") continue;
+        if (entry === "automaton") continue; // keyed core — exempt (signs by design)
         const full = join(dir, entry);
         if (statSync(full).isDirectory()) walk(full);
         else if (entry.endsWith(".ts") && !ENFORCEMENT_FILES.has(basename(full))) {
@@ -176,6 +178,43 @@ describe("keyless invariant scanner", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  describe("automaton-core isolation (the keyed sovereign half)", () => {
+    it("EXEMPTS the automaton/ boundary from the symbol + import scans", () => {
+      // The keyed core signs by design — a banned symbol/import there must NOT fail
+      // keyless. Prove the exemption: seed an `automaton/` subdir with both.
+      const dir = mkdtempSync(join(tmpdir(), "pythia-exempt-"));
+      const core = join(dir, "automaton");
+      mkdirSync(core, { recursive: true });
+      writeFileSync(
+        join(core, "signer.ts"),
+        `import { createClient } from "@stoachain/kadena-stoic-legacy/client";\nconst c = createClient(); c.submit(); c.listen();\n`,
+      );
+      writeFileSync(join(dir, "reader.ts"), `export const x = 1;\n`);
+      expect(scanForBannedSymbols(dir)).toEqual([]); // core's symbols skipped
+      expect(scanForBannedImports(dir)).toEqual([]);
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("FLAGS a constructor file that imports the automaton core", () => {
+      const dir = mkdtempSync(join(tmpdir(), "pythia-isolation-"));
+      mkdirSync(join(dir, "automaton"), { recursive: true });
+      writeFileSync(join(dir, "automaton", "keys.ts"), `export const k = 1;\n`);
+      writeFileSync(
+        join(dir, "leak.ts"),
+        `import { k } from "./automaton/keys.js";\nexport const y = k;\n`,
+      );
+      const violations = scanForAutomatonImports(dir);
+      expect(violations.some((v) => v.file.endsWith("leak.ts"))).toBe(true);
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("the REAL constructor face imports nothing from the automaton core", () => {
+      // The isolation guarantee against the live tree: no client-path module reaches
+      // the Codex/signing. (Zero now, and it must stay zero as the core fills in.)
+      expect(scanForAutomatonImports(SERVICE_SRC)).toEqual([]);
+    });
   });
 
   it("catches a banned module smuggled in via DYNAMIC import()", () => {
