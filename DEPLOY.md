@@ -40,12 +40,22 @@ stack, an ingress), update this section to match it.
 | `PYTHIA_SESSION_SECRET` | no* | — | ≥32-char random secret Pythia uses to sign its own admin session + login-state cookies (HS256). Generate at deploy, e.g. `openssl rand -hex 32`. |
 | `PYTHIA_OIDC_ISSUER` | no | `https://ancientholdings.eu` | The IdP issuer / discovery base. Override only for a non-prod hub. |
 | `PYTHIA_OIDC_REDIRECT_URI` | no | `https://pythia.ancientholdings.eu/admin/callback` | Must match the URI registered with the hub **byte-for-byte**. |
+| `PYTHIA_MASTER_KEY` | no† | — | **Base64-encoded 32 bytes** (`openssl rand -base64 32`) — the libsodium secretbox key that seals the credential store + Pythia's Codex at rest. A **deploy-env secret, kept OFF the `/data` volume**. Absent → the store is locked: Pythia serves reads but cannot unseal the hub secret or sign. See [`docs/OPS-master-key.md`](docs/OPS-master-key.md). |
+| `PYTHIA_VAULT_DIR` | no | `/data/vault` (image default) | Directory of `<name>.sealed` entries (hub HMAC secret + Codex), sealed under `PYTHIA_MASTER_KEY`. On the `/data` volume so it survives redeploys. |
+| `PYTHIA_KHRONOTON_DIR` | no | `/data/khronoton` (image default) | The Khronoton cronoton store (`better-sqlite3` db + audit JSONL) — the scheduled-signing schedule + fire history. On the `/data` volume so cronotons survive redeploys. |
+| `KHRONOTON_DISABLED` | no | — | Set to `1` to keep the Khronoton engine from starting (kill switch). Absent → the engine boots dormant and ticks with whatever cronotons are scheduled. |
 
 \* The `/admin` connector-manager SSO gate is **optional**: it is wired only when all
 three of `PYTHIA_OIDC_CLIENT_ID`, `PYTHIA_OIDC_CLIENT_SECRET`, and
 `PYTHIA_SESSION_SECRET` are present. Absent any of them, the `/admin/*` routes are
 not registered and the public keyless gateway boots unchanged. The client secret and
 session secret are deploy-time secrets — never commit them (the repo is public).
+
+† `PYTHIA_MASTER_KEY` is optional in the sense that Pythia **boots without it** and keeps
+serving the keyless read gateway. It is **required for the sovereign half**: without it
+the hub HMAC secret and the Codex cannot be unsealed, so the hub feed falls back to the
+env secret / off and Khronoton cannot sign. Set it whenever Pythia holds sealed
+credentials or a codex.
 
 The two upstream StoaChain node URLs (primary + fallback) are **not** env vars —
 they live in the checked-in config `apps/pythia/config/pythia.config.json`, which

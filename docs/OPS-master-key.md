@@ -1,24 +1,28 @@
-# Ops — the sealed-vault master key (`PYTHIA_MASTER_KEY`)
+# Ops — the sealed-store master key (`PYTHIA_MASTER_KEY`)
 
-Pythia seals bearer credentials she must *use* (chiefly the hub M2M HMAC secret) at
-rest with **AES-256-GCM**, under a key derived from **`PYTHIA_MASTER_KEY`**. The key
-is a **deploy-env secret** — it lives in the container/systemd env, **off the `/data`
-volume**, so a leaked volume alone never yields the credentials.
+Pythia seals the credentials she must *use* (the hub M2M HMAC secret) AND her own
+operator **Codex** (the signing-key backup + its codex password) at rest under
+**`PYTHIA_MASTER_KEY`**, using the canonical Pantheon scheme — libsodium
+`crypto_secretbox` (XSalsa20-Poly1305), identical to the hub and Mnemosyne. The key is a
+**deploy-env secret**: it lives in the container/systemd env, **off the `/data`
+volume**, so a leaked volume alone never yields the secrets or the codex.
 
 Related: [`docs/HANDOFF-pythia-side-buildout.md`](HANDOFF-pythia-side-buildout.md) (the
-hub HMAC secret this seals), `apps/pythia/src/admin/sealedVault.ts` (the implementation).
+hub HMAC secret this seals), `apps/pythia/src/codex/vault.ts` (the seal primitive),
+`apps/pythia/src/codex/sealedStore.ts` (the directory store).
 
 ## What the key is
-- Any non-empty string. It is stretched with `scrypt` (per-blob random salt) to a
-  256-bit AES key, so a long passphrase or a 32-byte hex string both work. Longer =
-  better. Treat it like a root password.
-- The vault stores only `{salt, iv, ciphertext, authTag}` per credential — never the
-  key, never the plaintext.
+- **Exactly 32 bytes, base64-encoded** — `base64_decode(PYTHIA_MASTER_KEY)` must be 32
+  bytes or the store stays locked at boot. This is the raw secretbox key (not a
+  passphrase stretched with a KDF); treat it like a root password.
+- The store is a **directory** of `<name>.sealed` files on the `/data` volume, each
+  holding `nonce ‖ ciphertext` — never the key, never the plaintext. Entries today:
+  the hub HMAC secret, and the codex (`codexPassword`, `codexBackup`).
 
 ## Generate one
 ```sh
-# 32 random bytes, hex — a strong default
-openssl rand -hex 32
+# 32 random bytes, base64 — the exact format the store expects
+openssl rand -base64 32
 ```
 
 ## Set it (Ionos VPS — the blue-green containers)
@@ -35,34 +39,29 @@ PYTHIA_MASTER_KEY=<the hex from openssl>
 Verify after deploy: open **/admin → Security**. The badge should read **Sealed ✓** with
 a `master key #<fingerprint>`. `Plaintext fallback` means the key was not picked up.
 
-## First run against an existing (plaintext) secret
-On the first boot *with* a master key, any hub secret previously stored plaintext in
-`/data/settings.json` is automatically re-sealed into `/data/vault.json` and removed
-from the settings file. No action needed — confirm the Security badge shows **Sealed ✓**.
-
 ## Rotating the master key
-Rotation re-encrypts the vault from the old key to a new one. It is an **ops action**,
-never a browser field (entering a master key into a web form is exactly the credential
-handling the safety rules forbid). Procedure:
+Rotation re-seals every entry from the old key to a new one — a generic re-seal (never a
+raw key swap). It is an **ops action**, never a browser field (entering a master key into
+a web form is exactly the credential handling the safety rules forbid). Procedure:
 
-1. Generate a new key (`openssl rand -hex 32`).
-2. While the **old** key is still the live `PYTHIA_MASTER_KEY`, re-seal the vault file
-   under the new key with the tested primitive — e.g. a one-off node script on the host:
+1. Generate a new key (`openssl rand -base64 32`).
+2. While the **old** key is still the live `PYTHIA_MASTER_KEY`, re-seal the store under
+   the new key with the tested primitive — e.g. a one-off node script on the host:
    ```js
-   import { SealedVault } from "./dist/admin/sealedVault.js";
-   const v = new SealedVault({ filePath: "/data/vault.json", masterKey: OLD });
-   v.rotateMasterKey(OLD, NEW);   // re-seals every cred; old ciphertext no longer decrypts
+   import { SealedStore } from "./apps/pythia/dist/codex/sealedStore.js";
+   const s = new SealedStore({ dir: "/data/vault", keyProvider: () => decodeBase64(OLD) });
+   s.rotateMasterKey(decodeBase64(OLD), decodeBase64(NEW)); // re-seals every entry
    ```
 3. Update `PYTHIA_MASTER_KEY` to the **new** key in the deploy env and roll a deploy.
 4. Confirm **/admin → Security** shows **Sealed ✓** with the new fingerprint.
 
-If the env key is changed *without* step 2, the vault shows **Locked — key mismatch**:
-the old ciphertext won't decrypt, the hub feed falls back to the env secret / off, and
-nothing is lost — restore the correct key or re-set the secret to recover.
+If the env key is changed *without* step 2, the store shows **Locked**: the old ciphertext
+won't decrypt, the hub feed falls back to the env secret / off, signing is unavailable,
+and nothing is lost — restore the correct key or re-set the secrets to recover.
 
 ## Losing the key
-If `PYTHIA_MASTER_KEY` is lost, the sealed credentials are unrecoverable (that is the
-point). Recover by **re-setting** the secrets: set a new `PYTHIA_MASTER_KEY`, then in
-**/admin → Connectors → StoaChain → Observation Pool** paste the hub HMAC secret again
-(the hub owner re-issues it via `/hub/pythia-admin` if needed). It re-seals under the new
-key.
+If `PYTHIA_MASTER_KEY` is lost, the sealed entries are unrecoverable (that is the point).
+Recover by **re-setting** them: set a new `PYTHIA_MASTER_KEY`, then re-paste the hub HMAC
+secret in **/admin → Connectors → StoaChain → Observation Pool** (the hub owner re-issues
+it via `/hub/pythia-admin` if needed), and re-load or re-create the **Codex** in
+**/admin → Codex**. Each re-seals under the new key.

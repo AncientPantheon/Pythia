@@ -9,6 +9,49 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.0.0] — 2026-07-20
+
+**Pythia becomes a sovereign Pantheonic Automaton.** She keeps her keyless read/relay
+face for clients — now named **Pythiaeyes** — and gains a keyed sovereign core that can
+hold keys and sign her own on-chain transactions. The client-facing guarantee is
+unchanged: Pythiaeyes never holds a key and never signs.
+
+### Added
+- **Codex organ.** Pythia's own sealed key vault with the full Mnemosyne Codex UI baked
+  in (add keys to an empty codex, load an existing codex, download it re-encrypted under
+  a chosen password, reload it re-sealed under the key Pythia holds). Server-custody
+  adapter under `/admin/codex`; the React console mounts in the admin (Codex tile).
+- **Khronoton organ.** Scheduled autonomous signing. The tick engine boots dormant with
+  the app (better-sqlite3 cronoton store, the StoaChain runtime, and a codex-backed key
+  resolver that unseals the exact signing key per pubkey and refuses the wrong/unknown
+  key). Ancient-gated admin API under `/admin/khronoton` plus the full Cronoton console
+  (list / detail / builder) in the admin (Khronoton tile) — set the cronotons Pythia
+  fires on-chain, with the gas paid by the Ouronet gas station (she signs only).
+- **Sealed-credential store** upgraded to a directory of per-entry `<name>.sealed`
+  entries, sealing the hub HMAC secret AND Pythia's operator codex (password + backup)
+  at rest under a single `PYTHIA_MASTER_KEY` — the same libsodium scheme as the hub and
+  Mnemosyne. Auto-unlock at boot; locked (reads only, no signing) when the key is absent.
+- **Multi-version readout.** The Update & Deploy panel now shows the entity plus each
+  automaton organ — Pythia, Codex, Khronoton — installed→available with per-organ update
+  badges (Mnemosyne-style).
+
+### Changed
+- **The keyless invariant is reframed, not dropped.** It now guarantees the **Pythiaeyes
+  constructor face** (the client request path) holds no keys, enforced by the keyless
+  scanner PLUS a hard isolation boundary: no module outside `src/automaton/` may import
+  the keyed core (`scanForAutomatonImports`). A client request can never reach the Codex
+  or a signature.
+- **Container.** The image now builds the native `better-sqlite3` addon and both React
+  admin islands; the sealed store and cronoton store live on the `/data` volume
+  (`PYTHIA_VAULT_DIR=/data/vault`, `PYTHIA_KHRONOTON_DIR=/data/khronoton`), replacing the
+  single-file `VAULT_FILE`.
+
+### Operator notes (cutover)
+- Generate a base64 32-byte `PYTHIA_MASTER_KEY` on the box and supply it to the
+  container; without it Pythia serves reads but cannot unseal the vault or sign.
+- The vault moved from a single JSON file to a directory store, so the hub HMAC secret
+  must be re-pasted once after the cutover (Security panel).
+
 ## [1.13.1] — 2026-07-19
 
 ### Fixed

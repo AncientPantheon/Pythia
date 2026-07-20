@@ -58,20 +58,25 @@ keyed part behind a hard boundary.
       schedule — no Dalos delegation — with gas funded by the Ouronet gas station.
 - [ ] Pythia signs + submits **consumer-key API activation** transactions herself, gas via the
       station; her Codex carries **no gas balance requirement**.
-- [ ] The client request path is **provably keyless**: the rescoped `keylessScanner` passes over
+- [x] The client request path is **provably keyless**: the rescoped `keylessScanner` passes over
       the constructor modules and the request path has no import reaching the Codex/signing/Khronoton.
-- [ ] A missing/wrong Codex master key leaves the **automaton core dormant** (flush/activation
-      paused, shown in admin) while **reads keep being served** — no client-facing regression.
-- [ ] The Codex is master-key sealed with rotation, per `automaton/02` (reusing Pythia's sealed vault).
-- [ ] Naming is consistent: the entity is **Pythia (automaton)**, the constructor face is
-      **Pythiaeyes**, reflected in code + docs.
-- [ ] **Update & Deploy shows a multi-version readout** (Mnemosyne-style, `automaton/` §10 + the
-      `UpdateDeployPage` reference): installed → available for **Pythia** *and* the **Codex** and
-      **Khronoton** organs, so an operator sees when an organ upgrade is available before deploying.
+- [x] A missing/wrong Codex master key leaves the **automaton core dormant** (locked store → no
+      signing; `KHRONOTON_DISABLED` kill switch; a failed engine start is caught) while **reads keep
+      being served** — no client-facing regression.
+- [x] The Codex is master-key sealed with rotation, per `automaton/02` (the SealedStore under
+      `PYTHIA_MASTER_KEY`, libsodium secretbox, `rotateMasterKey` generic re-seal).
+- [x] Naming is consistent: the entity is **Pythia (automaton)**, the constructor face is
+      **Pythiaeyes**, reflected in code (boundary.ts, keylessScanner) + docs.
+- [x] **Update & Deploy shows a multi-version readout** (Mnemosyne-style): installed → available for
+      **Pythia** *and* the **Codex** and **Khronoton** organs, with per-organ update badges.
 - [ ] The Pantheonic Architecture library is updated (owner) to reclassify Pythia from
       "constructor-service (skips Codex/Khronoton)" to "automaton exposing the Pythiaeyes keyless
       constructor face," and to reframe the keyless invariant accordingly.
-- [ ] Ships as **v2.0.0**.
+- [x] Ships as **v2.0.0** (all four version files + CHANGELOG bumped; see cutover.md for the deploy).
+
+_Remaining (live keys + owner, post-deploy):_ the two on-chain signing actions (daily `PYTHIA.A_Flush`
++ consumer-key activation) — the engine + admin ship ready; the cronotons are set in **/admin →
+Khronoton** after the keys are added to the Codex on the box.
 
 ## Topics (project decomposition — shaped one at a time)
 1. **codex-integration** — consume `@ancientpantheon/codex`; a master-key-sealed Codex holding

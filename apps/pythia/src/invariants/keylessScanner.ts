@@ -2,11 +2,13 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
 
 /**
- * Broadcast/signing symbols the KEYLESS gateway must never reference in its own
- * source. Pythia never holds keys and never signs — it relays caller-supplied
- * payloads in either direction (a caller-signed /send broadcast is a plain fetch
- * to the node's /send, NOT any signing/submit client). These are the
- * signing/submit-client symbols that must stay out of Pythia's import graph.
+ * Broadcast/signing symbols the KEYLESS gateway — "Pythiaeyes", the constructor face
+ * that talks to clients — must never reference in its own source. Pythiaeyes never
+ * holds keys and never signs — it relays caller-supplied payloads in either direction
+ * (a caller-signed /send broadcast is a plain fetch to the node's /send, NOT any
+ * signing/submit client). These are the signing/submit-client symbols that must stay
+ * out of the constructor-face import graph. (The keyed automaton core under
+ * `src/automaton/` is exempt — see AUTOMATON_CORE_DIR + boundary.ts.)
  */
 export const BANNED_BROADCAST_SYMBOLS = [
   "submit",
@@ -34,7 +36,7 @@ export interface Violation {
 }
 
 /**
- * Module specifiers the KEYLESS gateway must never import. The sibling's
+ * Module specifiers the KEYLESS gateway (Pythiaeyes) must never import. The sibling's
  * `network` module houses the write-capable failover client
  * (`getFailoverClient`), so importing it at all puts the signing/submit surface
  * inside Pythia's import graph. Pythia relays caller-signed txs with a plain
