@@ -1051,33 +1051,33 @@ async function loadVersionNetwork() {
 }
 
 // Installed → available, Mnemosyne-style: what's running vs what a deploy would build
-// (the repo's main). Shows an update badge when available is newer, "up to date" when
-// equal, or "latest: unreachable" when the repo couldn't be read.
-function renderVersionNetwork(container, info) {
-  container.textContent = "";
+// (the repo's main). The entity (Pythia) row first, then one row per automaton organ
+// (Codex, Khronoton) from info.organs. Each row shows an update badge when available
+// is newer, "up to date" when equal, or "latest: unreachable" when unread.
+function verRow(labelText, installed, available, updateAvailable) {
   const row = document.createElement("div");
   row.className = "ver-row";
 
   const label = document.createElement("span");
   label.className = "ver-label";
-  label.textContent = "Installed";
-  const installed = document.createElement("span");
-  installed.className = "ver-installed";
-  installed.textContent = `v${info.installed || "unknown"}`;
-  row.append(label, installed);
+  label.textContent = labelText;
+  const inst = document.createElement("span");
+  inst.className = "ver-installed";
+  inst.textContent = `v${installed || "unknown"}`;
+  row.append(label, inst);
 
-  if (info.available && info.updateAvailable) {
+  if (available && updateAvailable) {
     const arrow = document.createElement("span");
     arrow.className = "ver-arrow";
     arrow.textContent = "→";
     const target = document.createElement("span");
     target.className = "ver-available";
-    target.textContent = `v${info.available}`;
+    target.textContent = `v${available}`;
     const badge = document.createElement("span");
     badge.className = "ver-badge";
     badge.textContent = "update available";
     row.append(arrow, target, badge);
-  } else if (info.available) {
+  } else if (available) {
     const ok = document.createElement("span");
     ok.className = "ver-uptodate";
     ok.textContent = "up to date";
@@ -1088,7 +1088,17 @@ function renderVersionNetwork(container, info) {
     unk.textContent = "latest: unreachable";
     row.appendChild(unk);
   }
-  container.appendChild(row);
+  return row;
+}
+
+function renderVersionNetwork(container, info) {
+  container.textContent = "";
+  container.appendChild(verRow("Pythia", info.installed, info.available, info.updateAvailable));
+  for (const organ of info.organs || []) {
+    container.appendChild(
+      verRow(organ.label, organ.installed, organ.available, organ.updateAvailable),
+    );
+  }
 }
 
 // ── on-box deploy (status readout + Deploy button + SSE build-log terminal) ───

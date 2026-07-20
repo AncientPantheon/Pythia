@@ -25,6 +25,7 @@ import { CodexStore } from "./automaton/codexStore.js";
 import { registerCodexAdmin } from "./automaton/codexAdmin.js";
 import { registerKhronotonAdmin } from "./automaton/khronoton/admin.js";
 import { fetchAvailableVersion, isNewer } from "./admin/versionInfo.js";
+import { collectOrganVersions } from "./admin/organVersions.js";
 import { PYTHIA_VERSION } from "./version.js";
 import { TxSenderStore } from "./txsenders/store.js";
 import { loadConfigFromDisk } from "./config/index.js";
@@ -318,11 +319,16 @@ if (oidcConfig) {
     // (the repo's `main`). Best-effort — `available` is null if the repo is unreachable.
     versionInfo: {
       get: async () => {
-        const available = await fetchAvailableVersion();
+        // Entity + organs read concurrently; each degrades independently.
+        const [available, organs] = await Promise.all([
+          fetchAvailableVersion(),
+          collectOrganVersions(),
+        ]);
         return {
           installed: PYTHIA_VERSION,
           available,
           updateAvailable: available ? isNewer(available, PYTHIA_VERSION) : false,
+          organs,
         };
       },
     },
