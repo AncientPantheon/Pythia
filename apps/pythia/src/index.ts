@@ -116,6 +116,11 @@ export const settingsStore = new SettingsStore({
   vault: sealedVault,
 });
 
+// Pythia's server-custody Codex (the keyed automaton half): the snapshot + machine
+// password sealed in the canonical vault above. Shared by the codex admin routes AND
+// the Khronoton key resolver (which signs Pythia's own transactions).
+export const codexStore = new CodexStore(sealedVault);
+
 // The Upload Pool: dedicated, ancient-managed nodes for signed-tx `/send` ONLY.
 // Seeded on first run with the checked-in seed nodes so sends keep working until
 // the admin curates dedicated senders. Persisted on the `/data` volume. It is
@@ -328,7 +333,7 @@ if (oidcConfig) {
   // The Codex organ (the keyed sovereign half): the server-custody adapter + the
   // load/download/reload flows behind the codex-ui. Composition-root wiring of the
   // automaton core — the client request path never reaches it. See src/automaton/.
-  registerCodexAdmin(app, oidcConfig, new CodexStore(sealedVault));
+  registerCodexAdmin(app, oidcConfig, codexStore);
 }
 
 // The dedicated ancient-admin dashboard page. Served as its own document at

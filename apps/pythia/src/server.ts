@@ -7,7 +7,7 @@ import { ensureSodiumReady } from "./codex/vault.js";
 // so index.js is a dynamic import AFTER `ensureSodiumReady()`.
 async function main(): Promise<void> {
   await ensureSodiumReady();
-  const { app, statsStore, nodePool, pythLedger, txTracker, usageReporter } =
+  const { app, statsStore, nodePool, pythLedger, txTracker, usageReporter, codexStore } =
     await import("./index.js");
 
   const port = resolvePort();
@@ -15,6 +15,11 @@ async function main(): Promise<void> {
     // Structured boot line so the container logs show the live bind address.
     console.log(`pythia listening on http://0.0.0.0:${info.port}`);
   });
+
+  // Start the Khronoton engine (the sovereign scheduled-signing loop). Dormant-safe:
+  // a failed start never takes the gateway down, and with no cronotons it just ticks.
+  const { startPythiaKhronotonEngine } = await import("./automaton/khronoton/register.js");
+  void startPythiaKhronotonEngine(codexStore);
 
   // Persist the usage-analytics snapshot before the container tears down so the
   // in-flight aggregates survive a restart. Flush is atomic + non-fatal.
@@ -27,6 +32,7 @@ async function main(): Promise<void> {
     txTracker.stop();
     usageReporter.stop();
     nodePool.stop();
+    void import("./automaton/khronoton/register.js").then((m) => m.stopPythiaKhronotonEngine());
     process.exit(0);
   }
 
