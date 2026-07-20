@@ -58,6 +58,8 @@ pythia-txsenders.json
 # public). Loaded by scripts/localhost-dev.mjs (the `npm run dev` start path).
 *.local.env
 
-# codex-ui island bundle (built by scripts/build-codex-island.mjs)
+# admin React island bundles (built by scripts/build-islands.mjs)
 apps/pythia/public/codex-island.js
 apps/pythia/public/codex-island.css
+apps/pythia/public/khronoton-island.js
+apps/pythia/public/khronoton-island.css

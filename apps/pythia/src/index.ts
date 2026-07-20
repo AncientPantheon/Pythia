@@ -23,6 +23,7 @@ import { SettingsStore } from "./admin/settingsStore.js";
 import { SealedStore } from "./codex/sealedStore.js";
 import { CodexStore } from "./automaton/codexStore.js";
 import { registerCodexAdmin } from "./automaton/codexAdmin.js";
+import { registerKhronotonAdmin } from "./automaton/khronoton/admin.js";
 import { fetchAvailableVersion, isNewer } from "./admin/versionInfo.js";
 import { PYTHIA_VERSION } from "./version.js";
 import { TxSenderStore } from "./txsenders/store.js";
@@ -334,6 +335,11 @@ if (oidcConfig) {
   // load/download/reload flows behind the codex-ui. Composition-root wiring of the
   // automaton core — the client request path never reaches it. See src/automaton/.
   registerCodexAdmin(app, oidcConfig, codexStore);
+
+  // The Khronoton organ (scheduled autonomous signing): the ancient-gated cronoton
+  // admin surface, sharing the same engine context (db + sealed-codex resolver +
+  // chain runtime) as the tick loop. Keyed automaton core — never on the client path.
+  registerKhronotonAdmin(app, oidcConfig, codexStore);
 }
 
 // The dedicated ancient-admin dashboard page. Served as its own document at

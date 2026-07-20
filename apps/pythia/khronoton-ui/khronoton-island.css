@@ -1,0 +1,71 @@
+/* Pythia Khronoton island chrome — maps the package's `--khr-*` tokens onto
+ * Pythia's night/gold palette (same values the admin shell uses), plus the small
+ * confirm-dialog chrome (a trimmed copy of the codex island's `pyth-modal` +
+ * `cxpg-*` button/card classes, so this island stands alone). The package's own
+ * component styles come from @ancientpantheon/khronoton-core/ui.css. */
+
+.pyth-khronoton {
+  --khr-bg: var(--bg, #080b16);
+  --khr-panel: var(--panel, #10162e);
+  --khr-inset: rgba(255, 255, 255, 0.025);
+  --khr-border: var(--line, #24304f);
+  --khr-text: var(--ink, #e8ecf6);
+  --khr-text-dim: var(--ink-mute, #8a93ad);
+  --khr-accent: var(--gold, #e6be6a);
+  --khr-accent-tint: rgba(230, 190, 106, 0.08);
+  --khr-radius: 12px;
+  --khr-radius-lg: 16px;
+  color: var(--ink, #e8ecf6);
+  font-size: 14px;
+}
+
+/* Confirm dialog (self-contained — mirrors codex-island.css). */
+.pyth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 6, 14, 0.72);
+  padding: 20px;
+}
+.pyth-modal {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cxpg-card {
+  border: 1px solid var(--line, #24304f);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 16px;
+}
+.cxpg-note {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ink-soft, #c3cbe0);
+}
+.cxpg-codexbar-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cxpg-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--line, #24304f);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink, #e8ecf6);
+}
+.cxpg-btn:hover {
+  border-color: var(--gold-dim, #b8912f);
+}
+.cxpg-btn--primary {
+  border-color: transparent;
+  color: #1a1204;
+  background: linear-gradient(180deg, var(--gold, #e6be6a) 0%, var(--gold-dim, #b8912f) 100%);
+}

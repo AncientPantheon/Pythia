@@ -8,8 +8,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/build-codex-island.mjs",
-    "build:island": "node scripts/build-codex-island.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-islands.mjs",
+    "build:island": "node scripts/build-islands.mjs",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
@@ -38,8 +38,10 @@
     "@types/libsodium-wrappers": "^0.7.14",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "crypto-browserify": "^3.12.1",
     "esbuild": "^0.28.1",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "stream-browserify": "^3.0.0"
   }
 }

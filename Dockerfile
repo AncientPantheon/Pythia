@@ -16,6 +16,12 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# The Khronoton organ's cronoton store is better-sqlite3 (a native addon). Alpine
+# is musl, for which no prebuilt binary is published, so `npm ci` compiles it from
+# source — that needs python3 + a C++ toolchain. These live only in the builder
+# stage; the runtime carries just the compiled .node binary.
+RUN apk add --no-cache python3 make g++
+
 # Install the whole workspace against the root manifest + lockfile for a
 # reproducible `npm ci`. Copying manifests first keeps this layer cached across
 # source-only changes.
@@ -55,11 +61,17 @@ ENV CONNECTORS_FILE=/data/connectors.json
 # Admin-managed runtime settings (hub feed URL) — on the /data volume so an
 # admin-activated feed survives redeploys.
 ENV SETTINGS_FILE=/data/settings.json
-# The sealed credential vault (the hub HMAC secret, encrypted at rest under
-# PYTHIA_MASTER_KEY) — MUST be on the /data volume and co-located with SETTINGS_FILE:
-# migration strips the plaintext from settings and seals it here, so a vault on the
-# ephemeral container FS would lose the secret on the next deploy.
-ENV VAULT_FILE=/data/vault.json
+# The sealed credential store (the hub HMAC secret AND Pythia's own operator codex —
+# codex password + encrypted backup — each sealed at rest under PYTHIA_MASTER_KEY).
+# A DIRECTORY of `<name>.sealed` entries (SealedStore), MUST be on the /data volume:
+# a store on the ephemeral container FS would lose the secret + codex on the next
+# deploy. PYTHIA_MASTER_KEY (base64, 32 bytes) is supplied at deploy, kept out of
+# the image; without it the store is locked and Pythia serves reads but cannot sign.
+ENV PYTHIA_VAULT_DIR=/data/vault
+# The Khronoton cronoton store (better-sqlite3 db + JSONL audit trail) — the
+# scheduled-signing engine's schedule + fire history. MUST be on the /data volume so
+# the cronotons an admin sets survive redeploys.
+ENV PYTHIA_KHRONOTON_DIR=/data/khronoton
 # The Upload Pool (dedicated signed-tx sender nodes) — on the /data volume so the
 # admin-curated sender list survives redeploys.
 ENV TXSENDERS_FILE=/data/txsenders.json
@@ -91,7 +103,9 @@ COPY --from=builder /app/package.json ./package.json
 # (mirrors the pool image's `test -f` guard).
 RUN test -f /app/apps/pythia/dist/server.js \
  && test -f /app/apps/pythia/config/pythia.config.json \
- && test -f /app/apps/pythia/public/index.html
+ && test -f /app/apps/pythia/public/index.html \
+ && test -f /app/apps/pythia/public/codex-island.js \
+ && test -f /app/node_modules/better-sqlite3/build/Release/better_sqlite3.node
 
 # Create a non-root user that owns the app tree. The gateway is treated as
 # compromisable, so the long-lived process never runs as root.

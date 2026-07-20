@@ -145,6 +145,14 @@ const TILES = [
     hash: "#codex",
     enabled: true,
   },
+  {
+    id: "khronoton",
+    icon: "⏳",
+    title: "Khronoton",
+    blurb: "Scheduled autonomous signing — set the cronotons Pythia fires on-chain, gas-station-paid.",
+    hash: "#khronoton",
+    enabled: true,
+  },
 ];
 
 // The chains the Blockchain Connectors list offers (future chains slot in here).
@@ -185,6 +193,7 @@ const VIEW_LOADERS = {
   earnings: loadEarnings,
   security: loadSecurity,
   codex: loadCodexIsland,
+  khronoton: loadKhronotonIsland,
 };
 
 // Legacy (topic-2) flat hashes → their new nested homes, so old bookmarks land.
@@ -1435,6 +1444,27 @@ function loadCodexIsland() {
   js.onerror = () => {
     const el = document.getElementById("codex-loading");
     if (el) el.textContent = "Could not load the Codex bundle — run `npm run build:island`.";
+  };
+  document.body.appendChild(js);
+}
+
+// ── Khronoton island (the React khronoton-ui, lazy-loaded on first open) ──────
+// The bundle only loads when the Khronoton section is first opened. It mounts into
+// #khronoton-island (replacing the loading note) — see khronoton-ui/index.tsx.
+let khronotonIslandLoaded = false;
+function loadKhronotonIsland() {
+  if (khronotonIslandLoaded) return;
+  khronotonIslandLoaded = true;
+  const css = document.createElement("link");
+  css.rel = "stylesheet";
+  css.href = "/khronoton-island.css";
+  document.head.appendChild(css);
+  const js = document.createElement("script");
+  js.type = "module";
+  js.src = "/khronoton-island.js";
+  js.onerror = () => {
+    const el = document.getElementById("khronoton-loading");
+    if (el) el.textContent = "Could not load the Khronoton bundle — run `npm run build:island`.";
   };
   document.body.appendChild(js);
 }
