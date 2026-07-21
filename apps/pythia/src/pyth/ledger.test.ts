@@ -172,6 +172,14 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
     expect(l.beginFlush().entries.map((e) => e.day)).toEqual([3]);
   });
 
+  it("previewEntries mirrors beginFlush without mutating (the admin monitor)", () => {
+    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    l.recordRead(10);
+    const preview = l.previewEntries();
+    expect(preview).toEqual(l.beginFlush().entries); // same content
+    expect(l.total().petitions).toBe(1); // no drain
+  });
+
   it("excludes pre-epoch buckets (day < 1 is not flushable on-chain)", () => {
     const { l, set } = mkAt("2026-07-20T08:00:00.000Z"); // ordinal 0 — before epoch
     l.recordRead(9);

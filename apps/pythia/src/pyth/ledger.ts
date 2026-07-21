@@ -241,6 +241,15 @@ export class PythLedger {
   }
 
   /**
+   * The entries a flush would send RIGHT NOW — a side-effect-free snapshot for the admin
+   * monitor (what goes on-chain if the flush fires). Same builder as {@link beginFlush},
+   * without the drain token; never mutates the ledger.
+   */
+  previewEntries(): PythFlushEntry[] {
+    return this.beginFlush().entries;
+  }
+
+  /**
    * Drain the amounts a {@link beginFlush} sent, called ONLY after the on-chain flush
    * confirmed success. Subtracts (never blindly deletes) so traffic that arrived between
    * snapshot and confirmation survives; a bucket that reaches zero is removed. Persists.

@@ -130,6 +130,14 @@ const TILES = [
     enabled: true,
   },
   {
+    id: "pyth-flush",
+    icon: "📤",
+    title: "Pyth Flush",
+    blurb: "Live per-day entries awaiting the on-chain A_Flush — what would go on chain now.",
+    hash: "#pyth-flush",
+    enabled: true,
+  },
+  {
     id: "security",
     icon: "🔑",
     title: "Security",
@@ -191,6 +199,7 @@ const VIEW_LOADERS = {
     loadDeployStatus();
   },
   earnings: loadEarnings,
+  "pyth-flush": loadPythFlush,
   security: loadSecurity,
   codex: loadCodexIsland,
   khronoton: loadKhronotonIsland,
@@ -1305,31 +1314,6 @@ async function loadEarnings() {
     if (!res.ok) return;
     const data = await res.json();
     renderEarningsTotals(totals, data.total || {});
-    // Flush backlog warning: with a daily flush, >2 unflushed day-buckets means the
-    // Khronoton flush is failing/behind (the days keep cumulating locally).
-    const warn = document.getElementById("earn-flushwarn");
-    if (warn) {
-      const n = Number(data.unflushedDays) || 0;
-      if (n > 2) {
-        warn.textContent = `⚠ ${n} days of ledger data are unflushed — the daily on-chain A_Flush looks stuck. Check the Khronoton flush cronoton.`;
-        warn.hidden = false;
-      } else {
-        warn.hidden = true;
-      }
-    }
-    // Ledger epoch (day-1 anchor): show the value + where it came from (chain read /
-    // cached from a prior boot / hardcoded default until the chain read lands).
-    const ep = document.getElementById("earn-epoch");
-    if (ep && data.epoch) {
-      const src = data.epoch.source;
-      const label =
-        src === "chain"
-          ? `read from chain${data.epoch.readAt ? ` · cached ${new Date(data.epoch.readAt).toLocaleString()}` : ""}`
-          : src === "cached"
-            ? `cached from a prior chain read${data.epoch.readAt ? ` · ${new Date(data.epoch.readAt).toLocaleString()}` : ""}`
-            : "hardcoded default — chain not read yet";
-      ep.innerHTML = `Ledger epoch (day 1): <b>${data.epoch.iso}</b> <span class="earn-epoch-src earn-epoch-src--${src}">${label}</span>`;
-    }
     if (toggle) toggle.checked = !!data.reportToHub;
     if (label) {
       label.textContent = data.reportToHub
@@ -1339,6 +1323,110 @@ async function loadEarnings() {
   } catch {
     /* leave as-is */
   }
+}
+
+// ── Pyth Flush (the live per-day backlog the next A_Flush would send) ─────────
+function renderEpochLine(el, epoch) {
+  if (!el || !epoch) return;
+  const src = epoch.source;
+  const label =
+    src === "chain"
+      ? `read from chain${epoch.readAt ? ` · cached ${new Date(epoch.readAt).toLocaleString()}` : ""}`
+      : src === "cached"
+        ? `cached from a prior chain read${epoch.readAt ? ` · ${new Date(epoch.readAt).toLocaleString()}` : ""}`
+        : "hardcoded default — chain not read yet";
+  el.innerHTML = `Day 1: <b>${epoch.iso}</b> <span class="earn-epoch-src earn-epoch-src--${src}">${label}</span>`;
+}
+
+// The UTC date (YYYY-MM-DD) for a day ordinal, given the epoch ms.
+function dayDate(ordinal, epochMs) {
+  return new Date(epochMs + (ordinal - 1) * 86400000).toISOString().slice(0, 10);
+}
+
+function renderFlushTable(el, entries, epochMs) {
+  if (!el) return;
+  el.textContent = "";
+  if (!entries || entries.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "No unflushed data yet — the ledger is empty for the current window.";
+    el.appendChild(p);
+    return;
+  }
+  const cols = ["Day", "Date (UTC)", "Status", "Petitions", "Pondus", "Transactions", "Gas reserved", "Failed", "Wasted gas"];
+  const keys = ["petitions", "pondus", "transactions", "gas-reserved", "failed-transactions", "wasted-gas-reserved"];
+  const table = document.createElement("table");
+  table.className = "flush-table";
+  const thead = document.createElement("thead");
+  const hr = document.createElement("tr");
+  for (const c of cols) {
+    const th = document.createElement("th");
+    th.textContent = c;
+    hr.appendChild(th);
+  }
+  thead.appendChild(hr);
+  const tbody = document.createElement("tbody");
+  for (const e of entries) {
+    const tr = document.createElement("tr");
+    const cells = [String(e.day), dayDate(e.day, epochMs)];
+    const dayCell = document.createElement("td");
+    dayCell.textContent = cells[0];
+    const dateCell = document.createElement("td");
+    dateCell.textContent = cells[1];
+    const statusCell = document.createElement("td");
+    const complete = !!e["iz-complete"];
+    statusCell.innerHTML = `<span class="flush-status flush-status--${complete ? "sealed" : "open"}">${complete ? "complete → seals" : "open (today)"}</span>`;
+    tr.append(dayCell, dateCell, statusCell);
+    for (const k of keys) {
+      const td = document.createElement("td");
+      td.className = "flush-num";
+      td.textContent = String(e[k] ?? 0);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.append(thead, tbody);
+  el.appendChild(table);
+}
+
+async function refreshPythFlush() {
+  try {
+    const res = await fetch("/admin/pyth", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    const data = await res.json();
+    renderEpochLine(document.getElementById("flush-epoch"), data.epoch);
+    const warn = document.getElementById("flush-warn");
+    if (warn) {
+      const n = Number(data.unflushedDays) || 0;
+      if (n > 2) {
+        warn.textContent = `⚠ ${n} days of ledger data are unflushed — the daily on-chain A_Flush looks stuck. Check the Khronoton flush cronoton.`;
+        warn.hidden = false;
+      } else {
+        warn.hidden = true;
+      }
+    }
+    const epochMs = data.epoch ? Number(data.epoch.epochMs) : Date.UTC(2026, 6, 21);
+    renderFlushTable(document.getElementById("flush-table"), data.flushEntries || [], epochMs);
+  } catch {
+    /* leave as-is */
+  }
+}
+
+// Live monitor: refresh on open, then poll every 10s while the panel stays visible;
+// self-cancels once you navigate away (the view becomes hidden).
+let pythFlushTimer = null;
+async function loadPythFlush() {
+  await refreshPythFlush();
+  if (pythFlushTimer) clearInterval(pythFlushTimer);
+  pythFlushTimer = setInterval(() => {
+    const view = document.querySelector('[data-view="pyth-flush"]');
+    if (!view || view.hidden) {
+      clearInterval(pythFlushTimer);
+      pythFlushTimer = null;
+      return;
+    }
+    void refreshPythFlush();
+  }, 10000);
 }
 
 function wireEarnings() {

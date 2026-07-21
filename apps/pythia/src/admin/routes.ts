@@ -199,6 +199,8 @@ export interface PythAdminControls {
   unflushedDays(): number;
   /** The ledger epoch (day-1 anchor) status — value, source (chain/cached/default), readAt. */
   epoch(): { epochMs: number; iso: string; source: string; readAt: string | null };
+  /** The per-day entries a flush would send right now — the admin's live flush monitor. */
+  flushEntries(): Array<Record<string, number | boolean>>;
 }
 
 /** The runtime controls the `ancient`-gated "Security" panel drives: read the
@@ -521,6 +523,7 @@ export function registerAdmin(
         reportToHub: pyth.reportEnabled(),
         unflushedDays: pyth.unflushedDays(),
         epoch: pyth.epoch(),
+        flushEntries: pyth.flushEntries(),
       }),
     );
 

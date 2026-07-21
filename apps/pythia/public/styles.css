@@ -595,6 +595,20 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .earn-epoch-src--chain { color: #7ce6a8; border-color: rgba(52,209,122,.35); }
 .earn-epoch-src--cached { color: var(--gold); border-color: var(--gold-dim); }
 .earn-epoch-src--default { color: #f0b34d; border-color: rgba(232,182,74,.35); }
+/* Pyth Flush — the per-day backlog table (what the next A_Flush would send). */
+.flush-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 6px 0 4px; }
+.flush-table th, .flush-table td {
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.flush-table thead th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-mute);
+  border-bottom-color: var(--line);
+}
+.flush-table tbody tr:hover { background: rgba(255,255,255,.02); }
+.flush-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.flush-status { padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+.flush-status--sealed { color: #7ce6a8; border-color: rgba(52,209,122,.35); }
+.flush-status--open { color: var(--gold); border-color: var(--gold-dim); }
 .earn-totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0 4px; }
 .earn-card {
   display: flex; flex-direction: column; gap: 3px;

@@ -31,9 +31,11 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
     (`PYTHIA.UR_PythLedgerEpochStart`) at boot and cached on `/data` — the day ordinals use
     the on-chain truth, not a hardcoded constant (which remains the fallback until the read
     lands / if the read gateway is down).
-  - The **StoaChain Earnings** panel shows the resolved epoch + its source (read from chain /
-    cached / hardcoded default), and warns when more than two day-buckets are unflushed
-    (a stuck daily flush).
+  - A new **Pyth Flush** admin panel is a live monitor of the per-UTC-day backlog — the
+    exact `entries[]` the next `A_Flush` would send (day ordinal, date, open/complete
+    status, the six counters), plus the resolved epoch + its source (read from chain /
+    cached / hardcoded default). Auto-refreshes every 10s while open, and warns when more
+    than two day-buckets are unflushed (a stuck daily flush).
   - Operators wire the flush as a cronoton in the Khronoton console — see
     `docs/work/pyth-flush/design.md` and the cronoton setup guide.
 

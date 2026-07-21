@@ -315,6 +315,7 @@ if (oidcConfig) {
       setReportEnabled: (on) => settingsStore.setReportEnabled(on),
       unflushedDays: () => pythLedger.unflushedDayCount(),
       epoch: () => pythEpoch.status(),
+      flushEntries: () => pythLedger.previewEntries() as unknown as Array<Record<string, number | boolean>>,
     },
     // The "Security" panel: sealed-vault status + decommission (clear). Secret
     // values are set in the Hub-feed panel (which seals them via the vault).
