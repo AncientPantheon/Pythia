@@ -672,6 +672,19 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .deploy-uptodate { color: #7ce6a8; font-size: 13px; font-weight: 600; }
 .deploy-uptodate--unreachable { color: #f0b34d; }
 
+/* On-box deploy controls — breathing room above the button so it doesn't crowd the
+   note above it (matches the spacing that separates the version rows). */
+.deploy-controls { margin-top: 20px; }
+/* Inline confirm (no popup) — a Yes/Cancel row shown in place of the Deploy button. */
+.deploy-confirm {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; border-radius: 12px; max-width: 520px;
+  background: rgba(255,255,255,.025); border: 1px solid var(--line);
+}
+.deploy-confirm-text { margin: 0; color: var(--ink-soft); font-size: 14px; }
+.deploy-confirm-text code { color: var(--gold); }
+.deploy-confirm-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
 /* seed-node badge — permanent, gold to distinguish from the grey "disabled" */
 .ca-badge--seed { color: var(--gold); border-color: var(--gold-dim); }
 

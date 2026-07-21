@@ -9,6 +9,15 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.0.4] — 2026-07-21
+
+### Changed
+- **Deploy confirmation is now inline, not a popup** (matches Mnemosyne). Clicking Deploy
+  swaps the button for a "Yes, deploy / Cancel" confirm row in the same card; Cancel swaps
+  back. No modal dialog.
+- **Breathing room above the Deploy button** — the on-box deploy controls gained top spacing
+  so the button no longer crowds the note above it.
+
 ## [2.0.3] — 2026-07-21
 
 ### Changed

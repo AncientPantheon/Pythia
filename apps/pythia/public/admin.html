@@ -176,8 +176,17 @@
                 <h3 class="deploy-h">On-box deploy</h3>
                 <div id="deploy-status"></div>
                 <p class="panel-note">Blue-green port juggle: <b>blue</b> = <code>127.0.0.1:8080</code>, <b>green</b> = <code>127.0.0.1:8081</code>. Each deploy builds the other color, health-checks it, then Caddy flips between the two loopback ports — public stays on 80/443 throughout.</p>
-                <div class="conn-actions">
+                <div class="deploy-controls">
                   <button type="button" id="deploy-btn" class="btn btn--primary" disabled>Deploy</button>
+                  <!-- Inline confirm (no popup) — clicking Deploy swaps the button for
+                       this Yes/Cancel row in the same card, matching Mnemosyne. -->
+                  <div id="deploy-confirm" class="deploy-confirm" hidden>
+                    <p class="deploy-confirm-text">Rebuild from <code>origin/main</code> on the box and swap blue↔green with zero downtime. Proceed?</p>
+                    <div class="deploy-confirm-row">
+                      <button type="button" id="deploy-confirm-yes" class="btn btn--primary">Yes, deploy</button>
+                      <button type="button" id="deploy-confirm-no" class="btn">Cancel</button>
+                    </div>
+                  </div>
                 </div>
                 <p class="conn-error" id="deploy-error" hidden></p>
                 <p class="hub-stat" id="deploy-stream-status" hidden></p>

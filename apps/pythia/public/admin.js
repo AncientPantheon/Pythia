@@ -1180,15 +1180,20 @@ function renderDeployStatus(container, s) {
 
 function wireDeployButton() {
   const btn = document.getElementById("deploy-btn");
+  const confirmBox = document.getElementById("deploy-confirm");
+  const yes = document.getElementById("deploy-confirm-yes");
+  const no = document.getElementById("deploy-confirm-no");
   const err = document.getElementById("deploy-error");
   if (!btn) return;
-  btn.addEventListener("click", async () => {
-    const ok = await confirmDialog({
-      title: "Deploy Pythia?",
-      message: "Rebuild from origin/main on the box and swap blue↔green with zero downtime.",
-      confirmLabel: "Deploy",
-    });
-    if (!ok) return;
+
+  // Inline confirm (no popup): clicking Deploy swaps the button for the Yes/Cancel
+  // row in the same card; Cancel swaps back; Yes fires the deploy.
+  const showConfirm = (on) => {
+    if (confirmBox) confirmBox.hidden = !on;
+    btn.hidden = on;
+  };
+
+  const runDeploy = async () => {
     if (err) err.hidden = true;
     btn.disabled = true; // stays disabled while the deploy streams; done re-enables
     try {
@@ -1207,6 +1212,16 @@ function wireDeployButton() {
       if (err) { err.textContent = "Network error requesting the deploy."; err.hidden = false; }
       btn.disabled = false;
     }
+  };
+
+  btn.addEventListener("click", () => {
+    if (err) err.hidden = true;
+    showConfirm(true);
+  });
+  if (no) no.addEventListener("click", () => showConfirm(false));
+  if (yes) yes.addEventListener("click", () => {
+    showConfirm(false);
+    void runDeploy();
   });
 }
 
