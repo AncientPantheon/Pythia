@@ -13,6 +13,9 @@ export function registerPyth(app: Hono, ledger: PythLedger): void {
       {
         total: ledger.total(),
         daily: ledger.daily(),
+        // Distinct flushable day-buckets awaiting an on-chain A_Flush. With a daily
+        // flush this is normally 1–2; the admin warns when it exceeds 2 (flush stuck).
+        unflushedDays: ledger.unflushedDayCount(),
         generatedAt: new Date().toISOString(),
       },
       200,

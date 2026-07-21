@@ -1306,6 +1306,18 @@ async function loadEarnings() {
     if (!res.ok) return;
     const data = await res.json();
     renderEarningsTotals(totals, data.total || {});
+    // Flush backlog warning: with a daily flush, >2 unflushed day-buckets means the
+    // Khronoton flush is failing/behind (the days keep cumulating locally).
+    const warn = document.getElementById("earn-flushwarn");
+    if (warn) {
+      const n = Number(data.unflushedDays) || 0;
+      if (n > 2) {
+        warn.textContent = `⚠ ${n} days of ledger data are unflushed — the daily on-chain A_Flush looks stuck. Check the Khronoton flush cronoton.`;
+        warn.hidden = false;
+      } else {
+        warn.hidden = true;
+      }
+    }
     if (toggle) toggle.checked = !!data.reportToHub;
     if (label) {
       label.textContent = data.reportToHub

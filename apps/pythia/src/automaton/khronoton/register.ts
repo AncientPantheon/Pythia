@@ -1,6 +1,8 @@
 import { startKhronotonLoop } from "@ancientpantheon/khronoton-core/server";
 import { getKhronotonContext } from "./context.js";
+import { registerPythFlushResolver } from "./pythFlushResolver.js";
 import type { CodexStore } from "../codexStore.js";
+import type { PythLedger } from "../../pyth/ledger.js";
 
 /**
  * Boot the Khronoton tick loop (ported from Mnemosyne). Dormant-safe: a failed start is
@@ -10,8 +12,15 @@ import type { CodexStore } from "../codexStore.js";
  */
 const g = globalThis as unknown as { __pythiaKhronotonLoop?: { stop(): void } };
 
-export async function startPythiaKhronotonEngine(codex: CodexStore): Promise<void> {
+export async function startPythiaKhronotonEngine(
+  codex: CodexStore,
+  ledger: PythLedger,
+): Promise<void> {
   if (g.__pythiaKhronotonLoop) return;
+  // Register the pyth-flush server resolver with the live ledger so a flush cronoton's
+  // `entries` payload fills at fire time. Registered even if the loop is disabled, so a
+  // manual fire / simulate still resolves. Idempotent.
+  registerPythFlushResolver(ledger);
   if (process.env.KHRONOTON_DISABLED === "1") {
     console.log("[khronoton] disabled (KHRONOTON_DISABLED=1) — engine not started");
     return;

@@ -51,6 +51,7 @@ function makeApp() {
         setReportEnabled: (on) => {
           state.report = on;
         },
+        unflushedDays: () => 0,
       },
     },
   );

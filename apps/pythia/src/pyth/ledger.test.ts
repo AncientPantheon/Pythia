@@ -95,3 +95,89 @@ describe("PythLedger", () => {
     expect(l.total().pondus).toBe(0); // 0.0002 → 0.000
   });
 });
+
+// A mutable-clock ledger for driving multi-day flush scenarios.
+function mkAt(iso: string): { l: PythLedger; set: (i: string) => void } {
+  let cur = iso;
+  const l = new PythLedger({ filePath: scratchFile(), flushMs: 0, clock: () => new Date(cur) });
+  return { l, set: (i) => (cur = i) };
+}
+
+describe("PythLedger — Khronoton flush (drain model)", () => {
+  it("beginFlush yields PythFlushEntry objects: integer day ordinal (epoch 2026-07-21), kebab keys, iz-complete derived", () => {
+    const { l, set } = mkAt("2026-07-21T08:00:00.000Z"); // day 1
+    l.recordRead(10);
+    set("2026-07-22T08:00:00.000Z"); // day 2
+    l.recordSend(true, 500);
+    set("2026-07-23T08:00:00.000Z"); // day 3 (today)
+    l.recordRead(5);
+
+    const { entries } = l.beginFlush();
+    expect(entries.map((e) => e.day)).toEqual([1, 2, 3]); // oldest-first, integer ordinals
+    expect(entries.map((e) => e["iz-complete"])).toEqual([true, true, false]); // past done, today open
+    // exact Pact schema shape (kebab keys) on the last entry
+    expect(entries[2]).toEqual({
+      day: 3,
+      "iz-complete": false,
+      petitions: 1,
+      pondus: 5,
+      transactions: 0,
+      "gas-reserved": 0,
+      "failed-transactions": 0,
+      "wasted-gas-reserved": 0,
+    });
+  });
+
+  it("beginFlush does NOT mutate the ledger; commitFlush drains exactly what was sent", () => {
+    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    l.recordRead(10);
+    const { token } = l.beginFlush();
+    expect(l.total().petitions).toBe(1); // untouched by beginFlush
+    l.commitFlush(token);
+    expect(l.total().petitions).toBe(0); // drained
+    expect(l.unflushedDayCount()).toBe(0);
+  });
+
+  it("preserves traffic that arrives between snapshot and commit (subtract, not delete)", () => {
+    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    l.recordRead(10); // pondus 10, 1 petition
+    const { token } = l.beginFlush(); // snapshot: 1 petition / pondus 10
+    l.recordRead(4); // arrives mid-flush: now 2 petitions / pondus 14
+    l.commitFlush(token); // drain the snapshot (1 / 10)
+    const t = l.total();
+    expect(t.petitions).toBe(1); // the mid-flush read survives
+    expect(t.pondus).toBe(4);
+  });
+
+  it("a failed flush (beginFlush without commit) leaves everything to retry", () => {
+    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    l.recordRead(10);
+    l.beginFlush(); // fire failed → no commit
+    expect(l.total().petitions).toBe(1); // still there
+    const again = l.beginFlush(); // next tick re-sends
+    expect(again.entries[0].petitions).toBe(1);
+  });
+
+  it("caps the batch at maxDays (oldest-first); the rest stay for the next tick", () => {
+    const { l, set } = mkAt("2026-07-21T08:00:00.000Z");
+    l.recordRead(1);
+    set("2026-07-22T08:00:00.000Z");
+    l.recordRead(1);
+    set("2026-07-23T08:00:00.000Z");
+    l.recordRead(1);
+    const { entries, token } = l.beginFlush(2); // cap 2
+    expect(entries.map((e) => e.day)).toEqual([1, 2]);
+    l.commitFlush(token);
+    expect(l.unflushedDayCount()).toBe(1); // day 3 remains
+    expect(l.beginFlush().entries.map((e) => e.day)).toEqual([3]);
+  });
+
+  it("excludes pre-epoch buckets (day < 1 is not flushable on-chain)", () => {
+    const { l, set } = mkAt("2026-07-20T08:00:00.000Z"); // ordinal 0 — before epoch
+    l.recordRead(9);
+    set("2026-07-21T08:00:00.000Z"); // ordinal 1
+    l.recordRead(3);
+    const { entries } = l.beginFlush();
+    expect(entries.map((e) => e.day)).toEqual([1]); // the day-0 bucket is not sent
+  });
+});

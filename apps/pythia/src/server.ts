@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   // Start the Khronoton engine (the sovereign scheduled-signing loop). Dormant-safe:
   // a failed start never takes the gateway down, and with no cronotons it just ticks.
   const { startPythiaKhronotonEngine } = await import("./automaton/khronoton/register.js");
-  void startPythiaKhronotonEngine(codexStore);
+  void startPythiaKhronotonEngine(codexStore, pythLedger);
 
   // Persist the usage-analytics snapshot before the container tears down so the
   // in-flight aggregates survive a restart. Flush is atomic + non-fatal.

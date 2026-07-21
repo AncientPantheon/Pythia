@@ -9,6 +9,23 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.1.0] — 2026-07-21
+
+### Added
+- **On-chain Pyth-ledger flush (Khronoton drain model).** Pythia can now feed her local
+  per-UTC-day ledger to the on-chain `PYTHIA|A_Flush(entries)` transaction via a Khronoton
+  cronoton, with no sealed-day tracking:
+  - The ledger builds flush entries in the exact Pact `PythFlushEntry` shape — integer
+    `day` ordinal (epoch `2026-07-21`), `iz-complete` derived (past day = sealed, today =
+    open), kebab-case keys, `pondus` ≤3dp — oldest-first, capped at 1000/tx.
+  - A **`pyth-flush` single-tx server resolver** fills the cronoton's `entries` payload at
+    fire time and **drains** the sent buckets only on confirmed on-chain success (a failed
+    or unfired flush retries next tick; traffic arriving mid-flush is preserved).
+  - The **StoaChain Earnings** panel warns when more than two day-buckets are unflushed
+    (a stuck daily flush).
+  - Operators wire the flush as a cronoton in the Khronoton console — see
+    `docs/work/pyth-flush/design.md` and the cronoton setup guide.
+
 ## [2.0.4] — 2026-07-21
 
 ### Changed

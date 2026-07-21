@@ -583,6 +583,11 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .btn--danger:hover { border-color: #e88; color: #f5a5a5; }
 
 /* StoaChain Earnings — Pyth ledger cards + report toggle */
+/* Flush-backlog warning — shown when >2 day-buckets are unflushed (flush stuck). */
+.earn-flushwarn {
+  margin: 4px 0 10px; padding: 10px 14px; border-radius: 10px; font-size: 13.5px;
+  color: #f4c86a; border: 1px solid var(--gold-dim); background: rgba(230, 190, 106, 0.08);
+}
 .earn-totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0 4px; }
 .earn-card {
   display: flex; flex-direction: column; gap: 3px;

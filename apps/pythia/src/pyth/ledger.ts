@@ -24,6 +24,45 @@ export interface DailyLedgerRow extends LedgerCounters {
   day: string;
 }
 
+/**
+ * On-chain calendar-day anchor (`PYTHIA|LEDGER-EPOCH-START`). Day 1 begins at this
+ * instant; the day ordinal a flush entry carries is `1 + floor((t − epoch)/86400s)`.
+ * Must match the on-chain constant exactly. See docs/HANDOFF-pythia-khronoton-flush.md.
+ */
+export const PYTH_LEDGER_EPOCH_MS = Date.UTC(2026, 6, 21, 0, 0, 0); // 2026-07-21T00:00:00Z
+const DAY_MS = 86_400_000;
+
+/** The integer UTC calendar-day ordinal for a "YYYY-MM-DD" bucket key. */
+function dayOrdinal(dayKey: string): number {
+  const ms = Date.parse(`${dayKey}T00:00:00.000Z`);
+  return 1 + Math.floor((ms - PYTH_LEDGER_EPOCH_MS) / DAY_MS);
+}
+
+/**
+ * One calendar day in an A_Flush batch — the exact on-chain `PythFlushEntry` schema
+ * (kebab-case keys; `day` an integer ordinal; `pondus` a decimal ≤3dp). Counters are
+ * cumulative for that UTC day. See `PythiaLedgerV2.PYTHIA|S|PythFlushEntry`.
+ */
+export interface PythFlushEntry {
+  day: number;
+  "iz-complete": boolean;
+  petitions: number;
+  pondus: number;
+  transactions: number;
+  "gas-reserved": number;
+  "failed-transactions": number;
+  "wasted-gas-reserved": number;
+}
+
+/** Opaque drain token: the exact per-day amounts a beginFlush snapshotted, subtracted
+ *  back out by commitFlush on confirmed on-chain success. */
+export interface FlushToken {
+  readonly days: Record<string, LedgerCounters>;
+}
+
+/** The on-chain batch cap (`PYTHIA|MAX-FLUSH-BATCH`) — at most this many day entries/tx. */
+export const MAX_FLUSH_BATCH = 1000;
+
 export interface PythLedgerOptions {
   filePath: string;
   /** Persist interval in ms. 0 disables the timer (tests). Default 30000. */
@@ -147,6 +186,78 @@ export class PythLedger {
     return [...this.days.entries()]
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([day, c]) => ({ day, ...c, pondus: round3(c.pondus) }));
+  }
+
+  /** Distinct flushable (ordinal ≥ 1) day buckets currently held. The admin warns when
+   *  this exceeds 2 — with a daily flush, a bigger backlog means flushes are failing. */
+  unflushedDayCount(): number {
+    let n = 0;
+    for (const key of this.days.keys()) if (dayOrdinal(key) >= 1) n += 1;
+    return n;
+  }
+
+  /**
+   * Snapshot the current day-buckets into `entries[]` for one A_Flush, WITHOUT
+   * mutating the ledger (the drain model: the live buckets keep accumulating; only a
+   * confirmed on-chain success drains them via {@link commitFlush}). Oldest-first,
+   * capped at `maxDays` (the rest wait for the next tick). Pre-epoch buckets (ordinal
+   * < 1, not flushable on-chain) are excluded. `iz-complete` is true for any day before
+   * today (sealed on this flush) and false for today (still open).
+   */
+  beginFlush(maxDays: number = MAX_FLUSH_BATCH): { entries: PythFlushEntry[]; token: FlushToken } {
+    const todayOrd = dayOrdinal(this.today());
+    const keys = [...this.days.keys()]
+      .filter((k) => dayOrdinal(k) >= 1)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      .slice(0, Math.max(0, maxDays));
+
+    const entries: PythFlushEntry[] = [];
+    const snapshot: Record<string, LedgerCounters> = {};
+    for (const key of keys) {
+      const c = this.days.get(key);
+      if (!c) continue;
+      snapshot[key] = { ...c };
+      const ord = dayOrdinal(key);
+      entries.push({
+        day: ord,
+        "iz-complete": ord < todayOrd,
+        petitions: c.petitions,
+        pondus: round3(c.pondus),
+        transactions: c.transactions,
+        "gas-reserved": c.gasReserved,
+        "failed-transactions": c.failedTransactions,
+        "wasted-gas-reserved": c.wastedGasReserved,
+      });
+    }
+    return { entries, token: { days: snapshot } };
+  }
+
+  /**
+   * Drain the amounts a {@link beginFlush} sent, called ONLY after the on-chain flush
+   * confirmed success. Subtracts (never blindly deletes) so traffic that arrived between
+   * snapshot and confirmation survives; a bucket that reaches zero is removed. Persists.
+   */
+  commitFlush(token: FlushToken): void {
+    if (!token || typeof token !== "object" || !token.days) return;
+    for (const [key, sent] of Object.entries(token.days)) {
+      const live = this.days.get(key);
+      if (!live) continue;
+      live.petitions -= sent.petitions;
+      live.pondus -= sent.pondus;
+      live.transactions -= sent.transactions;
+      live.gasReserved -= sent.gasReserved;
+      live.failedTransactions -= sent.failedTransactions;
+      live.wastedGasReserved -= sent.wastedGasReserved;
+      const empty =
+        live.petitions <= 0 &&
+        live.pondus <= 0 &&
+        live.transactions <= 0 &&
+        live.gasReserved <= 0 &&
+        live.failedTransactions <= 0 &&
+        live.wastedGasReserved <= 0;
+      if (empty) this.days.delete(key);
+    }
+    this.persist();
   }
 
   /** Reset the whole ledger to zero (the admin "nuke"). Persists immediately. */

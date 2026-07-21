@@ -299,6 +299,7 @@ if (oidcConfig) {
       nuke: () => pythLedger.nuke(),
       reportEnabled: () => settingsStore.reportEnabled(),
       setReportEnabled: (on) => settingsStore.setReportEnabled(on),
+      unflushedDays: () => pythLedger.unflushedDayCount(),
     },
     // The "Security" panel: sealed-vault status + decommission (clear). Secret
     // values are set in the Hub-feed panel (which seals them via the vault).

@@ -195,6 +195,8 @@ export interface PythAdminControls {
   nuke(): void;
   reportEnabled(): boolean;
   setReportEnabled(on: boolean): void;
+  /** Distinct flushable day-buckets awaiting an on-chain A_Flush (for the >2 warning). */
+  unflushedDays(): number;
 }
 
 /** The runtime controls the `ancient`-gated "Security" panel drives: read the
@@ -512,7 +514,11 @@ export function registerAdmin(
   if (pyth) {
     // The current fleet-wide totals + whether Pythia reports usage to the hub.
     app.get("/admin/pyth", gate, (c) =>
-      c.json({ total: pyth.total(), reportToHub: pyth.reportEnabled() }),
+      c.json({
+        total: pyth.total(),
+        reportToHub: pyth.reportEnabled(),
+        unflushedDays: pyth.unflushedDays(),
+      }),
     );
 
     // Nuke the ledger — reset every counter to zero. Destructive; ancient-gated.
