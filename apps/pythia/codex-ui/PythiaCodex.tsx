@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import { CodexProvider, useCodexStore } from "@ancientpantheon/codex/provider";
 import { useCodex, useCodexAuth } from "@ancientpantheon/codex/hooks";
 import { PythiaServerCodexAdapter } from "./adapter.js";
@@ -11,19 +11,37 @@ import { CodexPortabilityControls } from "./CodexPortabilityControls.js";
  * PythiaServerCodexAdapter (master-key sealed via /admin/codex). No upload, no password
  * screen: the machine codex password is fetched from /admin/codex/unlock and applied
  * automatically, so the admin lands on an already-open codex.
+ *
+ * The single lock/unlock control is the package's own (in the CODEXID row) — Pythia does
+ * NOT add a second one in the top bar (the canonical Pantheon codex layout: Download/Load
+ * up top, lock/unlock in the identity row). See the Pantheonic Architecture codex spec.
  */
 
 const SESSION_TTL_MINUTES = 60;
+const SESSION_EXPIRED_MSG =
+  "Your admin session has expired. Reload the page and sign in again to unlock the Codex.";
+
+/** Thrown when /admin/codex/unlock returns 401 — the admin session lapsed (the whole
+ *  admin surface is behind the same session cookie), so unlock is impossible until re-login. */
+class SessionExpiredError extends Error {
+  constructor() {
+    super("admin session expired");
+    this.name = "SessionExpiredError";
+  }
+}
 
 async function fetchCodexPassword(): Promise<string> {
   const res = await fetch("/admin/codex/unlock", { credentials: "same-origin", cache: "no-store" });
+  if (res.status === 401) throw new SessionExpiredError();
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = (await res.json()) as { ok: true; password: string } | { ok: false; error: string };
   if (!body.ok || !body.password) throw new Error(body.ok ? "empty password" : body.error);
   return body.password;
 }
 
-function AutoUnlockOnReady(): null {
+type AuthErrorSetter = (message: string | null) => void;
+
+function AutoUnlockOnReady({ onAuthError }: { onAuthError: AuthErrorSetter }): null {
   const { isReady } = useCodex();
   const { isLocked, authenticate } = useCodexAuth();
   const done = useRef(false);
@@ -31,15 +49,21 @@ function AutoUnlockOnReady(): null {
     if (!isReady || !isLocked || done.current) return;
     done.current = true;
     void fetchCodexPassword()
-      .then((pw) => authenticate(pw, SESSION_TTL_MINUTES))
-      .catch(() => {
-        done.current = false;
+      .then((pw) => {
+        authenticate(pw, SESSION_TTL_MINUTES);
+        onAuthError(null);
+      })
+      .catch((err: unknown) => {
+        // A lapsed session can't be fixed by retrying — surface it and STOP (leave
+        // done=true) so we don't hammer /admin/codex/unlock. Transient errors retry.
+        if (err instanceof SessionExpiredError) onAuthError(SESSION_EXPIRED_MSG);
+        else done.current = false;
       });
-  }, [isReady, isLocked, authenticate]);
+  }, [isReady, isLocked, authenticate, onAuthError]);
   return null;
 }
 
-function PasswordAutoResolver(): null {
+function PasswordAutoResolver({ onAuthError }: { onAuthError: AuthErrorSetter }): null {
   const store = useCodexStore();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pending = store((s: any) => s.pendingPasswordRequest);
@@ -51,46 +75,34 @@ function PasswordAutoResolver(): null {
         const pw = await fetchCodexPassword();
         if (cancelled) return;
         store.getState().actions.submitPasswordRequest(pw, SESSION_TTL_MINUTES);
-      } catch {
-        if (!cancelled) store.getState().actions.cancelPasswordRequest();
+        onAuthError(null);
+      } catch (err: unknown) {
+        if (cancelled) return;
+        store.getState().actions.cancelPasswordRequest();
+        if (err instanceof SessionExpiredError) onAuthError(SESSION_EXPIRED_MSG);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [pending, store]);
+  }, [pending, store, onAuthError]);
   return null;
 }
 
-function PythiaLockControl(): ReactElement {
-  const { isLocked, authenticate, lock } = useCodexAuth();
-  const [busy, setBusy] = useState(false);
-  const onUnlock = useCallback(async () => {
-    setBusy(true);
-    try {
-      authenticate(await fetchCodexPassword(), SESSION_TTL_MINUTES);
-    } catch {
-      /* stays locked; admin can retry */
-    } finally {
-      setBusy(false);
-    }
-  }, [authenticate]);
-
-  return isLocked ? (
-    <button type="button" className="cxpg-btn cxpg-btn--primary cxpg-btn--sm"
-      onClick={() => void onUnlock()} disabled={busy}
-      title="Sealed under Pythia's Master Key. Unlock without a password — access is already restricted to the ancient admin.">
-      {busy ? "Unlocking…" : "🔓 Unlock with Master Key"}
-    </button>
-  ) : (
-    <button type="button" className="cxpg-btn cxpg-btn--ghost cxpg-btn--sm" onClick={() => lock()}
-      title="Hide decrypted views. Operations still auto-unlock with the Master Key when needed.">
-      🔒 Lock Codex
-    </button>
+/** A dismiss-free banner shown when the admin session lapsed, with a one-click reload
+ *  (reload re-runs the gate → the hub login if still signed out). */
+function AuthErrorBanner({ message }: { message: string }): ReactElement {
+  return (
+    <div className="cxpg-authbanner" role="alert">
+      <span>⚠ {message}</span>
+      <button type="button" className="cxpg-btn cxpg-btn--sm" onClick={() => location.reload()}>
+        Reload
+      </button>
+    </div>
   );
 }
 
-function CodexBody(): ReactElement {
+function CodexBody({ authError }: { authError: string | null }): ReactElement {
   const { isReady, initError } = useCodex();
   if (initError) {
     return (
@@ -111,24 +123,23 @@ function CodexBody(): ReactElement {
     );
   }
   return (
-    <CodexShell
-      brand="Pythia Codex"
-      badge="server-sealed"
-      tagline="Sealed on the server · auto-unlocked · saves live."
-      consumerName="Pythia"
-      topbarActions={
-        <>
-          <CodexPortabilityControls />
-          <PythiaLockControl />
-        </>
-      }
-    />
+    <>
+      {authError ? <AuthErrorBanner message={authError} /> : null}
+      <CodexShell
+        brand="Pythia Codex"
+        badge="server-sealed"
+        tagline="Sealed on the server · auto-unlocked · saves live."
+        consumerName="Pythia"
+        topbarActions={<CodexPortabilityControls />}
+      />
+    </>
   );
 }
 
 export default function PythiaCodex(): ReactElement {
   const adapter = useRef<PythiaServerCodexAdapter | null>(null);
   if (adapter.current === null) adapter.current = new PythiaServerCodexAdapter("main");
+  const [authError, setAuthError] = useState<string | null>(null);
   return (
     <CodexProvider
       adapter={adapter.current}
@@ -136,9 +147,9 @@ export default function PythiaCodex(): ReactElement {
       passwordCacheMinutes={SESSION_TTL_MINUTES}
       initialUiSettings={{ passwordCacheMinutes: SESSION_TTL_MINUTES }}
     >
-      <AutoUnlockOnReady />
-      <PasswordAutoResolver />
-      <CodexBody />
+      <AutoUnlockOnReady onAuthError={setAuthError} />
+      <PasswordAutoResolver onAuthError={setAuthError} />
+      <CodexBody authError={authError} />
     </CodexProvider>
   );
 }

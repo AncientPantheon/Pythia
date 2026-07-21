@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.0.1] — 2026-07-21
+
+### Fixed
+- **Codex UI, aligned to the canonical Pantheon codex layout + no more silent unlock
+  failures.** Three fixes to the admin Codex console:
+  - Removed the redundant **Lock/Unlock** button from the top bar — the single lock/unlock
+    control now lives only in the CODEXID identity row (matching Mnemosyne / the codex spec:
+    Download + Load up top, lock/unlock in the identity row).
+  - Fixed the **auto-lock debouncer positioning** — the top-bar actions and the debouncer
+    now sit centered on one row and no longer wrap/misalign.
+  - When the admin session has lapsed, the Codex now shows a clear **"session expired —
+    reload and sign in again"** banner instead of silently staying Locked with a dead unlock
+    button, and it no longer retries the unlock endpoint in a loop. With a valid session the
+    codex auto-unlocks as before.
+
 ## [2.0.0] — 2026-07-20
 
 **Pythia becomes a sovereign Pantheonic Automaton.** She keeps her keyless read/relay
