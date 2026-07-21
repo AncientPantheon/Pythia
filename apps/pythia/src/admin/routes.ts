@@ -197,6 +197,8 @@ export interface PythAdminControls {
   setReportEnabled(on: boolean): void;
   /** Distinct flushable day-buckets awaiting an on-chain A_Flush (for the >2 warning). */
   unflushedDays(): number;
+  /** The ledger epoch (day-1 anchor) status — value, source (chain/cached/default), readAt. */
+  epoch(): { epochMs: number; iso: string; source: string; readAt: string | null };
 }
 
 /** The runtime controls the `ancient`-gated "Security" panel drives: read the
@@ -518,6 +520,7 @@ export function registerAdmin(
         total: pyth.total(),
         reportToHub: pyth.reportEnabled(),
         unflushedDays: pyth.unflushedDays(),
+        epoch: pyth.epoch(),
       }),
     );
 

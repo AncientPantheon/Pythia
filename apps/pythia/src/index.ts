@@ -39,6 +39,8 @@ import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
 import { statsMiddleware } from "./stats/middleware.js";
 import { PythLedger } from "./pyth/ledger.js";
+import { PythEpochStore } from "./pyth/epoch.js";
+import { createEpochReader } from "./pyth/epochReader.js";
 import { pythMeterMiddleware } from "./pyth/meter.js";
 import { TxTracker } from "./pyth/txTracker.js";
 import { pollExecution } from "./reads/index.js";
@@ -75,8 +77,15 @@ export const statsStore = new StatsStore({
 // The Pyth ledger: Pythia's own keyless economic odometer (petitions, pondus,
 // transactions, gas) — see pyth/ledger.ts. Persisted on the mounted volume;
 // mirrors the on-chain schema so a future Dalos flush can read the day deltas.
+// The ledger epoch (day-1 anchor): read once from chain (PYTHIA.UR_PythLedgerEpochStart)
+// and cached on the volume; falls back to the hardcoded constant until that read lands.
+// Constructed before the ledger, which reads its epoch getter for day-ordinal math.
+export const pythEpoch = new PythEpochStore({
+  filePath: process.env.PYTH_EPOCH_FILE || "./pythia-pyth-epoch.json",
+});
 export const pythLedger = new PythLedger({
   filePath: process.env.PYTH_LEDGER_FILE || "./pythia-pyth-ledger.json",
+  epochMs: () => pythEpoch.epochMs(),
 });
 const envConsumerMap = loadConsumerMap(process.env.PYTHIA_API_KEYS);
 
@@ -192,6 +201,11 @@ export const usageReporter = new UsageReporter({
 // on admin refresh. Non-blocking — the value populates shortly after start.
 void detectEgressIp();
 
+// Read + cache the ledger epoch from chain once at boot (best-effort, non-fatal). Uses
+// the node pool's read path; the ledger already serves day ordinals off the default
+// until this lands. Surfaced in the admin (StoaChain Earnings).
+void pythEpoch.resolve(createEpochReader(nodePool));
+
 // The control surface the admin UI drives: read status, set the feed config (then
 // hot-reconfigure the pool + poll immediately), or force a refresh. The HMAC
 // secret is never returned — only whether one is set.
@@ -300,6 +314,7 @@ if (oidcConfig) {
       reportEnabled: () => settingsStore.reportEnabled(),
       setReportEnabled: (on) => settingsStore.setReportEnabled(on),
       unflushedDays: () => pythLedger.unflushedDayCount(),
+      epoch: () => pythEpoch.status(),
     },
     // The "Security" panel: sealed-vault status + decommission (clear). Secret
     // values are set in the Hub-feed panel (which seals them via the vault).

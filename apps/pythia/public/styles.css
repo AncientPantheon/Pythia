@@ -588,6 +588,13 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
   margin: 4px 0 10px; padding: 10px 14px; border-radius: 10px; font-size: 13.5px;
   color: #f4c86a; border: 1px solid var(--gold-dim); background: rgba(230, 190, 106, 0.08);
 }
+/* Ledger epoch readout — the day-1 anchor + where it came from (chain/cached/default). */
+.earn-epoch { margin: 2px 0 10px; font-size: 13px; color: var(--ink-mute); }
+.earn-epoch b { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.earn-epoch-src { padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+.earn-epoch-src--chain { color: #7ce6a8; border-color: rgba(52,209,122,.35); }
+.earn-epoch-src--cached { color: var(--gold); border-color: var(--gold-dim); }
+.earn-epoch-src--default { color: #f0b34d; border-color: rgba(232,182,74,.35); }
 .earn-totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0 4px; }
 .earn-card {
   display: flex; flex-direction: column; gap: 3px;

@@ -32,10 +32,11 @@ export interface DailyLedgerRow extends LedgerCounters {
 export const PYTH_LEDGER_EPOCH_MS = Date.UTC(2026, 6, 21, 0, 0, 0); // 2026-07-21T00:00:00Z
 const DAY_MS = 86_400_000;
 
-/** The integer UTC calendar-day ordinal for a "YYYY-MM-DD" bucket key. */
-function dayOrdinal(dayKey: string): number {
+/** The integer UTC calendar-day ordinal for a "YYYY-MM-DD" bucket key, against an epoch
+ *  (defaults to the hardcoded anchor; the live ledger injects the chain-read epoch). */
+export function dayOrdinal(dayKey: string, epochMs: number = PYTH_LEDGER_EPOCH_MS): number {
   const ms = Date.parse(`${dayKey}T00:00:00.000Z`);
-  return 1 + Math.floor((ms - PYTH_LEDGER_EPOCH_MS) / DAY_MS);
+  return 1 + Math.floor((ms - epochMs) / DAY_MS);
 }
 
 /**
@@ -69,6 +70,9 @@ export interface PythLedgerOptions {
   flushMs?: number;
   /** Injectable clock for deterministic UTC-day bucketing. */
   clock?: () => Date;
+  /** Live epoch (UTC ms) for day-ordinal math — the chain-read anchor. Defaults to the
+   *  hardcoded constant; a getter so a chain read that lands after boot is picked up. */
+  epochMs?: () => number;
 }
 
 interface LedgerSnapshot {
@@ -113,12 +117,14 @@ export class PythLedger {
   private readonly filePath: string;
   private readonly clock: () => Date;
   private readonly days = new Map<string, LedgerCounters>();
+  private readonly epochMs: () => number;
   private timer: ReturnType<typeof setInterval> | undefined;
   private writeWarned = false;
 
   constructor(options: PythLedgerOptions) {
     this.filePath = options.filePath;
     this.clock = options.clock ?? (() => new Date());
+    this.epochMs = options.epochMs ?? (() => PYTH_LEDGER_EPOCH_MS);
     this.loadFromDisk();
 
     const flushMs = options.flushMs ?? DEFAULT_FLUSH_MS;
@@ -191,8 +197,9 @@ export class PythLedger {
   /** Distinct flushable (ordinal ≥ 1) day buckets currently held. The admin warns when
    *  this exceeds 2 — with a daily flush, a bigger backlog means flushes are failing. */
   unflushedDayCount(): number {
+    const epoch = this.epochMs();
     let n = 0;
-    for (const key of this.days.keys()) if (dayOrdinal(key) >= 1) n += 1;
+    for (const key of this.days.keys()) if (dayOrdinal(key, epoch) >= 1) n += 1;
     return n;
   }
 
@@ -205,9 +212,10 @@ export class PythLedger {
    * today (sealed on this flush) and false for today (still open).
    */
   beginFlush(maxDays: number = MAX_FLUSH_BATCH): { entries: PythFlushEntry[]; token: FlushToken } {
-    const todayOrd = dayOrdinal(this.today());
+    const epoch = this.epochMs();
+    const todayOrd = dayOrdinal(this.today(), epoch);
     const keys = [...this.days.keys()]
-      .filter((k) => dayOrdinal(k) >= 1)
+      .filter((k) => dayOrdinal(k, epoch) >= 1)
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .slice(0, Math.max(0, maxDays));
 
@@ -217,7 +225,7 @@ export class PythLedger {
       const c = this.days.get(key);
       if (!c) continue;
       snapshot[key] = { ...c };
-      const ord = dayOrdinal(key);
+      const ord = dayOrdinal(key, epoch);
       entries.push({
         day: ord,
         "iz-complete": ord < todayOrd,

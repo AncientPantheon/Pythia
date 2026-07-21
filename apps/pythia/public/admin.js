@@ -1317,6 +1317,19 @@ async function loadEarnings() {
         warn.hidden = true;
       }
     }
+    // Ledger epoch (day-1 anchor): show the value + where it came from (chain read /
+    // cached from a prior boot / hardcoded default until the chain read lands).
+    const ep = document.getElementById("earn-epoch");
+    if (ep && data.epoch) {
+      const src = data.epoch.source;
+      const label =
+        src === "chain"
+          ? `read from chain${data.epoch.readAt ? ` · cached ${new Date(data.epoch.readAt).toLocaleString()}` : ""}`
+          : src === "cached"
+            ? `cached from a prior chain read${data.epoch.readAt ? ` · ${new Date(data.epoch.readAt).toLocaleString()}` : ""}`
+            : "hardcoded default — chain not read yet";
+      ep.innerHTML = `Ledger epoch (day 1): <b>${data.epoch.iso}</b> <span class="earn-epoch-src earn-epoch-src--${src}">${label}</span>`;
+    }
     if (toggle) toggle.checked = !!data.reportToHub;
     if (label) {
       label.textContent = data.reportToHub

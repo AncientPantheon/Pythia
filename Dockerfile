@@ -55,6 +55,9 @@ ENV STATS_FILE=/data/stats.json
 # MUST be on the /data volume or every redeploy resets it (a fresh container starts
 # with an empty ledger). This is the counter behind StoaChain Activity/Earnings.
 ENV PYTH_LEDGER_FILE=/data/pyth-ledger.json
+# The ledger epoch (day-1 anchor) read once from chain + cached — on /data so the cached
+# chain value survives redeploys (reloads as "cached" until the next boot re-reads it).
+ENV PYTH_EPOCH_FILE=/data/pyth-epoch.json
 # Runtime connector registry (admin-managed) — also on the /data volume so
 # registered connectors + their key hashes survive redeploys.
 ENV CONNECTORS_FILE=/data/connectors.json

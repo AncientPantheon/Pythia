@@ -27,7 +27,12 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
   - A **`pyth-flush` single-tx server resolver** fills the cronoton's `entries` payload at
     fire time and **drains** the sent buckets only on confirmed on-chain success (a failed
     or unfired flush retries next tick; traffic arriving mid-flush is preserved).
-  - The **StoaChain Earnings** panel warns when more than two day-buckets are unflushed
+  - The **ledger epoch (day-1 anchor)** is read once from chain
+    (`PYTHIA.UR_PythLedgerEpochStart`) at boot and cached on `/data` — the day ordinals use
+    the on-chain truth, not a hardcoded constant (which remains the fallback until the read
+    lands / if the read gateway is down).
+  - The **StoaChain Earnings** panel shows the resolved epoch + its source (read from chain /
+    cached / hardcoded default), and warns when more than two day-buckets are unflushed
     (a stuck daily flush).
   - Operators wire the flush as a cronoton in the Khronoton console — see
     `docs/work/pyth-flush/design.md` and the cronoton setup guide.
