@@ -1186,11 +1186,10 @@ function wireDeployButton() {
   const err = document.getElementById("deploy-error");
   if (!btn) return;
 
-  // Inline confirm (no popup): clicking Deploy swaps the button for the Yes/Cancel
-  // row in the same card; Cancel swaps back; Yes fires the deploy.
+  // Inline confirm (no popup): clicking Deploy reveals the Yes/Cancel card just BELOW
+  // the button (the button stays put); Cancel hides it again; Yes fires the deploy.
   const showConfirm = (on) => {
     if (confirmBox) confirmBox.hidden = !on;
-    btn.hidden = on;
   };
 
   const runDeploy = async () => {

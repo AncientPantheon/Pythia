@@ -11,6 +11,12 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
 
 ## [2.1.0] — 2026-07-21
 
+### Fixed
+- **Deploy confirm no longer shows on its own.** The inline confirm's `display:flex` class
+  was defeating its `hidden` attribute, so the Yes/Cancel card was always visible. Added the
+  `[hidden]` override (as the rest of the admin does) so it appears only when Deploy is
+  clicked — now a bit below the button (kept visible) instead of flush against it.
+
 ### Added
 - **On-chain Pyth-ledger flush (Khronoton drain model).** Pythia can now feed her local
   per-UTC-day ledger to the on-chain `PYTHIA|A_Flush(entries)` transaction via a Khronoton

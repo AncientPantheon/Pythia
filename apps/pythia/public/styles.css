@@ -684,12 +684,15 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 /* On-box deploy controls — breathing room above the button so it doesn't crowd the
    note above it (matches the spacing that separates the version rows). */
 .deploy-controls { margin-top: 20px; }
-/* Inline confirm (no popup) — a Yes/Cancel row shown in place of the Deploy button. */
+/* Inline confirm (no popup) — a Yes/Cancel card shown a bit below the Deploy button
+   when it's clicked. `display:flex` on the class would defeat the `hidden` attribute, so
+   the `[hidden]` override keeps it invisible until shown (same pattern as .stats/.subtabs). */
 .deploy-confirm {
   display: flex; flex-direction: column; gap: 10px;
-  padding: 14px 16px; border-radius: 12px; max-width: 520px;
+  margin-top: 14px; padding: 14px 16px; border-radius: 12px; max-width: 520px;
   background: rgba(255,255,255,.025); border: 1px solid var(--line);
 }
+.deploy-confirm[hidden] { display: none; }
 .deploy-confirm-text { margin: 0; color: var(--ink-soft); font-size: 14px; }
 .deploy-confirm-text code { color: var(--gold); }
 .deploy-confirm-row { display: flex; gap: 8px; flex-wrap: wrap; }
