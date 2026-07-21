@@ -1343,7 +1343,31 @@ function openDeployStream(id, startedAtMs) {
     finishDeployProgress(e.data);
     if (btn) btn.disabled = false;
     loadDeployStatus(); // the color/port flipped — refresh the readout
+    // A successful deploy has swapped Caddy to the new container — auto-reload so the
+    // operator lands on the freshly-deployed version without a manual refresh (as
+    // Mnemosyne does). A short countdown lets the total-time readout register first.
+    if (e.data === "success") autoReloadAfterDeploy();
   });
+}
+
+function autoReloadAfterDeploy() {
+  const el = document.getElementById("deploy-reload");
+  if (!el) {
+    location.reload();
+    return;
+  }
+  let n = 3;
+  el.hidden = false;
+  el.textContent = `✓ New version is now live on the box — reloading this page in ${n}…`;
+  const iv = setInterval(() => {
+    n -= 1;
+    if (n <= 0) {
+      clearInterval(iv);
+      location.reload();
+      return;
+    }
+    el.textContent = `✓ New version is now live on the box — reloading this page in ${n}…`;
+  }, 1000);
 }
 
 // ── StoaChain Earnings (the Pyth ledger) ─────────────────────────────────────

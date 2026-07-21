@@ -25,6 +25,8 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
     trigger (another operator, or an agent via the spool) — via a new `active` field on the
     deploy-status endpoint. See `docs/work/deploy-progress/canonical-rule.md` (to be promoted
     to the Pantheonic Architecture deploy standard).
+  - On a successful deploy the panel **auto-reloads the page** (short countdown) so the
+    operator lands on the freshly-deployed version without a manual refresh (as Mnemosyne does).
 
 ## [2.1.0] — 2026-07-21
 
