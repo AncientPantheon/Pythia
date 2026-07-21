@@ -9,6 +9,17 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.0.2] — 2026-07-21
+
+### Changed
+- **Update & Deploy now matches the canonical Pantheon deploy window (Mnemosyne-style).**
+  The whole view lives in one framed card instead of free-floating text: the version
+  readout is grouped into **Pythia** and **Constructors**, each as a framed row showing
+  the name + package and installed → available version chips (an update chip when newer,
+  "up to date" when equal); the on-box deploy status, Deploy button, and the streaming
+  build terminal sit in the same card. The version payload now carries each organ's npm
+  package name so the rows can show `Codex · @ancientpantheon/codex`.
+
 ## [2.0.1] — 2026-07-21
 
 ### Fixed

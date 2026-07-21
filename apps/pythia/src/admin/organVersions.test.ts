@@ -49,6 +49,7 @@ describe("organ version reporting", () => {
       expect(o.available).toBe("999.0.0");
       expect(o.updateAvailable).toBe(true);
       expect(typeof o.label).toBe("string");
+      expect(o.pkg).toMatch(/^@ancientpantheon\//);
     }
     // Registry unreachable → available null, never an update.
     const offline = await collectOrganVersions({ fetchImpl: npmStub(null, false) });

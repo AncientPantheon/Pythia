@@ -24,6 +24,7 @@ export const ORGAN_PACKAGES: readonly OrganPackage[] = [
 export interface OrganVersion {
   key: string;
   label: string;
+  pkg: string;
   installed: string;
   available: string | null;
   updateAvailable: boolean;
@@ -101,7 +102,7 @@ export async function collectOrganVersions(opts: OrganVersionOpts = {}): Promise
       const available = await fetchLatestOrganVersion(pkg, opts);
       const updateAvailable =
         available !== null && installed !== "unknown" ? isNewer(available, installed) : false;
-      return { key, label, installed, available, updateAvailable };
+      return { key, label, pkg, installed, available, updateAvailable };
     }),
   );
 }

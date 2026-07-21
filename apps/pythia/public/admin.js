@@ -1050,55 +1050,79 @@ async function loadVersionNetwork() {
   }
 }
 
-// Installed → available, Mnemosyne-style: what's running vs what a deploy would build
-// (the repo's main). The entity (Pythia) row first, then one row per automaton organ
-// (Codex, Khronoton) from info.organs. Each row shows an update badge when available
-// is newer, "up to date" when equal, or "latest: unreachable" when unread.
-function verRow(labelText, installed, available, updateAvailable) {
-  const row = document.createElement("div");
-  row.className = "ver-row";
+// Installed → available, Mnemosyne-style: grouped, FRAMED rows — the entity (Pythia)
+// in its own group, then the automaton organs (Codex, Khronoton) under "Constructors".
+// Each row shows the name + package on the left and version chips on the right
+// (installed → available when newer, "up to date" when equal, "latest: unreachable").
+function verBadge(text, kind) {
+  const s = document.createElement("span");
+  s.className = `ver-chip ver-chip--${kind}`;
+  s.textContent = text;
+  return s;
+}
 
-  const label = document.createElement("span");
-  label.className = "ver-label";
-  label.textContent = labelText;
-  const inst = document.createElement("span");
-  inst.className = "ver-installed";
-  inst.textContent = `v${installed || "unknown"}`;
-  row.append(label, inst);
+function verRow(label, sub, installed, available, updateAvailable) {
+  const row = document.createElement("li");
+  row.className = "deploy-row";
 
+  const name = document.createElement("span");
+  name.className = "deploy-row-name";
+  name.textContent = label;
+  if (sub) {
+    const em = document.createElement("em");
+    em.className = "deploy-row-sub";
+    em.textContent = ` · ${sub}`;
+    name.appendChild(em);
+  }
+
+  const badges = document.createElement("span");
+  badges.className = "deploy-row-badges";
+  badges.appendChild(verBadge(`v${installed || "unknown"}`, "installed"));
   if (available && updateAvailable) {
     const arrow = document.createElement("span");
     arrow.className = "ver-arrow";
     arrow.textContent = "→";
-    const target = document.createElement("span");
-    target.className = "ver-available";
-    target.textContent = `v${available}`;
-    const badge = document.createElement("span");
-    badge.className = "ver-badge";
-    badge.textContent = "update available";
-    row.append(arrow, target, badge);
+    badges.append(arrow, verBadge(`v${available}`, "update"));
   } else if (available) {
     const ok = document.createElement("span");
-    ok.className = "ver-uptodate";
+    ok.className = "deploy-uptodate";
     ok.textContent = "up to date";
-    row.appendChild(ok);
+    badges.appendChild(ok);
   } else {
     const unk = document.createElement("span");
-    unk.className = "ver-unknown";
+    unk.className = "deploy-uptodate deploy-uptodate--unreachable";
     unk.textContent = "latest: unreachable";
-    row.appendChild(unk);
+    badges.appendChild(unk);
   }
+
+  row.append(name, badges);
   return row;
+}
+
+function verGroup(title, rows) {
+  const group = document.createElement("div");
+  group.className = "deploy-group";
+  const h = document.createElement("h4");
+  h.className = "deploy-group-title";
+  h.textContent = title;
+  const ul = document.createElement("ul");
+  ul.className = "deploy-rows";
+  for (const r of rows) ul.appendChild(r);
+  group.append(h, ul);
+  return group;
 }
 
 function renderVersionNetwork(container, info) {
   container.textContent = "";
-  container.appendChild(verRow("Pythia", info.installed, info.available, info.updateAvailable));
-  for (const organ of info.organs || []) {
-    container.appendChild(
-      verRow(organ.label, organ.installed, organ.available, organ.updateAvailable),
-    );
-  }
+  container.appendChild(
+    verGroup("Pythia", [
+      verRow("Pythia", "the read gateway", info.installed, info.available, info.updateAvailable),
+    ]),
+  );
+  const organRows = (info.organs || []).map((o) =>
+    verRow(o.label, o.pkg, o.installed, o.available, o.updateAvailable),
+  );
+  if (organRows.length) container.appendChild(verGroup("Constructors", organRows));
 }
 
 // ── on-box deploy (status readout + Deploy button + SSE build-log terminal) ───
