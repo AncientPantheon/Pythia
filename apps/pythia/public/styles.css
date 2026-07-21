@@ -270,6 +270,10 @@ body.landing .foot { border-top: 1px solid var(--line); padding: 0; }
 .panel-note { margin: 5px 0 0; color: var(--ink-mute); font-size: 14px; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .panel-note code { color: var(--gold); }
+/* Content links (e.g. the "Blockchain Connectors → …" cross-reference) — the browser
+   default violet/blue is unreadable on the dark panel; use the gold accent + underline. */
+.panel-note a { color: var(--gold); text-decoration: underline; text-underline-offset: 2px; }
+.panel-note a:hover { color: var(--gold-dim); }
 
 /* sources */
 .sources { display: flex; flex-direction: column; gap: 10px; }

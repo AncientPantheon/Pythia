@@ -17,6 +17,9 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
   back. No modal dialog.
 - **Breathing room above the Deploy button** — the on-box deploy controls gained top spacing
   so the button no longer crowds the note above it.
+- **Readable content links.** Links inside admin notes (e.g. the "Blockchain Connectors →
+  StoaChain → Observation Pool" cross-reference) used the browser-default violet, unreadable
+  on the dark panel; they now render in the gold accent with an underline.
 
 ## [2.0.3] — 2026-07-21
 
