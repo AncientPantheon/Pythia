@@ -9,6 +9,7 @@ import {
   deployMode,
   isTerminalStatus,
   isValidDeployId,
+  latestDeploy,
   logPath,
   readStatus,
   seedDeployFiles,
@@ -59,12 +60,20 @@ export function registerAdminDeploy(
     // enabled state of the Deploy button.
     c.header("Cache-Control", "no-store");
     const color = process.env.PYTHIA_COLOR || null;
+    // Surface the most recent deploy so the panel can auto-attach its progress display
+    // to one in flight (running) — even one this browser didn't trigger.
+    const latest = latestDeploy();
+    const active =
+      latest && !isTerminalStatus(latest.status)
+        ? { id: latest.id, status: latest.status, startedAt: latest.startedAt }
+        : null;
     return c.json({
       mode: deployMode(),
       color,
       port: process.env.PORT || null,
       version: PYTHIA_VERSION,
       container: color ? `pythia-${color}` : null,
+      active,
     });
   });
 

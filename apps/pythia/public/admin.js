@@ -1148,6 +1148,12 @@ async function loadDeployStatus() {
     if (!res.ok) throw new Error(`deploy status ${res.status}`);
     const body = await res.json();
     renderDeployStatus(container, body);
+    // Auto-attach the progress display to a deploy in flight — even one this browser
+    // didn't trigger (someone else clicked Deploy, or the agent triggered it via spool).
+    if (body.active && body.active.status === "running" && deployStream === null) {
+      const startedMs = body.active.startedAt ? Date.parse(body.active.startedAt) : Date.now();
+      openDeployStream(body.active.id, startedMs);
+    }
     if (btn) btn.disabled = body.mode === "dev" || deployStream !== null;
   } catch {
     container.textContent = "";
@@ -1233,14 +1239,83 @@ function wireDeployButton() {
   });
 }
 
-function openDeployStream(id) {
+// ── Deploy progress display (canonical: always something moving) ──────────────
+// A ticking timer, the docker step (N/M), and a pacman heartbeat, so a slow-but-
+// working deploy never reads as stuck. The server deployer also heartbeats a log line
+// every ~6s; if THAT stops (>20s silent) the watchdog flags a genuinely stalled host.
+let deployProg = null;
+
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+}
+
+function showDeployProgress(startMs) {
+  const panel = document.getElementById("deploy-progress");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.classList.remove("is-done", "is-stalled");
+  const chip = document.getElementById("deploy-status-chip");
+  if (chip) { chip.textContent = "running"; chip.className = "deploy-chip deploy-chip--running"; }
+  const step = document.getElementById("deploy-step");
+  if (step) step.textContent = "";
+  const stall = document.getElementById("deploy-stall");
+  if (stall) stall.hidden = true;
+  if (deployProg && deployProg.timer) clearInterval(deployProg.timer);
+  deployProg = { start: startMs || Date.now(), lastChunk: Date.now(), timer: null };
+  deployProg.timer = setInterval(() => {
+    if (!deployProg) return;
+    const t = document.getElementById("deploy-timer");
+    if (t) t.textContent = fmtElapsed(Date.now() - deployProg.start);
+    const silentMs = Date.now() - deployProg.lastChunk;
+    const p = document.getElementById("deploy-progress");
+    const st = document.getElementById("deploy-stall");
+    if (silentMs > 20000) {
+      if (p) p.classList.add("is-stalled");
+      if (st) { st.textContent = `⚠ no output for ${Math.floor(silentMs / 1000)}s — the host deployer may have stopped.`; st.hidden = false; }
+    } else {
+      if (p) p.classList.remove("is-stalled");
+      if (st) st.hidden = true;
+    }
+  }, 1000);
+}
+
+function onDeployChunk(text) {
+  if (deployProg) deployProg.lastChunk = Date.now();
+  // Track the latest docker "Step N/M" seen in the chunk.
+  let last = null;
+  const re = /Step (\d+)\/(\d+)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) last = m;
+  if (last) {
+    const el = document.getElementById("deploy-step");
+    if (el) el.textContent = `Step ${last[1]}/${last[2]}`;
+  }
+}
+
+function finishDeployProgress(status) {
+  if (deployProg && deployProg.timer) clearInterval(deployProg.timer);
+  const total = deployProg ? fmtElapsed(Date.now() - deployProg.start) : "";
+  deployProg = null;
+  const panel = document.getElementById("deploy-progress");
+  if (panel) { panel.classList.add("is-done"); panel.classList.remove("is-stalled"); }
+  const ok = status === "success";
+  const chip = document.getElementById("deploy-status-chip");
+  if (chip) { chip.textContent = ok ? "success" : (status || "done"); chip.className = `deploy-chip deploy-chip--${ok ? "success" : "failed"}`; }
+  const t = document.getElementById("deploy-timer");
+  if (t) t.textContent = ok ? `finished in ${total}` : `${status} after ${total}`;
+  const stall = document.getElementById("deploy-stall");
+  if (stall) stall.hidden = true;
+}
+
+function openDeployStream(id, startedAtMs) {
   const log = document.getElementById("deploy-log");
-  const statusLine = document.getElementById("deploy-stream-status");
   const btn = document.getElementById("deploy-btn");
   if (!log) return;
   if (deployStream) deployStream.close();
   log.hidden = false;
   log.textContent = "";
+  showDeployProgress(startedAtMs);
   const append = (text) => {
     log.textContent += text;
     log.scrollTop = log.scrollHeight; // keep the tail in view
@@ -1259,19 +1334,13 @@ function openDeployStream(id) {
 
   // The chunk already carries its own newlines (a byte slice of the log); do NOT
   // add one, or every ~500ms poll batch gets a spurious blank line / split line.
-  es.onmessage = (e) => { append(e.data); };
-
-  es.addEventListener("status", (e) => {
-    if (statusLine) {
-      statusLine.hidden = false;
-      statusLine.textContent = `Deploy status: ${e.data}`;
-    }
-  });
+  es.onmessage = (e) => { append(e.data); onDeployChunk(e.data); };
 
   es.addEventListener("done", (e) => {
     append(`— deploy ${e.data}\n`);
     es.close();
     deployStream = null;
+    finishDeployProgress(e.data);
     if (btn) btn.disabled = false;
     loadDeployStatus(); // the color/port flipped — refresh the readout
   });

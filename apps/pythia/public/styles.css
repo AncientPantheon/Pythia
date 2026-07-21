@@ -714,6 +714,38 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
   background: rgba(255,255,255,.025); border: 1px solid var(--line);
 }
 .deploy-confirm[hidden] { display: none; }
+
+/* Deploy progress — the canonical always-moving display: a status chip, docker step
+   (N/M), a ticking timer, and a pacman heartbeat. */
+.deploy-progress { margin: 14px 0; }
+.deploy-progress-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; font-size: 13.5px; }
+.deploy-chip { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border: 1px solid var(--line); }
+.deploy-chip--running { color: var(--gold); border-color: var(--gold-dim); background: rgba(230,190,106,.08); }
+.deploy-chip--success { color: #7ce6a8; border-color: rgba(52,209,122,.35); background: rgba(52,209,122,.1); }
+.deploy-chip--failed  { color: #f0736b; border-color: rgba(229,90,90,.4);  background: rgba(229,90,90,.1); }
+.deploy-step  { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.deploy-timer { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 700; }
+.deploy-stall { margin: 8px 0 0; font-size: 13px; color: #f0736b; }
+
+/* Pacman heartbeat — pac-man chomps left→right across a dot field on a CSS loop, so
+   there is ALWAYS motion while a deploy runs. Parks at the end on done; pauses + reddens
+   when the watchdog flags a stall (no host output for >20s). */
+.deploy-pacman { position: relative; height: 24px; border-radius: 8px; overflow: hidden; background: #060912; border: 1px solid var(--line); }
+.deploy-pacman::before {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(circle at center, var(--gold-dim) 1.4px, transparent 1.8px);
+  background-size: 16px 24px; opacity: .5;
+}
+.deploy-pacman-muncher {
+  position: absolute; top: 50%; left: 0; font-size: 15px; line-height: 1; color: var(--gold);
+  transform: translateY(-50%);
+  animation: pac-run 2.6s linear infinite, pac-chomp .32s ease-in-out infinite;
+}
+@keyframes pac-run { from { left: -3%; } to { left: 100%; } }
+@keyframes pac-chomp { 0%, 100% { transform: translateY(-50%) scaleX(1); } 50% { transform: translateY(-50%) scaleX(.5); } }
+.deploy-progress.is-done .deploy-pacman-muncher { animation: none; left: 100%; }
+.deploy-progress.is-stalled .deploy-pacman-muncher { animation-play-state: paused; color: #f0736b; }
+.deploy-progress.is-stalled .deploy-pacman { border-color: rgba(229,90,90,.4); }
 .deploy-confirm-text { margin: 0; color: var(--ink-soft); font-size: 14px; }
 .deploy-confirm-text code { color: var(--gold); }
 .deploy-confirm-row { display: flex; gap: 8px; flex-wrap: wrap; }

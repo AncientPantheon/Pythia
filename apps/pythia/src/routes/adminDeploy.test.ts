@@ -133,6 +133,7 @@ describe("GET /api/admin/deploy/status", () => {
       port: null,
       version: PYTHIA_VERSION,
       container: null,
+      active: null,
     });
   });
 
@@ -152,7 +153,32 @@ describe("GET /api/admin/deploy/status", () => {
       port: "8081",
       version: PYTHIA_VERSION,
       container: "pythia-green",
+      active: null,
     });
+  });
+
+  it("surfaces a running deploy as `active` (so the panel can auto-attach)", async () => {
+    bundleEnv();
+    const id = randomUUID();
+    rootWriteState(id, { status: "running", log: "▶ started\n" });
+    const app = buildApp();
+    const body = (await (
+      await app.request("/api/admin/deploy/status", { headers: { cookie: await cookieFor(["ancient"]) } })
+    ).json()) as { active: { id: string; status: string; startedAt: string } | null };
+    expect(body.active?.id).toBe(id);
+    expect(body.active?.status).toBe("running");
+    expect(typeof body.active?.startedAt).toBe("string");
+  });
+
+  it("does not surface a finished deploy as active", async () => {
+    bundleEnv();
+    const id = randomUUID();
+    rootWriteState(id, { status: "success", log: "✓ done\n" });
+    const app = buildApp();
+    const body = (await (
+      await app.request("/api/admin/deploy/status", { headers: { cookie: await cookieFor(["ancient"]) } })
+    ).json()) as { active: unknown };
+    expect(body.active).toBeNull();
   });
 });
 

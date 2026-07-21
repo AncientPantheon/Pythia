@@ -9,6 +9,23 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.2.0] — 2026-07-21
+
+### Added
+- **Always-moving deploy progress** (the canonical rule: something must always be moving
+  while a deploy runs, so a slow-but-working deploy never reads as stuck):
+  - The host deployer now **heartbeats a log line every ~6s** for the whole run, so the
+    streamed terminal always grows even during a long silent `docker build` step. If the
+    heartbeat stops, the deployer itself has died.
+  - The **Update & Deploy** panel gained a live progress display: a ticking elapsed timer,
+    the current build **Step N/M**, and a **pacman heartbeat** animation. On completion it
+    shows the total time (*"finished in Xm YYs"*); a >20s output silence flags a stalled
+    host in red.
+  - The panel **auto-attaches** to a deploy already in flight — even one this browser didn't
+    trigger (another operator, or an agent via the spool) — via a new `active` field on the
+    deploy-status endpoint. See `docs/work/deploy-progress/canonical-rule.md` (to be promoted
+    to the Pantheonic Architecture deploy standard).
+
 ## [2.1.0] — 2026-07-21
 
 ### Fixed

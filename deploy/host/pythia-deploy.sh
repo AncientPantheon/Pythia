@@ -65,6 +65,20 @@ elapsed() { printf '%dm%02ds' $(( ($(date +%s)-START)/60 )) $(( ($(date +%s)-STA
 log()   { printf '%s\n' "$*" >>"$LOG"; }
 phase() { log ""; log "═══ [$(elapsed)] $* ═══"; }
 fail()  { log "✗ $*"; echo failed >"$STATUS"; exit 1; }
+
+# ── Heartbeat: the canonical "always-moving" guarantee ────────────────────────────
+# A long docker step (the native better-sqlite3 build, the chown -R) emits nothing for
+# minutes, so the SSE terminal looks frozen even though the deploy is fine. A background
+# ticker appends a heartbeat line every few seconds so the log ALWAYS grows — the operator
+# can tell at a glance the deploy is alive; if the heartbeat STOPS, it is genuinely stuck.
+HEARTBEAT_PID=""
+start_heartbeat() {
+  ( while true; do sleep 6; printf '  · still working · elapsed %s\n' "$(elapsed)" >>"$LOG"; done ) &
+  HEARTBEAT_PID=$!
+}
+stop_heartbeat() { [ -n "$HEARTBEAT_PID" ] && kill "$HEARTBEAT_PID" 2>/dev/null; HEARTBEAT_PID=""; }
+trap 'stop_heartbeat' EXIT
+
 trap 'log "✗ deploy aborted (error near line $LINENO)"; echo failed >"$STATUS"' ERR
 # A SIGKILL/timeout (systemd) or Ctrl-C must not leave status stuck at "running":
 # mark failed on TERM/INT so the panel and the stale-claim reclaim agree.
@@ -74,6 +88,7 @@ trap 'echo failed >"$STATUS" 2>/dev/null; exit 1' TERM INT
 : >"$LOG"
 echo running >"$STATUS"
 log "▶ host deployer started ($(date -u +%FT%TZ))"
+start_heartbeat
 
 # 1) Refresh source to exactly origin/main (reset --hard: the box's checkout is a
 #    build input, never a place local edits live).
@@ -160,5 +175,6 @@ docker stop "pythia-$OLD" >/dev/null 2>&1 || true
 docker rm "pythia-$OLD" >/dev/null 2>&1 || true
 log "✓ old container (pythia-$OLD) stopped + removed"
 
-log "✓ deploy complete"
+stop_heartbeat
+log "✓ deploy complete in $(elapsed)"
 echo success >"$STATUS"

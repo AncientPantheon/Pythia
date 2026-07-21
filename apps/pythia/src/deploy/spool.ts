@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -123,6 +123,47 @@ export function readStatus(id: string, env: NodeJS.ProcessEnv = process.env): st
 /** Whether a status ends the deploy — the SSE loop closes on these. */
 export function isTerminalStatus(status: string | null): boolean {
   return status === "success" || status === "failed";
+}
+
+/** A summary of the most recent deploy, for the admin panel to auto-attach to. */
+export interface DeploySummary {
+  id: string;
+  status: string;
+  /** ISO of the deploy's start (the log file's creation time). */
+  startedAt: string;
+}
+
+/**
+ * The most recent deploy (newest `<id>.status`), or null when the spool is empty / dev.
+ * Lets the admin panel auto-attach its progress display to a deploy in flight — even one
+ * triggered by someone else (or by the agent via the spool) — so the operator can always
+ * watch a running deploy without having clicked Deploy in this browser.
+ */
+export function latestDeploy(env: NodeJS.ProcessEnv = process.env): DeploySummary | null {
+  const dir = stateDir(env);
+  if (dir === null) return null;
+  try {
+    let best: { id: string; mtime: number } | null = null;
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".status")) continue;
+      const id = f.slice(0, -".status".length);
+      if (!isValidDeployId(id)) continue;
+      const mtime = statSync(join(dir, f)).mtimeMs;
+      if (!best || mtime > best.mtime) best = { id, mtime };
+    }
+    if (!best) return null;
+    const status = readStatus(best.id, env) ?? "unknown";
+    let startedMs = best.mtime;
+    try {
+      const st = statSync(logPath(best.id, env));
+      startedMs = st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;
+    } catch {
+      /* no log — fall back to the status mtime */
+    }
+    return { id: best.id, status, startedAt: new Date(startedMs).toISOString() };
+  } catch {
+    return null;
+  }
 }
 
 /**

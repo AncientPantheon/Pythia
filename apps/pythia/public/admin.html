@@ -189,7 +189,17 @@
                   </div>
                 </div>
                 <p class="conn-error" id="deploy-error" hidden></p>
-                <p class="hub-stat" id="deploy-stream-status" hidden></p>
+                <!-- Live progress: an always-moving pacman heartbeat + a ticking timer +
+                     the docker step (N/M), so a slow-but-working deploy never looks stuck. -->
+                <div id="deploy-progress" class="deploy-progress" hidden>
+                  <div class="deploy-progress-row">
+                    <span id="deploy-status-chip" class="deploy-chip deploy-chip--running">running</span>
+                    <span id="deploy-step" class="deploy-step"></span>
+                    <span id="deploy-timer" class="deploy-timer" aria-live="polite">0m00s</span>
+                  </div>
+                  <div class="deploy-pacman" aria-hidden="true"><span class="deploy-pacman-muncher">ᗧ</span></div>
+                  <p id="deploy-stall" class="deploy-stall" hidden></p>
+                </div>
                 <pre id="deploy-log" class="console-out" hidden></pre>
               </div>
             </section>
