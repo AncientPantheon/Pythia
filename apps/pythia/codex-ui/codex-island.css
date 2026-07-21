@@ -35,7 +35,8 @@
   background: color-mix(in srgb, var(--panel, #10162e) 82%, transparent); padding: 16px;
 }
 .cxpg-separator { height: 1px; background: var(--line, #24304f); margin: 14px 0; }
-.cxpg-codexbar-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+/* Download / Load stacked vertically (matches Mnemosyne) — one below the other. */
+.cxpg-codexbar-actions { display: flex; flex-direction: column; gap: 6px; }
 
 .cxpg-card { border: 1px solid var(--line, #24304f); border-radius: 12px; background: rgba(255,255,255,.025); padding: 16px; }
 .cxpg-card--status { max-width: 520px; margin: 24px auto; text-align: center; }

@@ -9,6 +9,12 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.0.3] — 2026-07-21
+
+### Changed
+- **Codex top-bar Download / Load buttons now stack vertically** (one below the other),
+  matching Mnemosyne's codex layout, instead of sitting side-by-side.
+
 ## [2.0.2] — 2026-07-21
 
 ### Changed
