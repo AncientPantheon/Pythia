@@ -146,14 +146,14 @@ describe("keyless invariant scanner", () => {
 
   it("imports nothing from @stoachain/* except the keyless dalos-crypto verify primitive", () => {
     // The keyless pivot dropped the sibling couplings. The ONE sanctioned exception
-    // is `@stoachain/dalos-crypto/registry`, used SOLELY for `Apollo.verify` (pure
+    // is `@ouronet/dalos-crypto/registry`, used SOLELY for `Apollo.verify` (pure
     // public-data signature check — no key, no sign; see apolloVerify.ts). Every
     // OTHER @stoachain specifier stays banned. This catches BOTH static
     // `from "@stoachain/…"` and dynamic `import("@stoachain/…")` — the latter is how
     // apolloVerify.ts loads the primitive, so the exception must be real, not a
     // regex blind spot. The scanner file enumerates names, so it is excluded.
     const ENFORCEMENT_FILES = new Set(["keylessScanner.ts"]);
-    const ALLOWED = new Set(["@stoachain/dalos-crypto/registry"]);
+    const ALLOWED = new Set(["@ouronet/dalos-crypto/registry"]);
     const files: string[] = [];
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir)) {

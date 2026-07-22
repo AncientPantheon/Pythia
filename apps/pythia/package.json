@@ -22,7 +22,7 @@
     "@hono/node-server": "^2.0.0",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
-    "@stoachain/dalos-crypto": "^4.0.3",
+    "@ouronet/dalos-crypto": "^4.0.3",
     "@stoachain/kadena-stoic-legacy": "^4.3.6",
     "@stoachain/stoa-core": "^4.3.6",
     "better-sqlite3": "^12.11.1",
