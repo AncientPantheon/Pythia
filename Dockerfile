@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Pythia gateway — the read-only, failover-safe StoaChain read API + its static
 # landing page, packaged as a Node-22 OCI image. Mirrors the sibling Node-service
 # container posture (StoaExplorer docker/production/Dockerfile.backend: multi-stage
@@ -29,11 +28,12 @@ RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json* ./
 COPY apps/pythia/package.json ./apps/pythia/
 COPY packages/pythia-client/package.json ./packages/pythia-client/
-# PERF: a BuildKit cache mount for npm's tarball cache. Every release bumps the version in
-# package.json, which invalidates this layer on EVERY deploy — so without a warm cache npm
-# re-downloads all ~1000 packages each time. The mount persists across builds, leaving only
-# the (unavoidable) extract-to-disk cost. Requires BuildKit; the deployer enforces it.
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
+# NOTE: an npm cache mount (`RUN --mount=type=cache,target=/root/.npm`) would avoid
+# re-downloading ~1000 packages on every deploy — the version bump in package.json
+# invalidates this layer each release — but it requires BuildKit, and this host has NO
+# buildx plugin (the deployer falls back to the legacy builder, which cannot parse the
+# mount syntax). Keep this Dockerfile legacy-compatible; revisit if buildx is installed.
+RUN npm ci
 
 # Copy the rest of the workspace source and build all workspaces (the root
 # `build` script builds pythia-client then apps/pythia via `tsc`).

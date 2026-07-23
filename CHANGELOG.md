@@ -22,12 +22,11 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
     expensive step at a measured **168s**, because it walked and rewrote metadata for every file
     in `node_modules`. Ownership is now set as the files land, deleting that whole extra pass.
     (The non-root user is created *before* the copies so `--chown` can name it.)
-  - **A BuildKit cache mount for npm's tarball cache.** Every release bumps the version in
-    `package.json`, which invalidates the `npm ci` layer on *every* deploy — so npm re-downloaded
-    all ~1000 packages each time. The cache now persists across builds.
-- **BuildKit is now required** for the image build (the cache mount needs it). The deployer's
-  silent legacy-builder fallback is replaced by a clear failure, since the legacy builder cannot
-  parse `--mount=type=cache`.
+- **Not done (yet):** an npm cache mount would also help — the version bump invalidates the
+  `npm ci` layer every release, so npm re-downloads ~1000 packages each time — but it requires
+  BuildKit, and this host has **no buildx plugin** (the deployer has always fallen back to the
+  legacy builder, which cannot parse `--mount=type=cache`). The Dockerfile stays
+  legacy-compatible; revisit once `docker-buildx-plugin` is installed on the box.
 
 ## [2.2.2] — 2026-07-23
 
