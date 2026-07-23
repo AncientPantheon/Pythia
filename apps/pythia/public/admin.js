@@ -1154,7 +1154,9 @@ async function loadDeployStatus() {
       const startedMs = body.active.startedAt ? Date.parse(body.active.startedAt) : Date.now();
       openDeployStream(body.active.id, startedMs);
     }
-    if (btn) btn.disabled = body.mode === "dev" || deployStream !== null;
+    // Enabled in BOTH modes now: bundle = blue-green rebuild, dev = pull the
+    // constructors at @latest. Only an in-flight deploy disables it.
+    if (btn) btn.disabled = deployStream !== null;
   } catch {
     container.textContent = "";
     const p = document.createElement("p");
@@ -1177,12 +1179,23 @@ function renderDeployStatus(container, s) {
     p.append(b, v);
     return p;
   };
+  // The confirm wording depends on what Deploy actually does on this box.
+  const confirmText = document.querySelector(".deploy-confirm-text");
   if (s.mode === "dev") {
+    if (confirmText) {
+      confirmText.innerHTML =
+        'Pull the automaton constructors (<b>Codex</b>, <b>Khronoton</b>) at <code>@latest</code> and rebuild. Proceed?';
+    }
     const note = document.createElement("p");
     note.className = "panel-note";
-    note.textContent = "dev mode — on-box deploy is available on the live server only";
+    note.textContent =
+      "dev mode — no blue-green on this box. Deploy pulls the constructors at @latest and rebuilds; the page reloads to pick up the new UIs (restart the dev server for server-side organ changes).";
     container.append(note, line("Version", s.version || "unknown"));
     return;
+  }
+  if (confirmText) {
+    confirmText.innerHTML =
+      'Rebuild from <code>origin/main</code> on the box and swap blue↔green with zero downtime. Proceed?';
   }
   container.append(
     line("Mode", s.mode || "unknown"),

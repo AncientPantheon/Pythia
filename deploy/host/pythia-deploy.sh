@@ -92,10 +92,21 @@ start_heartbeat
 
 # 1) Refresh source to exactly origin/main (reset --hard: the box's checkout is a
 #    build input, never a place local edits live).
-phase "1/5 · Refresh source (origin/main)"
+phase "1/5 · Refresh source (origin/main) + bump constructors to @latest"
 cd "$REPO"
 git fetch origin main 2>&1 | tee -a "$LOG"
+# reset --hard also discards the PREVIOUS deploy's pin bumps, so the tree stays clean
+# and @latest re-bumps from a known base (same model as the Mnemosyne deployer).
 git reset --hard origin/main 2>&1 | tee -a "$LOG"
+
+# Adopt the newest published organs. The image builds with `npm ci`, which installs the
+# lockfile EXACTLY — so without this step a deploy can never pick up a newly published
+# constructor, no matter what the admin panel advertises as available. Bumping the pins
+# here (package.json + package-lock) before the build is what makes "Deploy" actually
+# adopt Codex/Khronoton releases. See automaton/05 §1c.
+log "→ npm install @ancientpantheon/codex@latest @ancientpantheon/khronoton-core@latest"
+npm install @ancientpantheon/codex@latest @ancientpantheon/khronoton-core@latest \
+  -w @ancientpantheon/pythia --no-audit --no-fund 2>&1 | tee -a "$LOG"
 
 # 2) Build the new image. Prefer BuildKit + --progress=plain (line-by-line, no
 #    cursor-rewrite → cleaner SSE terminal) WHEN buildx is present; otherwise fall

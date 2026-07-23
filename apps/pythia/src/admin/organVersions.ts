@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { HEALTH_TIMEOUT_MS } from "../health/resolver.js";
 import type { FetchImpl } from "../dial/index.js";
 import { isNewer } from "./versionInfo.js";
@@ -35,30 +36,43 @@ export interface OrganVersionOpts {
   timeoutMs?: number;
 }
 
-/**
- * The installed version of an organ package, read from its own package.json in
- * node_modules (the packages' `exports` maps don't expose `./package.json`, so a
- * direct path read is used). Walks up from cwd so it finds a HOISTED package in a
- * monorepo (organ packages live in the root node_modules, not apps/pythia's) as well
- * as a co-located one in the container (cwd=/app). `"unknown"` if unreadable.
- */
-export function readInstalledOrganVersion(pkg: string): string {
-  const segments = pkg.split("/");
-  let dir = process.cwd();
+/** Walk up from `startDir` looking for `<dir>/node_modules/<pkg>/package.json`. */
+function walkUpForVersion(startDir: string, segments: string[]): string | null {
+  let dir = startDir;
   for (;;) {
     const pkgPath = join(dir, "node_modules", ...segments, "package.json");
     if (existsSync(pkgPath)) {
       try {
         const parsed = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: unknown };
-        return typeof parsed.version === "string" && parsed.version ? parsed.version : "unknown";
+        return typeof parsed.version === "string" && parsed.version ? parsed.version : null;
       } catch {
-        return "unknown";
+        return null;
       }
     }
     const parent = dirname(dir);
-    if (parent === dir) return "unknown"; // reached filesystem root
+    if (parent === dir) return null; // reached filesystem root
     dir = parent;
   }
+}
+
+/**
+ * The installed version of an organ package, read from its own package.json in
+ * node_modules (the packages' `exports` maps don't expose `./package.json`, so a
+ * direct path read is used).
+ *
+ * Walks up from **this module's own location first**, then from cwd. That covers BOTH
+ * npm layouts: hoisted to the workspace root (`/app/node_modules/...`) and left nested
+ * under the consuming workspace (`/app/apps/pythia/node_modules/...`) — npm chooses
+ * either depending on how the dependency resolves. A cwd-only walk reported `"unknown"`
+ * for a nested install, because the container's cwd is the workspace ROOT (`/app`) and
+ * the walk only ever goes further up, never back down into `apps/pythia`.
+ */
+export function readInstalledOrganVersion(pkg: string): string {
+  const segments = pkg.split("/");
+  const here = dirname(fileURLToPath(import.meta.url));
+  return (
+    walkUpForVersion(here, segments) ?? walkUpForVersion(process.cwd(), segments) ?? "unknown"
+  );
 }
 
 /**

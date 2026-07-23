@@ -27,7 +27,9 @@ import {
 
 const secret = "unit-test-session-secret-at-least-32-chars";
 
-function buildApp(deps: { pollMs?: number; maxStreamMs?: number } = {}): Hono {
+function buildApp(
+  deps: { pollMs?: number; maxStreamMs?: number; startDevUpdate?: (id: string) => void } = {},
+): Hono {
   const app = new Hono();
   registerAdminDeploy(app, { sessionSecret: secret } as OidcConfig, deps);
   return app;
@@ -44,6 +46,7 @@ async function cookieFor(roles: string[]): Promise<string> {
 // request, so tests drive them through process.env and restore the originals.
 const savedEnv: Record<string, string | undefined> = {
   PYTHIA_DEPLOY_DIR: process.env.PYTHIA_DEPLOY_DIR,
+  PYTHIA_DEV_DEPLOY_DIR: process.env.PYTHIA_DEV_DEPLOY_DIR,
   NODE_ENV: process.env.NODE_ENV,
   PYTHIA_COLOR: process.env.PYTHIA_COLOR,
   PORT: process.env.PORT,
@@ -183,18 +186,20 @@ describe("GET /api/admin/deploy/status", () => {
 });
 
 describe("POST /api/admin/deploy", () => {
-  it("409s in dev mode without touching any spool path", async () => {
-    // Dev has no spool volume; seeding would throw (or spool into cwd), so the
-    // route must refuse before calling any path helper.
+  it("in dev mode starts the constructor update instead of a blue-green deploy", async () => {
+    // Dev has no spool volume / docker / Caddy, so Deploy pulls the automaton
+    // organs at @latest instead — and must never touch a spool path.
     devEnv();
-    const app = buildApp();
+    const started: string[] = [];
+    const app = buildApp({ startDevUpdate: (id) => started.push(id) });
     const res = await app.request("/api/admin/deploy", {
       method: "POST",
       headers: { cookie: await cookieFor(["ancient"]) },
     });
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("dev mode");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; mode: string };
+    expect(body.mode).toBe("dev");
+    expect(started).toEqual([body.id]); // the update ran for exactly this id
   });
 
   it("mints a uuid and drops ONLY the request file (no state/) in bundle mode", async () => {
@@ -242,17 +247,26 @@ describe("GET /api/admin/deploy/stream/:id", () => {
     expect(body.error).toBeTruthy();
   });
 
-  it("closes immediately with event:done data:dev when there is no spool (dev mode)", async () => {
-    // A dev EventSource must not hang polling a spool that will never exist.
+  it("in dev mode tails the constructor-update log and closes on its terminal status", async () => {
+    // Dev streams the npm/rebuild output through the SAME contract as the host
+    // deployer, so the progress display (pacman/timer/auto-reload) works locally too.
     devEnv();
+    const devDir = mkdtempSync(join(tmpdir(), "pythia-devdeploy-"));
+    tempDirs.push(devDir);
+    process.env.PYTHIA_DEV_DEPLOY_DIR = devDir;
+    const id = randomUUID();
+    writeFileSync(join(devDir, `${id}.log`), "▶ dev constructor update\nadded 2 packages\n");
+    writeFileSync(join(devDir, `${id}.status`), "success");
+
     const app = buildApp({ pollMs: 10 });
-    const res = await app.request(`/api/admin/deploy/stream/${randomUUID()}`, {
+    const res = await app.request(`/api/admin/deploy/stream/${id}`, {
       headers: { cookie: await cookieFor(["ancient"]) },
     });
     expect(res.status).toBe(200);
     const text = await res.text();
+    expect(text).toContain("dev constructor update"); // the log was tailed
     expect(text).toContain("event: done");
-    expect(text).toContain("data: dev");
+    expect(text).toContain("data: success");
   });
 
   it("replays the existing log, emits the status change, and closes on terminal status", async () => {

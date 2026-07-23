@@ -14,6 +14,11 @@ import {
   readStatus,
   seedDeployFiles,
 } from "../deploy/spool.js";
+import {
+  devLogPath,
+  readDevStatus,
+  startDevConstructorUpdate,
+} from "../deploy/devUpdate.js";
 
 /**
  * Default hard cap on an SSE stream's lifetime: 20 minutes. A wedged deployer
@@ -28,6 +33,8 @@ export interface AdminDeployDeps {
   pollMs?: number;
   /** Hard cap on a stream's lifetime (ms). Default {@link DEFAULT_MAX_STREAM_MS}. */
   maxStreamMs?: number;
+  /** The dev-mode constructor update. Injectable so tests never spawn a real npm. */
+  startDevUpdate?: (id: string) => void;
 }
 
 /**
@@ -79,12 +86,14 @@ export function registerAdminDeploy(
 
   app.post("/api/admin/deploy", gate, (c) => {
     // Gate on deployMode() BEFORE any spool path helper — they throw in dev
-    // mode (no spool volume to seed into).
+    // mode (no spool volume to seed into). On a dev box there is no blue-green
+    // path, so Deploy instead pulls the automaton organs at @latest (Mnemosyne's
+    // dev behaviour) and rebuilds the islands — same log/status contract, so the
+    // SSE stream + progress display drive it unchanged.
     if (deployMode() === "dev") {
-      return c.json(
-        { error: "dev mode — on-box deploy only runs on the live server" },
-        409,
-      );
+      const devId = randomUUID();
+      (deps.startDevUpdate ?? startDevConstructorUpdate)(devId);
+      return c.json({ id: devId, mode: "dev" });
     }
     const id = randomUUID();
     seedDeployFiles(id, { id, mode: "bundle", requestedAt: new Date().toISOString() });
@@ -97,14 +106,12 @@ export function registerAdminDeploy(
     if (!isValidDeployId(id)) {
       return c.json({ error: "invalid deploy id" }, 400);
     }
+    const dev = deployMode() === "dev";
     return streamSSE(c, async (stream) => {
-      // No spool on a dev box — close immediately instead of polling a log
-      // file that will never appear (deployMode() first: path helpers throw).
-      if (deployMode() === "dev") {
-        await stream.writeSSE({ event: "done", data: "dev" });
-        return;
-      }
-      const file = logPath(id);
+      // Dev box: tail the dev constructor-update log instead of the spool (which
+      // does not exist here). Same tail loop, same terminal statuses.
+      const file = dev ? devLogPath(id) : logPath(id);
+      const statusOf = (): string | null => (dev ? readDevStatus(id) : readStatus(id));
       let offset = 0;
       let lastStatus: string | null = null;
       const deadline = Date.now() + maxStreamMs;
@@ -122,7 +129,7 @@ export function registerAdminDeploy(
           offset = size;
           await stream.writeSSE({ data: chunk });
         }
-        const status = readStatus(id);
+        const status = statusOf();
         if (status !== null && status !== lastStatus) {
           lastStatus = status;
           await stream.writeSSE({ event: "status", data: status });

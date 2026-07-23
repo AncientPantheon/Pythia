@@ -9,6 +9,30 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.2.1] — 2026-07-22
+
+### Fixed
+- **A deploy can now actually adopt a newly published constructor.** The image builds with
+  `npm ci`, which installs the lockfile *exactly*, and the deployer never bumped the pins —
+  so no deploy could ever pick up a new Codex/Khronoton release, however long it ran, no
+  matter that the panel advertised one as available. The deployer now bumps
+  `@ancientpantheon/codex@latest` + `@ancientpantheon/khronoton-core@latest` before building
+  (the model the Mnemosyne deployer already used), so Deploy adopts published organs.
+- **Organ versions no longer read as `unknown` when npm nests them.** The installed-version
+  reader walked up only from `process.cwd()`, which in the container is the workspace root
+  (`/app`) — so a dependency npm left nested at `/app/apps/pythia/node_modules/...` instead
+  of hoisting was never found. It now walks up from the module's own location first, which
+  covers both layouts.
+
+### Added
+- **Deploy works on localhost.** A dev box has no docker/reverse-proxy, so Deploy used to be
+  a dead, disabled button. In `dev` mode it now pulls the constructors at `@latest` and
+  rebuilds, writing the same log/status contract as the host deployer — so the whole progress
+  display (heartbeat, pacman, timer, auto-reload) drives it locally too.
+
+### Changed
+- Constructor pins bumped to **Codex 0.6.1** and **Khronoton 0.4.2**.
+
 ## [2.2.0] — 2026-07-21
 
 ### Added
