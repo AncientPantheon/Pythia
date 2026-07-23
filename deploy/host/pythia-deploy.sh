@@ -124,12 +124,13 @@ fi
 #    cursor-rewrite → cleaner SSE terminal) WHEN buildx is present; otherwise fall
 #    back to the legacy builder, which streams fine and is all some hosts have.
 phase "2/5 · Build image"
-if DOCKER_BUILDKIT=1 docker buildx version >/dev/null 2>&1; then
-  DOCKER_BUILDKIT=1 docker build --progress=plain -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
-else
-  log "(buildx not present — using the legacy builder)"
-  docker build -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
+# BuildKit is now REQUIRED, not preferred: the Dockerfile uses a `--mount=type=cache`
+# for npm's tarball cache, which the legacy builder cannot parse. Failing loudly here
+# beats a legacy build dying on a confusing syntax error deep in the output.
+if ! DOCKER_BUILDKIT=1 docker buildx version >/dev/null 2>&1; then
+  fail "buildx/BuildKit not available — the Dockerfile requires it (npm cache mount). Install docker-buildx on this host."
 fi
+DOCKER_BUILDKIT=1 docker build --progress=plain -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
 
 # 3) Pick the target color (the one NOT currently serving).
 if docker ps --format '{{.Names}}' | grep -qx 'pythia-green'; then

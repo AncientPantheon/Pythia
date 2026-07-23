@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Pythia gateway — the read-only, failover-safe StoaChain read API + its static
 # landing page, packaged as a Node-22 OCI image. Mirrors the sibling Node-service
 # container posture (StoaExplorer docker/production/Dockerfile.backend: multi-stage
@@ -28,7 +29,11 @@ RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json* ./
 COPY apps/pythia/package.json ./apps/pythia/
 COPY packages/pythia-client/package.json ./packages/pythia-client/
-RUN npm ci
+# PERF: a BuildKit cache mount for npm's tarball cache. Every release bumps the version in
+# package.json, which invalidates this layer on EVERY deploy — so without a warm cache npm
+# re-downloads all ~1000 packages each time. The mount persists across builds, leaving only
+# the (unavoidable) extract-to-disk cost. Requires BuildKit; the deployer enforces it.
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
 
 # Copy the rest of the workspace source and build all workspaces (the root
 # `build` script builds pythia-client then apps/pythia via `tsc`).
@@ -90,16 +95,31 @@ ENV PYTHIA_DEPLOY_DIR=/data/deploy
 
 WORKDIR /app
 
+# Create the non-root user BEFORE the copies so each COPY can set ownership inline
+# via `--chown`. The gateway is treated as compromisable, so the long-lived process
+# never runs as root. /data is the volume mount point: chown it (non-recursive — it is
+# empty here) so a fresh named volume inherits pythia ownership and the non-root
+# process can write its snapshots (a root-owned volume otherwise EACCESes).
+#
+# PERF: this used to be a trailing `chown -R pythia:pythia /app /data`, which walked and
+# rewrote metadata for all ~1000 packages in node_modules — a measured **168s**, the single
+# most expensive step in the whole build. `COPY --chown` sets ownership as the files land,
+# so that entire extra pass over the tree disappears.
+RUN addgroup -g 1001 -S pythia \
+ && adduser -S pythia -u 1001 -G pythia \
+ && mkdir -p /data \
+ && chown pythia:pythia /data
+
 # Carry the hoisted (pruned) node_modules and the built workspace output.
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/pythia/dist ./apps/pythia/dist
-COPY --from=builder /app/apps/pythia/package.json ./apps/pythia/package.json
+COPY --from=builder --chown=pythia:pythia /app/node_modules ./node_modules
+COPY --from=builder --chown=pythia:pythia /app/apps/pythia/dist ./apps/pythia/dist
+COPY --from=builder --chown=pythia:pythia /app/apps/pythia/package.json ./apps/pythia/package.json
 # The checked-in config the loader reads at boot (resolved relative to dist:
 # apps/pythia/dist/../config/pythia.config.json -> apps/pythia/config/...).
-COPY --from=builder /app/apps/pythia/config ./apps/pythia/config
+COPY --from=builder --chown=pythia:pythia /app/apps/pythia/config ./apps/pythia/config
 # The hand-written static landing assets served at `/`.
-COPY --from=builder /app/apps/pythia/public ./apps/pythia/public
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder --chown=pythia:pythia /app/apps/pythia/public ./apps/pythia/public
+COPY --from=builder --chown=pythia:pythia /app/package.json ./package.json
 
 # Build-time sanity probe — fail the build if the entrypoint or config the
 # container runs is missing, so a broken image never reaches the registry
@@ -109,16 +129,6 @@ RUN test -f /app/apps/pythia/dist/server.js \
  && test -f /app/apps/pythia/public/index.html \
  && test -f /app/apps/pythia/public/codex-island.js \
  && test -f /app/node_modules/better-sqlite3/build/Release/better_sqlite3.node
-
-# Create a non-root user that owns the app tree. The gateway is treated as
-# compromisable, so the long-lived process never runs as root.
-# Also create /data (the stats-volume mount point) owned by pythia, so a fresh
-# named volume mounted there inherits pythia ownership and the non-root process
-# can write its snapshot (root-owned volumes otherwise EACCES).
-RUN addgroup -g 1001 -S pythia \
- && adduser -S pythia -u 1001 -G pythia \
- && mkdir -p /data \
- && chown -R pythia:pythia /app /data
 
 USER pythia
 

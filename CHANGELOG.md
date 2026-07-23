@@ -9,6 +9,26 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.2.3] — 2026-07-23
+
+### Changed
+- **Deploy build time cut substantially.** Profiling the deploy log showed the docker build was
+  **11m10s of an 11m20s deploy (98%)** — the blue-green machinery (source refresh, container
+  start, health check, Caddy cutover, retiring the old container) costs ~10s total. The build
+  cost was **not** a native compile as first assumed: `better-sqlite3` publishes a
+  `linuxmusl-x64` prebuild for Node 22 and the log shows no `node-gyp` output at all. It is
+  filesystem I/O over a ~1000-package tree on a slow disk, written repeatedly:
+  - **`COPY --chown` replaces a trailing `chown -R pythia:pythia /app /data`** — the single most
+    expensive step at a measured **168s**, because it walked and rewrote metadata for every file
+    in `node_modules`. Ownership is now set as the files land, deleting that whole extra pass.
+    (The non-root user is created *before* the copies so `--chown` can name it.)
+  - **A BuildKit cache mount for npm's tarball cache.** Every release bumps the version in
+    `package.json`, which invalidates the `npm ci` layer on *every* deploy — so npm re-downloaded
+    all ~1000 packages each time. The cache now persists across builds.
+- **BuildKit is now required** for the image build (the cache mount needs it). The deployer's
+  silent legacy-builder fallback is replaced by a clear failure, since the legacy builder cannot
+  parse `--mount=type=cache`.
+
 ## [2.2.2] — 2026-07-23
 
 ### Fixed
