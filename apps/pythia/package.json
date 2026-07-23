@@ -17,8 +17,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ancientpantheon/codex": "^0.6.0",
-    "@ancientpantheon/khronoton-core": "^0.4.0",
+    "@ancientpantheon/codex": "^0.6.1",
+    "@ancientpantheon/khronoton-core": "^0.4.2",
     "@hono/node-server": "^2.0.0",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
