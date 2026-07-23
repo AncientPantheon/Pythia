@@ -1086,8 +1086,16 @@ function verRow(label, sub, installed, available, updateAvailable) {
 
   const badges = document.createElement("span");
   badges.className = "deploy-row-badges";
+  const known = installed && installed !== "unknown";
   badges.appendChild(verBadge(`v${installed || "unknown"}`, "installed"));
-  if (available && updateAvailable) {
+  if (!known) {
+    // An unreadable installed version must NEVER claim to be current — "vunknown ·
+    // up to date" reads as healthy while telling us nothing about what is running.
+    const bad = document.createElement("span");
+    bad.className = "deploy-uptodate deploy-uptodate--unreachable";
+    bad.textContent = available ? `installed version unreadable (npm: v${available})` : "installed version unreadable";
+    badges.appendChild(bad);
+  } else if (available && updateAvailable) {
     const arrow = document.createElement("span");
     arrow.className = "ver-arrow";
     arrow.textContent = "→";

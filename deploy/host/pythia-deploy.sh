@@ -104,9 +104,21 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG"
 # constructor, no matter what the admin panel advertises as available. Bumping the pins
 # here (package.json + package-lock) before the build is what makes "Deploy" actually
 # adopt Codex/Khronoton releases. See automaton/05 §1c.
-log "→ npm install @ancientpantheon/codex@latest @ancientpantheon/khronoton-core@latest"
-npm install @ancientpantheon/codex@latest @ancientpantheon/khronoton-core@latest \
-  -w @ancientpantheon/pythia --no-audit --no-fund 2>&1 | tee -a "$LOG"
+#
+# npm runs in a THROWAWAY CONTAINER, not on the host: this box is deliberately minimal
+# (Docker only — no Node/npm installed), so calling npm directly aborts the deploy with
+# "npm: command not found". The same node image the build uses is already local/cached.
+#
+# BEST-EFFORT: a registry hiccup must not fail an otherwise-good deploy. On failure we log
+# and continue, building the constructor pins committed on main.
+log "→ bumping constructors to @latest (npm in a throwaway node container)"
+if docker run --rm -v "$REPO":/w -w /w node:22-alpine \
+     npm install @ancientpantheon/codex@latest @ancientpantheon/khronoton-core@latest \
+     -w @ancientpantheon/pythia --no-audit --no-fund 2>&1 | tee -a "$LOG"; then
+  log "✓ constructor pins bumped to @latest"
+else
+  log "⚠ constructor bump failed — continuing with the pins committed on main"
+fi
 
 # 2) Build the new image. Prefer BuildKit + --progress=plain (line-by-line, no
 #    cursor-rewrite → cleaner SSE terminal) WHEN buildx is present; otherwise fall

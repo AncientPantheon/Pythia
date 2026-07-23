@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.2.2] — 2026-07-23
+
+### Fixed
+- **The constructor `@latest` bump no longer aborts the deploy.** 2.2.1 ran `npm install` on the
+  host to adopt newly published organs — but this box is deliberately minimal (Docker only, no
+  Node/npm), so every deploy died at step 1/5 with `npm: command not found`. It now runs npm in a
+  throwaway `node:22-alpine` container against the checkout, and the bump is **best-effort**: a
+  registry hiccup logs a warning and the deploy continues with the pins committed on main, rather
+  than failing an otherwise-good build. (The failure was safe — it aborted before touching any
+  container, so the live site was never at risk.)
+- **An unreadable installed version no longer claims to be current.** A constructor whose version
+  could not be read rendered as `vunknown · up to date`, which looks healthy while saying nothing
+  about what is actually running. It now reads `installed version unreadable`, with npm's latest
+  for context.
+
 ## [2.2.1] — 2026-07-22
 
 ### Fixed
