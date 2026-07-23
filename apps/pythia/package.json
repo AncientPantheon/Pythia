@@ -23,6 +23,7 @@
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",
     "@ouronet/dalos-crypto": "^4.0.3",
+    "@ouronet/ouronet-core": "^4.4.0",
     "@stoachain/kadena-stoic-legacy": "^4.3.6",
     "@stoachain/stoa-core": "^4.3.6",
     "better-sqlite3": "^12.11.1",

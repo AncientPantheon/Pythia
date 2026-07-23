@@ -32,6 +32,10 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
 
 ### Changed
 - Constructor pins bumped to **Codex 0.6.1** and **Khronoton 0.4.2**.
+- **Declared `@ouronet/ouronet-core` explicitly.** Codex 0.6.1 renamed its required peers
+  (`@stoachain/*` → `@ouronet/*`); this one was satisfied only by npm auto-peer-install, which
+  breaks under pnpm-strict or `--legacy-peer-deps`. Now declared, per the organ dependency
+  contract (`organs/ORGAN-DEPENDENCY-CONTRACT.md` R1).
 
 ## [2.2.0] — 2026-07-21
 
