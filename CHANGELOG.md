@@ -9,6 +9,27 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.4.2] — 2026-07-31
+
+### Fixed — `SealedStore.rotateMasterKey` could leave a mixed-key vault on a failure mid-rotation
+
+Master-key rotation re-seals every vault entry under the new key. The previous implementation
+wrote-then-immediately-renamed each entry in one pass — if sealing/writing a LATER entry failed
+(disk full, permission error, killed process), any EARLIER entries in that same call had already
+been renamed into place under the new key, leaving the vault permanently split between two keys
+with no way to fully unlock it under either one.
+
+Rewritten as three phases, each safe to abort into the one before it: **PLAN** unseals every entry
+under the old key (read-only — a failure touches nothing); **STAGE** seals each entry under the new
+key into a `.tmp` sibling only (a failure here still leaves every entry readable under the old key,
+unchanged); **COMMIT** renames every staged file into place only once every entry staged
+successfully (pure filesystem renames, carrying none of STAGE's failure modes). A new regression
+test sabotages one entry's staging step and confirms an earlier, already-staged entry's live file
+is never renamed — the vault stays fully readable under the original key, not mixed.
+
+No behavior change for the success path; `rotateMasterKey` is not yet wired into any admin route,
+so this ships as hardening ahead of that wiring, not a fix to a reachable production bug.
+
 ## [2.4.1] — 2026-07-31
 
 ### Fixed — `image.yml`'s test gate ran before building `pythia-client`, breaking the ghcr image build

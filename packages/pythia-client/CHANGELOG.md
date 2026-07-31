@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.4.2 — 2026-07-31
+
+Version alignment: the client jumps from `2.4.1` to `2.4.2` to align with the unified Pythia
+service version line. This release is service-side only (a `SealedStore.rotateMasterKey`
+hardening fix — see `CHANGELOG.md` at the repo root) — no changes to this package's own source,
+API surface, or behavior.
+
 ## 2.4.1 — 2026-07-31
 
 Version alignment: the client jumps from `2.4.0` to `2.4.1` to align with the unified Pythia
