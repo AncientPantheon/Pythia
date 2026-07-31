@@ -56,12 +56,12 @@ export function unsealWithKey(key: Uint8Array, sealed: string): string {
 
 /** Seal under the env master key (awaits libsodium). */
 export async function seal(plaintext: string): Promise<string> {
-  await sodium.ready;
+  await ensureSodiumReady();
   return sealWithKey(readMasterKey(), plaintext);
 }
 
 /** Unseal under the env master key (awaits libsodium). */
 export async function unseal(sealed: string): Promise<string> {
-  await sodium.ready;
+  await ensureSodiumReady();
   return unsealWithKey(readMasterKey(), sealed);
 }

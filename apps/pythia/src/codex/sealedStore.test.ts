@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, readdirSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureSodiumReady, parseMasterKey } from "./vault.js";
@@ -84,6 +84,34 @@ describe("SealedStore — rotateMasterKey (generic re-seal, automaton/02 §4)", 
     s.set("keep", "safe");
     expect(() => s.rotateMasterKey(parseMasterKey(KEY_B), parseMasterKey(KEY_A))).toThrow();
     expect(store(KEY_A).get("keep")).toBe("safe"); // intact under the original key
+  });
+
+  it("a STAGE-phase failure on a LATER entry leaves an EARLIER entry's live file unrenamed (no mixed-key vault)", () => {
+    const s = store(KEY_A);
+    s.set("a", "one");
+    s.set("b", "two");
+    s.set("c", "three");
+    // Sabotage entry "b"'s staging: pre-occupy its `.tmp` path with a directory, so
+    // `writeFileSync` on it throws EISDIR — but only for "b". Names are staged in
+    // `names()` order, so "a" (alphabetically first) stages successfully before the
+    // failure hits. Under the OLD single-loop APPLY (write-then-immediately-rename
+    // per item), "a" would already be renamed under the NEW key by the time "b"
+    // throws, leaving a permanently mixed-key vault. The STAGE/COMMIT split defers
+    // every rename until ALL entries stage successfully, so "a" must stay untouched.
+    mkdirSync(join(dir, "b.sealed.tmp"));
+    try {
+      expect(() => s.rotateMasterKey(parseMasterKey(KEY_A), parseMasterKey(KEY_B))).toThrow();
+    } finally {
+      rmSync(join(dir, "b.sealed.tmp"), { recursive: true, force: true });
+    }
+    // Nothing was renamed — every entry still opens under the ORIGINAL key, and the
+    // new key opens none of them (no partial, mixed-key vault).
+    expect(store(KEY_A).get("a")).toBe("one");
+    expect(store(KEY_A).get("b")).toBe("two");
+    expect(store(KEY_A).get("c")).toBe("three");
+    expect(store(KEY_B).get("a")).toBeNull();
+    expect(store(KEY_B).get("b")).toBeNull();
+    expect(store(KEY_B).get("c")).toBeNull();
   });
 });
 

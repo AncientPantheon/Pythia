@@ -136,10 +136,15 @@ export class SealedStore {
 
   /**
    * Rotate the master key by RE-SEALING every entry (never a raw key swap —
-   * `automaton/02` §4). Plan first: unseal every entry with `oldKey` and abort
-   * before any write if any fails; then re-seal all under `newKey` atomically per
-   * file. Returns the number of entries rotated. The caller persists the new key
-   * (env/disk) AFTER this returns and flips the in-memory key last.
+   * `automaton/02` §4). Three phases, each safe to abort into the one before it:
+   * PLAN unseals every entry with `oldKey` (read-only — a failure touches nothing);
+   * STAGE seals each under `newKey` into a `.tmp` sibling ONLY (a failure here —
+   * disk full, permission error, killed process — still touches no live file, so
+   * every entry is still readable under `oldKey`); COMMIT renames every staged file
+   * into place (pure filesystem renames, no crypto/growing disk use, so it carries
+   * none of STAGE's failure modes). Returns the number of entries rotated. The
+   * caller persists the new key (env/disk) AFTER this returns and flips the
+   * in-memory key last.
    */
   rotateMasterKey(oldKey: Uint8Array, newKey: Uint8Array): number {
     const names = this.names();
@@ -148,13 +153,28 @@ export class SealedStore {
       name,
       plaintext: unsealWithKey(oldKey, readFileSync(this.pathFor(name), "utf8")),
     }));
-    // APPLY — re-seal each under the new key (atomic temp→rename per file).
-    for (const { name, plaintext } of plan) {
-      const file = this.pathFor(name);
-      const tmp = `${file}.tmp`;
-      writeFileSync(tmp, sealWithKey(newKey, plaintext));
-      renameSync(tmp, file);
+    // STAGE — seal each under the new key into a `.tmp` sibling only; no live file
+    // is touched yet, so a failure partway through leaves the vault untouched.
+    const staged: Array<{ file: string; tmp: string }> = [];
+    try {
+      for (const { name, plaintext } of plan) {
+        const file = this.pathFor(name);
+        const tmp = `${file}.tmp`;
+        writeFileSync(tmp, sealWithKey(newKey, plaintext));
+        staged.push({ file, tmp });
+      }
+    } catch (err) {
+      for (const { tmp } of staged) {
+        try {
+          rmSync(tmp);
+        } catch {
+          /* best-effort cleanup of already-staged temp files */
+        }
+      }
+      throw err;
     }
+    // COMMIT — every entry staged successfully; rename them all into place.
+    for (const { file, tmp } of staged) renameSync(tmp, file);
     return plan.length;
   }
 }
