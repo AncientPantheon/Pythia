@@ -59,3 +59,138 @@ describe("Transport JSON decoding resilience", () => {
     expect(parsed.body).toEqual({ result: "ok" });
   });
 });
+
+describe("Transport x-pythia-key gated-access header", () => {
+  /** Each call needs a FRESH Response, since a Body can only be read once
+   * (transport.get/postJson both consume it via `.text()`). */
+  function okFetch() {
+    return vi.fn(async (_url: string, _init?: RequestInit) =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }
+
+  it("sends no x-pythia-key header when no pythiaKey option is given", async () => {
+    // A consumer that never opts in to gated access must not send ANY
+    // x-pythia-key header at all — the gateway falls through to anonymous
+    // access, and a stray header (even empty-string) would be wrong.
+    const fetchImpl = okFetch();
+    const transport = new Transport({ baseUrl: BASE, fetchImpl: fetchImpl as never });
+
+    await transport.get("/stoachain/read");
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit | undefined;
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect("x-pythia-key" in headers).toBe(false);
+  });
+
+  it("attaches a static string pythiaKey to both get() and postJson() requests", async () => {
+    const fetchImpl = okFetch();
+    const transport = new Transport({
+      baseUrl: BASE,
+      fetchImpl: fetchImpl as never,
+      pythiaKey: "static-secret-key",
+    });
+
+    await transport.get("/stoachain/read");
+    await transport.postJson("/stoachain/send", { a: 1 });
+
+    const getInit = fetchImpl.mock.calls[0][1] as RequestInit | undefined;
+    const postInit = fetchImpl.mock.calls[1][1] as RequestInit | undefined;
+    expect((getInit?.headers as Record<string, string>)["x-pythia-key"]).toBe(
+      "static-secret-key",
+    );
+    expect((postInit?.headers as Record<string, string>)["x-pythia-key"]).toBe(
+      "static-secret-key",
+    );
+  });
+
+  it("calls a supplier function fresh on every request and sends its resolved value", async () => {
+    // This is the live-connector case: the supplier (e.g.
+    // connector.keyProvider()) must be re-invoked per request, never cached,
+    // so a rotated/expired ephemeral secret is picked up on the next call.
+    const fetchImpl = okFetch();
+    let calls = 0;
+    const supplier = vi.fn(async () => {
+      calls += 1;
+      return `live-secret-${calls}`;
+    });
+    const transport = new Transport({
+      baseUrl: BASE,
+      fetchImpl: fetchImpl as never,
+      pythiaKey: supplier,
+    });
+
+    await transport.get("/stoachain/read");
+    await transport.get("/stoachain/read");
+
+    expect(supplier).toHaveBeenCalledTimes(2);
+    const firstInit = fetchImpl.mock.calls[0][1] as RequestInit | undefined;
+    const secondInit = fetchImpl.mock.calls[1][1] as RequestInit | undefined;
+    expect((firstInit?.headers as Record<string, string>)["x-pythia-key"]).toBe(
+      "live-secret-1",
+    );
+    expect((secondInit?.headers as Record<string, string>)["x-pythia-key"]).toBe(
+      "live-secret-2",
+    );
+  });
+
+  it("sends no x-pythia-key header when the supplier resolves to undefined", async () => {
+    const fetchImpl = okFetch();
+    const supplier = vi.fn(async () => undefined);
+    const transport = new Transport({
+      baseUrl: BASE,
+      fetchImpl: fetchImpl as never,
+      pythiaKey: supplier,
+    });
+
+    await transport.get("/stoachain/read");
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit | undefined;
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect("x-pythia-key" in headers).toBe(false);
+  });
+
+  it("sends no x-pythia-key header on postJson() specifically when no pythiaKey option is given", async () => {
+    // Regression: get() and postJson() build their headers object with two
+    // DIFFERENT code shapes (postJson always spreads a content-type header
+    // alongside the conditional key) — the "no option" case was previously
+    // only ever exercised via get(), leaving postJson()'s own branch untested.
+    const fetchImpl = okFetch();
+    const transport = new Transport({ baseUrl: BASE, fetchImpl: fetchImpl as never });
+
+    await transport.postJson("/stoachain/send", { a: 1 });
+
+    const init = fetchImpl.mock.calls[0][1] as RequestInit | undefined;
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    expect("x-pythia-key" in headers).toBe(false);
+    expect(headers["content-type"]).toBe("application/json"); // the real header still goes out
+  });
+
+  it("sends no x-pythia-key header for an empty-string pythiaKey — a static string or a supplier resolving to ''", async () => {
+    // Regression: the "non-empty string" contract relies on a truthiness
+    // check; a future change to an `!== undefined` check would start
+    // sending a literal empty-string header and pass every other test here.
+    const fetchImplStatic = okFetch();
+    const transportStatic = new Transport({
+      baseUrl: BASE,
+      fetchImpl: fetchImplStatic as never,
+      pythiaKey: "",
+    });
+    await transportStatic.get("/stoachain/read");
+    const staticInit = fetchImplStatic.mock.calls[0][1] as RequestInit | undefined;
+    expect("x-pythia-key" in ((staticInit?.headers ?? {}) as Record<string, string>)).toBe(false);
+
+    const fetchImplSupplier = okFetch();
+    const transportSupplier = new Transport({
+      baseUrl: BASE,
+      fetchImpl: fetchImplSupplier as never,
+      pythiaKey: async () => "",
+    });
+    await transportSupplier.get("/stoachain/read");
+    const supplierInit = fetchImplSupplier.mock.calls[0][1] as RequestInit | undefined;
+    expect("x-pythia-key" in ((supplierInit?.headers ?? {}) as Record<string, string>)).toBe(false);
+  });
+});

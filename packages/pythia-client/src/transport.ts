@@ -15,11 +15,27 @@ export interface ParsedResponse {
 export class Transport {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly pythiaKey: PythiaClientOptions["pythiaKey"];
 
   constructor(options: PythiaClientOptions) {
     // Trim a trailing slash so `${baseUrl}${path}` never doubles the separator.
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.pythiaKey = options.pythiaKey;
+  }
+
+  /**
+   * Resolve the `x-pythia-key` gated-access header value for THIS request. A
+   * static string is used as-is; a supplier function is called (and awaited)
+   * fresh every time, so a connector's rotating ephemeral secret is picked up
+   * on each call rather than cached at construction. Returns `undefined` when
+   * no `pythiaKey` option was given, or the supplier itself resolves to
+   * `undefined` — either way, no header is sent.
+   */
+  private async resolvePythiaKey(): Promise<string | undefined> {
+    if (this.pythiaKey === undefined) return undefined;
+    if (typeof this.pythiaKey === "function") return this.pythiaKey();
+    return this.pythiaKey;
   }
 
   private buildUrl(path: string, query?: Record<string, string>): string {
@@ -54,15 +70,22 @@ export class Transport {
     path: string,
     query?: Record<string, string>,
   ): Promise<ParsedResponse> {
-    const response = await this.fetchImpl(this.buildUrl(path, query));
+    const pythiaKey = await this.resolvePythiaKey();
+    const response = await this.fetchImpl(this.buildUrl(path, query), {
+      headers: pythiaKey ? { "x-pythia-key": pythiaKey } : undefined,
+    });
     return { status: response.status, body: await this.parseBody(response) };
   }
 
   /** POST `path` with a JSON body; returns status + parsed body. */
   async postJson(path: string, body: unknown): Promise<ParsedResponse> {
+    const pythiaKey = await this.resolvePythiaKey();
     const response = await this.fetchImpl(this.buildUrl(path), {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(pythiaKey ? { "x-pythia-key": pythiaKey } : {}),
+      },
       body: JSON.stringify(body),
     });
     return { status: response.status, body: await this.parseBody(response) };

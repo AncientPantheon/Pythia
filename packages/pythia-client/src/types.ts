@@ -30,6 +30,11 @@ export interface HealthSnapshot {
 export interface PythiaClientOptions {
   baseUrl: string;
   fetchImpl?: typeof fetch;
+  /** Optional `x-pythia-key` gated-access header — a static string, or a
+   * supplier resolved fresh per request (e.g. `PythiaConnector.keyProvider()`
+   * — see `connector.ts`). See `Transport.resolvePythiaKey` for the exact
+   * resolution/omission semantics. */
+  pythiaKey?: string | (() => string | undefined | Promise<string | undefined>);
 }
 
 /** Input to `client.read` — a generic dirty read. The caller supplies the Pact
