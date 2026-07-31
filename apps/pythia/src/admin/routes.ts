@@ -204,9 +204,12 @@ export interface PythAdminControls {
 }
 
 /** The runtime controls the `ancient`-gated "Security" panel drives: read the
- * sealed-vault status, and clear (decommission) the sealed creds. Secret VALUES
- * are set/rotated in the Hub-feed panel (which writes through the vault); master-key
- * handling is an ops action, never a browser field. */
+ * sealed-vault status, and clear (decommission) the hub HMAC secret specifically —
+ * `status()` reports the WHOLE shared vault (it may hold other subsystems' entries,
+ * e.g. the Codex organ's signing custody), but `clear()` MUST stay scoped to the hub
+ * secret alone; a raw whole-vault clear would also destroy that unrelated custody.
+ * Secret VALUES are set/rotated in the Hub-feed panel (which writes through the
+ * vault); master-key handling is an ops action, never a browser field. */
 export interface SecurityAdminControls {
   status(): SecurityStatus;
   clear(): void;
@@ -224,6 +227,26 @@ export interface VersionInfoControls {
   get(): Promise<{ installed: string; available: string | null; updateAvailable: boolean }>;
 }
 
+/** Pythia's own dual-Apollo self-connector identity, as the admin panel shows it:
+ * the two account strings (once generated) plus each half's connector-activation
+ * state. `"not-generated"` before the keypair exists, `"pending"` once generated
+ * but not yet an active connector on the hub, `"active"` once the hub has proven
+ * and activated it. */
+export interface SelfConnectorStatus {
+  standardAccount: string | null;
+  smartAccount: string | null;
+  standard: "not-generated" | "pending" | "active";
+  smart: "not-generated" | "pending" | "active";
+}
+
+/** The runtime controls the `ancient`-gated "Self Connector" panel drives: read
+ * Pythia's own standard/smart self-connector status, and (idempotently) generate
+ * the underlying keypairs — safe to call repeatedly, a no-op once generated. */
+export interface SelfConnectorAdminControls {
+  status(): Promise<SelfConnectorStatus>;
+  generate(): Promise<SelfConnectorStatus>;
+}
+
 /** Optional admin subsystems wired when present. */
 export interface AdminExtras {
   hubAdmin?: HubAdminControls;
@@ -233,6 +256,7 @@ export interface AdminExtras {
   security?: SecurityAdminControls;
   hubNodes?: HubNodesControls;
   versionInfo?: VersionInfoControls;
+  selfConnector?: SelfConnectorAdminControls;
 }
 
 export function registerAdmin(
@@ -242,7 +266,8 @@ export function registerAdmin(
   extras: AdminExtras = {},
 ): void {
   const gate = createAdminGate(cfg);
-  const { hubAdmin, txSenders, verifiers, pyth, security, hubNodes, versionInfo } = extras;
+  const { hubAdmin, txSenders, verifiers, pyth, security, hubNodes, versionInfo, selfConnector } =
+    extras;
 
   app.get("/admin/login", async (c) => {
     const { discovery } = await getDiscovery(cfg.issuer);
@@ -552,8 +577,9 @@ export function registerAdmin(
     // master-key fingerprint, and the sealed creds by name (never the values).
     app.get("/admin/security", gate, (c) => c.json(security.status()));
 
-    // Clear (decommission) every sealed cred. Destructive; ancient-gated. Returns
-    // the fresh status so the UI re-renders.
+    // Clear (decommission) the hub HMAC secret ONLY — never the whole vault (see
+    // SecurityAdminControls above). Destructive; ancient-gated. Returns the fresh
+    // status so the UI re-renders.
     app.post("/admin/security/clear", gate, (c) => {
       security.clear();
       return c.json(security.status());
@@ -570,5 +596,14 @@ export function registerAdmin(
   // ── ancient-gated version readout — installed vs available (repo main) ───────
   if (versionInfo) {
     app.get("/admin/version-info", gate, async (c) => c.json(await versionInfo.get()));
+  }
+
+  // ── ancient-gated Self Connector — Pythia's own dual-Apollo identity ────────
+  if (selfConnector) {
+    app.get("/admin/self-connector", gate, async (c) => c.json(await selfConnector.status()));
+
+    app.post("/admin/self-connector/generate", gate, async (c) =>
+      c.json(await selfConnector.generate()),
+    );
   }
 }

@@ -146,6 +146,14 @@ const TILES = [
     enabled: true,
   },
   {
+    id: "self-connector",
+    icon: "🪪",
+    title: "Self Connector",
+    blurb: "Pythia's own dual-Apollo Standard + Smart account pair.",
+    hash: "#self-connector",
+    enabled: true,
+  },
+  {
     id: "codex",
     icon: "📓",
     title: "Codex",
@@ -201,6 +209,7 @@ const VIEW_LOADERS = {
   earnings: loadEarnings,
   "pyth-flush": loadPythFlush,
   security: loadSecurity,
+  "self-connector": loadSelfConnector,
   codex: loadCodexIsland,
   khronoton: loadKhronotonIsland,
 };
@@ -1659,7 +1668,14 @@ function renderSecurity(st) {
     }
   }
 
-  if (clearBtn) clearBtn.disabled = (st.sealedCount || 0) === 0;
+  if (clearBtn) {
+    // Gate on the hub-secret entry SPECIFICALLY, not the vault-wide sealedCount —
+    // clear() only ever touches "hubHmacSecret" (settingsStore.ts HUB_SECRET_NAME);
+    // an unrelated entry sharing the vault (e.g. Codex custody) must not enable
+    // a button whose copy says it clears the hub secret.
+    const names = Array.isArray(st.names) ? st.names : [];
+    clearBtn.disabled = !names.includes("hubHmacSecret");
+  }
 }
 
 async function loadSecurity() {
@@ -1678,10 +1694,10 @@ function wireSecurity() {
   if (!clearBtn) return;
   clearBtn.addEventListener("click", async () => {
     const ok = await confirmDialog({
-      title: "Clear the sealed vault?",
+      title: "Clear the hub secret?",
       message:
-        "This deletes every sealed credential — including the hub HMAC secret. The hub feed will have no secret until one is re-set. Cannot be undone.",
-      confirmLabel: "Clear vault",
+        "This deletes ONLY the sealed hub HMAC secret. Other sealed credentials shown above (if any) are unaffected. The hub feed will have no secret until one is re-set. Cannot be undone.",
+      confirmLabel: "Clear hub secret",
       danger: true,
     });
     if (!ok) return;
@@ -1698,6 +1714,91 @@ function wireSecurity() {
       renderSecurity(await res.json());
     } catch {
       if (err) { err.textContent = "Network error."; err.hidden = false; }
+    }
+  });
+}
+
+// ── Self Connector (Pythia's own dual-Apollo Standard + Smart account pair) ───
+// The two halves' generation state → badge text/class, mirroring securityView()'s
+// state→badge mapping.
+function selfConnectorHalfView(state) {
+  if (state === "active") return { cls: "sec-badge--sealed", text: "Active" };
+  if (state === "pending") return { cls: "sec-badge--warn", text: "Pending" };
+  return { cls: "sec-badge--warn", text: "Not generated" };
+}
+
+function renderSelfConnector(st) {
+  const standardBadge = document.getElementById("selfconn-standard-badge");
+  const standardAccount = document.getElementById("selfconn-standard-account");
+  const smartBadge = document.getElementById("selfconn-smart-badge");
+  const smartAccount = document.getElementById("selfconn-smart-account");
+  const generateBtn = document.getElementById("selfconn-generate-btn");
+
+  const standardView = selfConnectorHalfView(st.standard);
+  if (standardBadge) {
+    standardBadge.textContent = `Standard: ${standardView.text}`;
+    standardBadge.className = "sec-badge " + standardView.cls;
+  }
+  if (standardAccount) {
+    standardAccount.textContent = st.standardAccount || "not yet generated";
+  }
+
+  const smartView = selfConnectorHalfView(st.smart);
+  if (smartBadge) {
+    smartBadge.textContent = `Smart: ${smartView.text}`;
+    smartBadge.className = "sec-badge " + smartView.cls;
+  }
+  if (smartAccount) {
+    smartAccount.textContent = st.smartAccount || "not yet generated";
+  }
+
+  // Nothing left to generate once both halves exist — regeneration is intentionally
+  // not supported, so the button just disappears rather than staying inert.
+  if (generateBtn) {
+    generateBtn.hidden = st.standard !== "not-generated" && st.smart !== "not-generated";
+  }
+}
+
+async function loadSelfConnector() {
+  try {
+    const res = await fetch("/admin/self-connector", { headers: { accept: "application/json" } });
+    if (!res.ok) return;
+    renderSelfConnector(await res.json());
+  } catch {
+    /* leave as-is */
+  }
+}
+
+function wireSelfConnector() {
+  const generateBtn = document.getElementById("selfconn-generate-btn");
+  const err = document.getElementById("selfconn-generate-error");
+  if (!generateBtn) return;
+  generateBtn.addEventListener("click", async () => {
+    if (err) err.hidden = true;
+    // Disable IMMEDIATELY on click, before the request is even sent — a
+    // double-click or a second browser tab firing this same POST while the
+    // first is still in flight can race the server's own generation (both
+    // requests observing "not yet generated" before either writes), silently
+    // orphaning whichever account the losing response displayed (that string
+    // is what the admin would otherwise go pay real on-chain STOA to
+    // register). The server-side fix is the real guarantee (see
+    // SelfApolloVault.ensureGenerated's in-flight memoization); this is
+    // belt-and-suspenders so the UI itself can't even offer the race.
+    generateBtn.disabled = true;
+    try {
+      const res = await fetch("/admin/self-connector/generate", {
+        method: "POST",
+        headers: { accept: "application/json" },
+      });
+      if (!res.ok) {
+        if (err) { err.textContent = "Generate failed — is your ancient session still valid?"; err.hidden = false; }
+        return;
+      }
+      renderSelfConnector(await res.json());
+    } catch {
+      if (err) { err.textContent = "Network error."; err.hidden = false; }
+    } finally {
+      generateBtn.disabled = false;
     }
   });
 }
@@ -1764,6 +1865,7 @@ wireTxSenderBulk();
 wireDeployButton();
 wireEarnings();
 wireSecurity();
+wireSelfConnector();
 loadVersion(); // fill the brand's version chip from /healthz
 applyGate(); // render the "checking…" state before /api/me resolves
 loadMe();

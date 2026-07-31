@@ -215,6 +215,30 @@ describe("keyless invariant scanner", () => {
       // the Codex/signing. (Zero now, and it must stay zero as the core fills in.)
       expect(scanForAutomatonImports(SERVICE_SRC)).toEqual([]);
     });
+
+    it("EXEMPTS *.test.ts files from the automaton-import isolation scan, but still FLAGS a same-shaped non-test file", () => {
+      // Regression: a `*.test.ts` file is dev-time verification tooling — never
+      // part of the deployed request-handling import graph — so it may import
+      // the keyed automaton core to prove that code works (e.g. an integration
+      // test wiring a real signer end-to-end). This must NOT silently widen the
+      // isolation guarantee itself: a PRODUCTION-shaped file (same import, same
+      // directory, only the filename differs) must still be caught.
+      const dir = mkdtempSync(join(tmpdir(), "pythia-test-exempt-"));
+      mkdirSync(join(dir, "automaton"), { recursive: true });
+      writeFileSync(join(dir, "automaton", "keys.ts"), `export const k = 1;\n`);
+      writeFileSync(
+        join(dir, "realConsumer.test.ts"),
+        `import { k } from "./automaton/keys.js";\nexport const y = k;\n`,
+      );
+      writeFileSync(
+        join(dir, "realConsumer.ts"),
+        `import { k } from "./automaton/keys.js";\nexport const y = k;\n`,
+      );
+      const violations = scanForAutomatonImports(dir);
+      expect(violations.some((v) => v.file.endsWith("realConsumer.test.ts"))).toBe(false);
+      expect(violations.some((v) => v.file.endsWith("realConsumer.ts"))).toBe(true);
+      rmSync(dir, { recursive: true, force: true });
+    });
   });
 
   it("catches a banned module smuggled in via DYNAMIC import()", () => {

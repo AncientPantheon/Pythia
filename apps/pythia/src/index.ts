@@ -42,7 +42,10 @@ import { detectEgressIp, cachedEgressIp } from "./hub/egressIp.js";
 import { NodePool } from "./pool/nodePool.js";
 import { probeNodes } from "./health/probeNodes.js";
 import { enrichHubNodes } from "./hub/hubNodes.js";
-import type { HubAdminControls } from "./admin/routes.js";
+import type { HubAdminControls, SelfConnectorStatus } from "./admin/routes.js";
+import { SelfApolloVault } from "./automaton/selfApollo.js";
+import { SelfConnectorLoop } from "./automaton/selfConnectorLoop.js";
+import { createInProcessFetch } from "./connectors/self/inProcessFetch.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
 import { statsMiddleware } from "./stats/middleware.js";
@@ -246,6 +249,19 @@ async function readApolloPublicKeyForAuth(account: string): Promise<string> {
 // the Khronoton engine (fire side).
 export const pendingActivationTracker = new PendingActivationTracker();
 
+// Pythia consuming her OWN connector protocol on her own behalf
+// (docs/work/pythia-self-consumer/design.md): a sealed-vault-backed dual-Apollo
+// identity (`selfApollo.ts`) driven through a `PythiaConnector`-per-half loop
+// (`selfConnectorLoop.ts`) that talks to Pythia's OWN routes in-process — never
+// a real network hairpin — via `createInProcessFetch(app)` below. `app` and
+// `sealedVault` are both already constructed above this point.
+export const selfApolloVault = new SelfApolloVault(sealedVault);
+export const selfConnectorLoop = new SelfConnectorLoop({
+  baseUrl: "http://pythia.self",
+  fetchImpl: createInProcessFetch(app),
+  vault: selfApolloVault,
+});
+
 // Resolves a just-proven Apollo account's on-chain counterpart for
 // `registerConnectorAuth` below, so a successful verify for a NOT-yet-active account can
 // be recorded into `pendingActivationTracker`. Same `trustAnchorPair()`-per-call pattern
@@ -404,10 +420,34 @@ dualLinkCache.start();
 ephemeralKeyStore.start();
 pendingActivationTracker.start();
 
+// Begin Pythia's own self-connector refresh loop (see `selfApolloVault`/
+// `selfConnectorLoop` above) — a no-op tick for either half until its
+// keypair has been generated via the admin "Self Connector" panel.
+selfConnectorLoop.start();
+
 // The human admin surface (connector manager) is gated on the AncientHoldings
 // hub OIDC IdP. It is OPTIONAL: only wired when the deploy-time OIDC secrets are
 // present, so the public keyless gateway boots unchanged with no SSO configured.
 // Registered before the static catch-all so `/admin/*` is not shadowed.
+// Computes the admin "Self Connector" panel's status from the two live
+// pieces above (`selfApolloVault` + `selfConnectorLoop`) — a named local
+// function so both `status()` and `generate()` in the extras object below
+// can call it without either referring back into the object being
+// constructed. `"active"` wins per-half once the loop has ever ticked that
+// half to a live secret; otherwise `"pending"` once the account exists but
+// hasn't gone active yet, else `"not-generated"`.
+async function selfConnectorStatus(): Promise<SelfConnectorStatus> {
+  const standardAccount = selfApolloVault.standardAccount();
+  const smartAccount = selfApolloVault.smartAccount();
+  const loop = selfConnectorLoop.status();
+  return {
+    standardAccount,
+    smartAccount,
+    standard: loop.standard.status === "active" ? "active" : standardAccount ? "pending" : "not-generated",
+    smart: loop.smart.status === "active" ? "active" : smartAccount ? "pending" : "not-generated",
+  };
+}
+
 const oidcConfig = loadOidcConfig();
 if (oidcConfig) {
   registerAdmin(app, oidcConfig, connectorStore, {
@@ -457,6 +497,15 @@ if (oidcConfig) {
           updateAvailable: available ? isNewer(available, PYTHIA_VERSION) : false,
           organs,
         };
+      },
+    },
+    // The "Self Connector" panel: Pythia's own dual-Apollo identity — read
+    // status, or (idempotently) generate the underlying keypairs.
+    selfConnector: {
+      status: () => selfConnectorStatus(),
+      generate: async () => {
+        await selfApolloVault.ensureGenerated();
+        return selfConnectorStatus();
       },
     },
   });

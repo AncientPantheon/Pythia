@@ -91,6 +91,19 @@ const SCANNER_FILENAME = "keylessScanner.ts";
  */
 export const AUTOMATON_CORE_DIR = "automaton";
 
+// A `*.test.ts` file is never part of the deployed request-handling import
+// graph — it isn't imported by any production module, isn't bundled/shipped,
+// and only ever runs under `vitest` at build/CI time. It can safely import the
+// keyed `automaton/` core (or reference a banned symbol/module in a fixture
+// string) to verify that code actually works correctly — that's a STRONGER
+// guarantee than not testing it, not a violation of "the client request path
+// can reach signing keys." This mirrors the existing `automaton/`-directory
+// and composition-root ({@link COMPOSITION_ROOT}) exemptions: each excludes a
+// category of code that isn't part of the vulnerable client-request path, for
+// its own distinct reason. Only the literal suffix is checked — a production
+// file can never accidentally end in `.test.ts`.
+const TEST_FILE_SUFFIX = ".test.ts";
+
 function collectTsFiles(dir: string, acc: string[]): void {
   for (const entry of readdirSync(dir)) {
     if (entry === "node_modules") continue;
@@ -99,6 +112,8 @@ function collectTsFiles(dir: string, acc: string[]): void {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
       collectTsFiles(full, acc);
+    } else if (entry.endsWith(TEST_FILE_SUFFIX)) {
+      continue; // dev-time verification tooling — see TEST_FILE_SUFFIX above.
     } else if (entry.endsWith(".ts")) {
       acc.push(full);
     }

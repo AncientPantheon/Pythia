@@ -20,6 +20,7 @@ export interface OrganPackage {
 export const ORGAN_PACKAGES: readonly OrganPackage[] = [
   { key: "codex", pkg: "@ancientpantheon/codex", label: "Codex" },
   { key: "khronoton", pkg: "@ancientpantheon/khronoton-core", label: "Khronoton" },
+  { key: "pythia-client", pkg: "@ancientpantheon/pythia-client", label: "Pythia" },
 ] as const;
 
 export interface OrganVersion {
