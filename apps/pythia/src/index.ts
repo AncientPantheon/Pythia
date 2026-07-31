@@ -11,8 +11,16 @@ import { registerConnectors } from "./routes/connectors.js";
 import { registerStats } from "./routes/stats.js";
 import { registerPyth } from "./routes/pyth.js";
 import { registerPools } from "./routes/pools.js";
-import { registerConnectorVerify } from "./routes/connectorVerify.js";
+import { registerConnectorVerify, trustAnchorPair } from "./routes/connectorVerify.js";
+import { registerConnectorAuth } from "./routes/connectorAuth.js";
 import { registerVerifiers } from "./routes/verifiers.js";
+import { DualLinkCache, readActiveDualLinkAccounts } from "./connectors/auth/dualLinkCache.js";
+import { AuthNonceStore } from "./connectors/auth/nonceStore.js";
+import { EphemeralKeyStore } from "./connectors/auth/ephemeralKeyStore.js";
+import { connectorGateMiddleware } from "./connectors/auth/gateMiddleware.js";
+import { readApolloPublicKey } from "./connectors/verify/readApolloPublicKey.js";
+import { readApolloCounterpart } from "./connectors/auth/readApolloCounterpart.js";
+import { PendingActivationTracker } from "./connectors/auth/pendingActivationTracker.js";
 import { registerAdminDeploy } from "./routes/adminDeploy.js";
 import { VerifierStore } from "./verifiers/store.js";
 import { corsMiddleware } from "./middleware/cors.js";
@@ -180,6 +188,78 @@ export const txTracker = new TxTracker({
   },
 });
 
+// The connector-auth system (docs/work/pythia-connector-protocol/design.md,
+// docs/work/connector-auth-core/plan.md): the headless challenge/verify round
+// trip that mints a TTL'd, gated `x-pythia-key` for a consumer who proves (via
+// the Codex-side signer — see the design's companion handoff) ownership of an
+// ACTIVE on-chain Apollo DualLink, with no browser/cookie involved. Three
+// pieces, wired here at the composition root like every other store above:
+//  - dualLinkCache: a cached mirror of the on-chain active-DualLink set,
+//    polled through a FRESH `trustAnchorPair()` each tick (mirrors
+//    txTracker's poll closure above) so it always reads via a currently-live
+//    pair rather than one pinned at boot. `readActiveDualLinkAccounts` REJECTS
+//    on any read failure (including "no pair available"), which is what keeps
+//    `DualLinkCache`'s fail-closed, keep-last-good-on-error behavior intact.
+//  - authNonceStore: single-use, TTL'd headless challenge nonces.
+//  - ephemeralKeyStore: the minted bearer secrets the gate middleware below
+//    checks on every operational request.
+//
+// Both reads below are pinned to `trustAnchorPair()` — the SAME preference
+// `registerConnectorVerify` already uses (operator's own Upload-Pool nodes
+// FIRST, the externally-advertised hub pool only as fallback) — not a raw
+// `nodePool.pickReadPair()`. A single dishonest hub-fed node must not be able
+// to forge either the active-dual-link membership answer or the Apollo
+// public key that gates ephemeral-secret issuance; reading straight off the
+// hub rotation would let it do exactly that.
+export const dualLinkCache = new DualLinkCache({
+  poll: async () => {
+    const pair = trustAnchorPair({ pool: nodePool, txSenders: txSenderStore });
+    if (!pair) throw new Error("pythia dual-link cache: no read pair available");
+    return readActiveDualLinkAccounts(pair);
+  },
+});
+export const authNonceStore = new AuthNonceStore();
+export const ephemeralKeyStore = new EphemeralKeyStore();
+
+// Resolves a headless-verify caller's on-chain Apollo public key for
+// `registerConnectorAuth` below. `readApolloPublicKey` itself takes an
+// INJECTED `{primary, fallback}` pair (see connectors/verify/readApolloPublicKey.ts —
+// it never picks its own), so this wrapper gets a fresh pair the same way the
+// dual-link poll above does: via `trustAnchorPair()`, called fresh per call.
+// `ConnectorAuthDeps.readApolloPublicKey` is typed `Promise<string>`
+// (non-nullable), so a missing pair or a not-found on-chain key is surfaced by
+// throwing — the verify route catches it and turns it into a JSON error.
+async function readApolloPublicKeyForAuth(account: string): Promise<string> {
+  const pair = trustAnchorPair({ pool: nodePool, txSenders: txSenderStore });
+  if (!pair) throw new Error("pythia connector auth: no read pair available");
+  const key = await readApolloPublicKey(pair, account);
+  if (!key) throw new Error(`pythia connector auth: no on-chain public key for ${account}`);
+  return key;
+}
+
+// The connector-activation-resolver pairing store (docs/work/connector-activation-resolver):
+// records each independently-proven Apollo half (via `registerConnectorAuth`'s verify
+// route below) until BOTH halves of the same on-chain `DualLink` pair are in, at which
+// point the `dual-link-activate` Khronoton resolver (wired from `khronoton/register.ts`)
+// fires the on-chain activation. Exported the same way `dualLinkCache`/`authNonceStore`
+// above are — a single shared instance threaded to both the HTTP route (record side) and
+// the Khronoton engine (fire side).
+export const pendingActivationTracker = new PendingActivationTracker();
+
+// Resolves a just-proven Apollo account's on-chain counterpart for
+// `registerConnectorAuth` below, so a successful verify for a NOT-yet-active account can
+// be recorded into `pendingActivationTracker`. Same `trustAnchorPair()`-per-call pattern
+// as `readApolloPublicKeyForAuth` above (a fresh pair every call, never one pinned at
+// boot). Unlike that wrapper, `ConnectorAuthDeps.readApolloCounterpart` IS typed
+// `Promise<string | null>` — a well-formed "not linked yet" read is a legitimate `null`,
+// not an error — but a missing read pair is still surfaced by throwing, mirroring
+// `readApolloPublicKeyForAuth`'s "no pair available" behavior exactly.
+async function readApolloCounterpartForAuth(account: string): Promise<string | null> {
+  const pair = trustAnchorPair({ pool: nodePool, txSenders: txSenderStore });
+  if (!pair) throw new Error("pythia connector auth: no read pair available");
+  return readApolloCounterpart(pair, account);
+}
+
 // The per-slot windowed usage meter (the money path) — hub-slot reads only,
 // keyed/anon/ok + keyedPondus. Drained + reported to the hub by the usage
 // reporter (CP3), gated by the report toggle.
@@ -270,6 +350,14 @@ app.use(
   }),
 );
 
+// Real request gating (design.md Decision 1): a caller presenting an
+// `x-pythia-key` that doesn't resolve to a live ephemeral secret is rejected
+// outright; no header at all is unchanged (today's open/"direct" behavior).
+// Positioned AFTER stats/pyth metering so a gated-and-rejected request is
+// still counted/metered — matching how every other layered middleware here
+// is ordered.
+app.use("*", connectorGateMiddleware(ephemeralKeyStore, connectorStore));
+
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
 registerHealthz(app, { pool: nodePool }); // pool-aware: reflects the nodes actually serving reads
@@ -285,6 +373,18 @@ registerPools(app, { pool: nodePool, txSenders: txSenderStore });
 // trust anchor, hub read pool as fallback — and verifies the browser's signature.
 // Pythia never signs. Not admin-gated: anyone links their own keys.
 registerConnectorVerify(app, { pool: nodePool, txSenders: txSenderStore });
+// Headless challenge/verify round trip (connector-auth-core): mints TTL'd
+// ephemeral secrets for a consumer who proves ownership of an active on-chain
+// DualLink via signature — parallel to (not replacing) the browser Link-verify
+// flow above; no cookie/session involved.
+registerConnectorAuth(app, {
+  nonceStore: authNonceStore,
+  ephemeralKeyStore,
+  dualLinkCache,
+  readApolloPublicKey: readApolloPublicKeyForAuth,
+  readApolloCounterpart: readApolloCounterpartForAuth,
+  pendingActivation: pendingActivationTracker,
+});
 // Public list of admin-curated Apollo-ownership verifiers for the Verify popup.
 registerVerifiers(app, { store: verifierStore });
 
@@ -296,6 +396,13 @@ txTracker.start();
 
 // Begin the ~60s usage-report loop (drains the slot window → hub; toggle-gated).
 usageReporter.start();
+
+// Begin polling the on-chain active-DualLink set, the ephemeral-secret TTL
+// sweep loop (connector-auth-core), and the pending-activation-pairing TTL
+// sweep loop (connector-activation-resolver).
+dualLinkCache.start();
+ephemeralKeyStore.start();
+pendingActivationTracker.start();
 
 // The human admin surface (connector manager) is gated on the AncientHoldings
 // hub OIDC IdP. It is OPTIONAL: only wired when the deploy-time OIDC secrets are
@@ -319,9 +426,12 @@ if (oidcConfig) {
     },
     // The "Security" panel: sealed-vault status + decommission (clear). Secret
     // values are set in the Hub-feed panel (which seals them via the vault).
+    // Scoped to the hub secret ONLY — `sealedVault` is shared with the Codex
+    // organ's signing custody (codexStore.ts), so a whole-vault clear() here
+    // would also destroy Khronoton's signing password + snapshot backup.
     security: {
       status: () => settingsStore.securityStatus(),
-      clear: () => sealedVault.clear(),
+      clear: () => settingsStore.setHubConfig({ hmacSecret: "" }),
     },
     // The Observation Pool node table: every advertised hub node, probed for
     // reachability from Pythia's own vantage (the contract the hub feed must meet).

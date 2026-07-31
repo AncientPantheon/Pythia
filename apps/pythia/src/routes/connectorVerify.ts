@@ -85,11 +85,13 @@ function ensureSid(c: Context): string {
   return sid;
 }
 
-/** ₱ = U+20B1 (Standard), Π = U+03A0 (Smart) — classify by code point. */
-function isStandardApollo(a: string): boolean {
+/** ₱ = U+20B1 (Standard), Π = U+03A0 (Smart) — classify by code point. Exported
+ * so other Apollo-account consumers (e.g. connectorAuth.ts's headless flow)
+ * reuse the same classification instead of redefining the codepoints. */
+export function isStandardApollo(a: string): boolean {
   return a.codePointAt(0) === 0x20b1;
 }
-function isSmartApollo(a: string): boolean {
+export function isSmartApollo(a: string): boolean {
   return a.codePointAt(0) === 0x03a0;
 }
 
@@ -97,9 +99,11 @@ function isSmartApollo(a: string): boolean {
  * The {primary, fallback} to read the trust-anchor pubkey from. Prefer the
  * operator's OWN Upload-Pool nodes (so a dishonest hub-advertised node can't forge
  * the pubkey → forge ownership); fall back to the hub read pool only when the
- * Upload Pool is empty.
+ * Upload Pool is empty. Exported so every other on-chain-pubkey-trusting read in
+ * this app (e.g. the headless connector-auth flow) uses the SAME preference
+ * instead of reading straight off the weaker hub-fed pool.
  */
-function trustAnchorPair(deps: VerifyDeps): ReadPair | null {
+export function trustAnchorPair(deps: VerifyDeps): ReadPair | null {
   const upload = deps.txSenders?.enabledNodes() ?? [];
   if (upload.length >= 1) {
     return { primary: upload[0], fallback: upload.length > 1 ? upload[1] : upload[0] };

@@ -1,11 +1,10 @@
 import type { Context, Next } from "hono";
 import { CLASS_BASE, pondus } from "./pondus.js";
 import type { PythLedger } from "./ledger.js";
-import type { ConsumerResolver } from "../stats/middleware.js";
+import { OPERATIONAL_PATH, CONSUMER_HEADER, type ConsumerResolver } from "../stats/middleware.js";
 
 /** Only the three operational verbs are metered — `/{chain}/{read|send|poll}`. */
-const OPERATIONAL = /^\/([^/]+)\/(read|send|poll)$/;
-const CONSUMER_HEADER = "x-pythia-key";
+const OPERATIONAL = OPERATIONAL_PATH;
 
 /** Extract the chainweb `/local` `gas` from a read response body (0 if absent or
  * not a Pact-local shape). Keyless — reads only the node's reported number. */

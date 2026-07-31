@@ -8,10 +8,12 @@ export type ConsumerResolver = (key?: string) => string;
 
 /** Only the three operational verbs are counted — `/{chain}/{read|send|poll}`.
  * Health, connectors, and static assets deliberately do NOT match. */
-const OPERATIONAL_PATH = /^\/([^/]+)\/(read|send|poll)$/;
+export const OPERATIONAL_PATH = /^\/([^/]+)\/(read|send|poll)$/;
 
-/** Header a consumer sends to identify itself for usage attribution. */
-const CONSUMER_HEADER = "x-pythia-key";
+/** Header a consumer sends to identify itself for usage attribution. Exported
+ * so other consumers of this header (e.g. `connectors/auth/gateMiddleware.ts`)
+ * reuse the same literal instead of redeclaring it. */
+export const CONSUMER_HEADER = "x-pythia-key";
 
 /**
  * Hono middleware that records usage analytics for operational requests.
