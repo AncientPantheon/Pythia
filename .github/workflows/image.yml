@@ -47,8 +47,20 @@ jobs:
             echo "::error::Tag $TAG_VERSION does not match the unified version $UNIFIED_VERSION — refusing to push a mistagged image."
             exit 1
           fi
-      - name: Version-consistency + test gate
-        run: npm test
+      # `npm run build` (root) builds `@ancientpantheon/pythia-client` before
+      # `apps/pythia` — required now that apps/pythia depends on it directly
+      # (v2.4.0, the self-connector identity): the client's `exports` map
+      # points at `./dist/index.js`, a build artifact that doesn't exist
+      # until it's built, so `apps/pythia`'s own test run (which now imports
+      # `@ancientpantheon/pythia-client`) fails to resolve the package on a
+      # bare `npm ci` + `npm test` with nothing built first. `publish.yml`'s
+      # own gate already does `typecheck && build && test` in that order for
+      # exactly this reason — this mirrors it rather than duplicating a
+      # narrower, `pythia-client`-only build step that would drift from it.
+      - name: Version-consistency + build + test gate
+        run: |
+          npm run build
+          npm test
 
       # Buildx is REQUIRED for the type=gha build cache below — without it
       # docker/build-push-action fails instantly (the default docker driver can't

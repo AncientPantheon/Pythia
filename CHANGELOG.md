@@ -9,6 +9,22 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.4.1] — 2026-07-31
+
+### Fixed — `image.yml`'s test gate ran before building `pythia-client`, breaking the ghcr image build
+
+v2.4.0's own image build failed: `apps/pythia` now depends on `@ancientpantheon/pythia-client`
+directly (the self-connector identity) for the first time, and that package's `exports` map points
+at a `dist/` build artifact that doesn't exist until it's built. `.github/workflows/publish.yml`
+already ran `typecheck && build && test` in that order (so it built `pythia-client` before testing
+— confirmed: v2.4.0 published to npm successfully), but `.github/workflows/image.yml`'s gate ran a
+bare `npm test` with nothing built first, so `apps/pythia`'s own test run failed to resolve the
+package it now imports. Fixed by mirroring `publish.yml`'s gate: `npm run build` (which the root
+script already scopes to `pythia-client` then `apps/pythia`, in that order) now runs before `npm
+test` in `image.yml` too. No functional/behavioral change — CI-only fix, verified locally by
+deleting `packages/pythia-client/dist/` and reproducing the exact failure, then confirming the
+build step resolves it.
+
 ## [2.4.0] — 2026-07-31
 
 ### Added — Pythia becomes a complete automaton: her own dual-Apollo self-connector identity
