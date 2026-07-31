@@ -9,6 +9,48 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.3.0] — 2026-07-31
+
+### Added — the connector protocol (Pythia's second sovereign automaton action)
+
+Pythia can now autonomously activate a consumer's on-chain dual-Apollo API key —
+the second of the two sovereign automaton actions (the first, the ledger flush, has
+shipped since v2.1.0). Three topics, all part of this release:
+
+- **`connector-auth-core`** — a new headless (non-browser-cookie) challenge/verify
+  round trip (`POST /connectors/auth/challenge`, `POST /connectors/auth/verify`),
+  parallel to the existing browser Link-verify flow. A verified caller whose Apollo
+  account is part of an active on-chain `DualLink` receives a 3-hour ephemeral
+  secret; real request gating now enforces it on `x-pythia-key` (a present-but-
+  invalid/expired key is rejected with `401`; no key at all falls through to the
+  existing unattributed access, unchanged). Backed by a new on-chain active-dual-link
+  cache mirror (`DualLinkCache`), an ephemeral-secret TTL store, and a per-account
+  nonce store — all reading their trust-anchor chain state from the operator's own
+  Upload-Pool nodes, never the untrusted hub-fed pool.
+- **`connector-activation-resolver`** — pairs the two independent per-half headless
+  ownership proofs (one from each of a Standard/Smart Apollo pair) into one
+  ready-to-activate `DualLink`, and a new Khronoton server resolver
+  (`dual-link-activate`, mirroring the proven `pyth-flush` resolver's shape exactly)
+  that signs and submits `A_LinkDualApiKey` on-chain — Pythia's own Codex key,
+  Cronoton-gated, the same signing path already proven live for the ledger flush.
+  Going live is gated purely on the `pythia-cronoton-keyset` on-chain re-pointing (a
+  chain governance action, not code); the resolver fails cleanly (no crash) until
+  then, per the Khronoton executor's "never throws" contract.
+- **`pythia-client-connector-sdk`** — the actual integration surface: the published
+  `@ancientpantheon/pythia-client` package gains `PythiaConnector`, the consumer-side
+  orchestrator for the full challenge → sign → verify → store round trip against an
+  injected `ApolloSigner` (the consumer's own signing capability) and `SecretStorage`
+  (the consumer's own persistence). `PythiaClientOptions` gains `pythiaKey` (a static
+  string or a live supplier — `connector.keyProvider()` — resolved fresh on every
+  request) so a consumer automaton can wire a real, auto-refreshing ephemeral secret
+  straight into `read`/`send`/`poll` as `x-pythia-key`. See
+  `packages/pythia-client/CHANGELOG.md` for the SDK's own change entry.
+
+Design: `docs/work/pythia-connector-protocol/design.md` (umbrella, covers Topic 1's
+design directly), `docs/work/connector-auth-core/{plan,review}.md`,
+`docs/work/connector-activation-resolver/{design,plan,review}.md`,
+`docs/work/pythia-client-connector-sdk/{design,plan}.md`.
+
 ## [2.2.3] — 2026-07-23
 
 ### Changed

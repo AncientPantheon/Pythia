@@ -11,18 +11,25 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 - **Tx status** — `client.poll(...)` returns per-request-key pending-vs-final
   status and confirmation depth; `client.health()` returns the gateway's
   liveness snapshot.
+- **Connector protocol** — `PythiaConnector` drives Pythia's headless
+  challenge/verify round trip against an injected signer + storage, holding a
+  live ephemeral secret you can wire straight into `PythiaClient` as the
+  `x-pythia-key` gated-access header.
 
 ## Status
 
-`1.7.0` on public npmjs — proprietary release, all rights reserved (see
+`2.3.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
 and mirrors the service error taxonomy as client-side typed errors
 (`PythiaValidationError`, `PythiaUnsupportedChainError`,
-`PythiaPoolExhaustedError`) under a shared `PythiaClientError` root. The package
-carries **no runtime dependencies** — it rests only on the runtime `fetch` and
-its own types.
+`PythiaPoolExhaustedError`) under a shared `PythiaClientError` root. Also ships
+`PythiaConnector` — the consumer-side orchestrator for Pythia's headless
+connector-auth protocol, holding no key material of its own (it signs through
+an injected `ApolloSigner` and persists through an injected `SecretStorage`) —
+with its own `PythiaConnectorError` taxonomy. The package carries **no runtime
+dependencies** — it rests only on the runtime `fetch` and its own types.
 
 ## Usage
 
@@ -43,6 +50,43 @@ const status = await client.poll({ requestKeys: ["req-key-1"], chainId: 0 });
 const health = await client.health();
 ```
 
+### Connector protocol (gated access)
+
+If your Apollo account has an active on-chain dual link, `PythiaConnector`
+drives the headless challenge/sign/verify round trip for you and hands
+`PythiaClient` a live, auto-refreshing secret:
+
+```ts
+import { PythiaClient, PythiaConnector } from "@ancientpantheon/pythia-client";
+
+// Your own signing capability — this package never holds key material.
+const signer = {
+  async sign({ apolloAccount, nonce, rp }) {
+    return { signature: await myApolloSigner.sign(apolloAccount, nonce, rp) };
+  },
+};
+
+const connector = new PythiaConnector({
+  baseUrl: "https://pythia.ancientholdings.eu",
+  apolloAccount: "₱.my-account...",
+  signer,
+  // storage defaults to in-memory; inject your own to persist across restarts.
+});
+
+const client = new PythiaClient({
+  baseUrl: "https://pythia.ancientholdings.eu",
+  // Resolved fresh on every request — stays wired to a live secret with no
+  // manual refresh loop or client re-construction.
+  pythiaKey: connector.keyProvider(),
+});
+
+const gatedRead = await client.read({ code: "(coin.get-balance \"k:abc\")" });
+```
+
+`connector.ensureSecret()` returns `{status:"pending"}` (not a thrown error)
+if your account's ownership is proven but its dual link isn't active on-chain
+yet — call it again later once activation lands.
+
 ## Install
 
 ```sh
@@ -50,6 +94,13 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.3.0** — version alignment: jumps from `1.7.0` to `2.3.0` to align with the
+unified Pythia service version line. Adds `PythiaConnector` (headless
+challenge/sign/verify orchestration against an injected `ApolloSigner` +
+`SecretStorage`), the `PythiaConnectorError` taxonomy, `InMemorySecretStorage`,
+and `PythiaClientOptions.pythiaKey` (static string or live supplier, sent as
+`x-pythia-key`). No removals, no breaking changes to any existing export.
 
 **v1.7.0** — version alignment: jumps from `1.1.0` straight to `1.7.0`,
 skipping `1.2.0`–`1.6.0`, to align with the unified Pythia service version
