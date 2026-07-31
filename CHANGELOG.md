@@ -9,6 +9,47 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.4.0] — 2026-07-31
+
+### Added — Pythia becomes a complete automaton: her own dual-Apollo self-connector identity
+
+Every Pantheon automaton is `Codex (keys+signing) + Pythia (reads) + Khronoton (scheduling) +
+logic`. Pythia already had her own Khronoton engine and sealed key storage, but had never gone
+through her own connector protocol (shipped in v2.3.0) — no dual-Apollo identity of her own, no
+`PythiaConnector`, no dependency on `@ancientpantheon/pythia-client`. This release closes that gap,
+with one deliberate carve-out: the actual data movement never leaves the process.
+
+- **Her own dual-Apollo identity.** `apps/pythia/src/automaton/selfApollo.ts` — Pythia can now
+  generate (idempotently, admin-triggered) two independent Apollo keypairs (a Standard `₱.` half
+  and a Smart `Π.` half — two unrelated random keys, exactly like any other consumer's pair, never
+  one key's two address encodings), sealed at rest in her existing vault, and sign challenges with
+  them via the same `@ouronet/dalos-crypto` primitive her verify-side code already used read-only.
+  This is new, deliberately scoped key-generation/signing capability inside `src/automaton/` — the
+  one directory Pythia's own "keyless gateway" invariant scanner (`invariants/keylessScanner.ts`)
+  has always exempted as the keyed sovereign half (Codex/Khronoton signing already lived there).
+- **The in-process transport shortcut.** `apps/pythia/src/connectors/self/inProcessFetch.ts` —
+  when Pythia talks to her OWN gateway, the request dispatches directly through her real Hono
+  router in-process (no DNS/TLS/socket) instead of hairpinning out over the public internet to
+  reach herself. The full connector-auth protocol logic still runs for real — only the literal
+  network hop is skipped. Requires zero changes to the published `pythia-client` SDK; uses its
+  existing `fetchImpl` injection seam.
+- **The periodic self-connector loop.** `apps/pythia/src/automaton/selfConnectorLoop.ts` — drives
+  both of her own accounts' challenge→sign→verify round trips on a schedule, feeding Topic 2's
+  existing (unmodified) pairing/activation mechanism — proven end-to-end in this release's own
+  integration test to pick up Pythia's own self-proofs with zero self-case branching anywhere in
+  the connector-auth/activation code.
+- **A third organ.** `@ancientpantheon/pythia-client` is now a real runtime dependency of
+  `apps/pythia`, and her own Update & Deploy panel recognizes it as a third `CONSTRUCTORS` row
+  (`admin/organVersions.ts`), alongside Codex and Khronoton — the trio
+  `organs/05-khronoton-engine-wire-in.md`'s staged-integration gate was written for.
+  `admin/routes.ts` + a small `admin.html`/`admin.js` panel expose the resulting status (public
+  account strings + per-half state) so the operator can find what to manually register on-chain.
+- **What stays manual, by design:** the actual on-chain `C_DeployApolloPythiaApiKey` (×2, 500 STOA
+  each) and `C_LinkDualApiKey` transactions — real money, submitted by the operator, using the
+  public account strings the new admin panel displays. Everything from proof onward is automatic.
+
+Design: `docs/work/pythia-self-consumer/{design,plan,review}.md`.
+
 ## [2.3.0] — 2026-07-31
 
 ### Added — the connector protocol (Pythia's second sovereign automaton action)

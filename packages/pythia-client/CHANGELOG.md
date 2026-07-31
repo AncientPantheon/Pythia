@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.4.0 — 2026-07-31
+
+Version alignment: the client jumps from `2.3.0` to `2.4.0` to align with the unified Pythia
+service version line. This release is service-side only (Pythia adopting the connector SDK as her
+own third organ, plus a self-connector identity — see `CHANGELOG.md` at the repo root) — no changes
+to this package's own source, API surface, or behavior.
+
 ## 2.3.0 — 2026-07-31
 
 Version alignment: the client jumps from `1.7.0` to `2.3.0` to align with the unified
