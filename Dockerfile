@@ -43,6 +43,23 @@ RUN npm run build
 # Drop dev dependencies so only the production runtime tree is carried forward.
 RUN npm prune --production
 
+# npm decides PER DEPENDENCY whether to hoist a workspace package's own deps to
+# the monorepo root `node_modules` or nest them under the consuming workspace
+# (`apps/pythia/node_modules`) — a version/peer conflict ANYWHERE in the tree
+# can flip this on any given `npm ci`, entirely independent of any code change
+# here (see `docs/pantheonic-architecture/automaton/05` §1d's own documented
+# "layout trap"). CONFIRMED this happened: adding `@ancientpantheon/
+# pythia-client` as a new apps/pythia dependency (v2.4.0) shifted resolution
+# so `@ancientpantheon/codex` and `@ancientpantheon/khronoton-core` now nest
+# under `apps/pythia/node_modules/` instead of the root — and the runtime
+# stage below only ever copied the ROOT `node_modules`, silently dropping the
+# nested one and crashing the server at boot (confirmed by actually running
+# the built image before this fix landed). Guarantee the directory always
+# EXISTS here (even empty, when hoisting happens to land everything at the
+# root) so the unconditional COPY below never fails the build regardless of
+# which way npm's hoisting decision goes on any given install.
+RUN mkdir -p apps/pythia/node_modules
+
 # ── Runtime stage ────────────────────────────────────────────────────────────
 # Slim node base — no toolchain, only the runtime the read gateway needs: node +
 # the pruned node_modules + the built dist + the checked-in config.
@@ -112,6 +129,11 @@ RUN addgroup -g 1001 -S pythia \
 
 # Carry the hoisted (pruned) node_modules and the built workspace output.
 COPY --from=builder --chown=pythia:pythia /app/node_modules ./node_modules
+# The NESTED layout, when npm's hoisting puts some deps here instead of the
+# root (see the `mkdir -p` comment in the builder stage above) — always
+# exists in the builder stage (empty or not), so this COPY never fails
+# regardless of which way hoisting went on this particular install.
+COPY --from=builder --chown=pythia:pythia /app/apps/pythia/node_modules ./apps/pythia/node_modules
 COPY --from=builder --chown=pythia:pythia /app/apps/pythia/dist ./apps/pythia/dist
 COPY --from=builder --chown=pythia:pythia /app/apps/pythia/package.json ./apps/pythia/package.json
 # The checked-in config the loader reads at boot (resolved relative to dist:
@@ -120,15 +142,43 @@ COPY --from=builder --chown=pythia:pythia /app/apps/pythia/config ./apps/pythia/
 # The hand-written static landing assets served at `/`.
 COPY --from=builder --chown=pythia:pythia /app/apps/pythia/public ./apps/pythia/public
 COPY --from=builder --chown=pythia:pythia /app/package.json ./package.json
+# apps/pythia depends on @ancientpantheon/pythia-client directly as of v2.4.0
+# (the self-connector identity) — a REAL runtime import (PythiaConnector is a
+# class, not just a type), not just a dev/test dependency. npm workspaces
+# hoist it to `node_modules/@ancientpantheon/pythia-client` as a SYMLINK to
+# `../../packages/pythia-client` (confirmed: `readlink` on that path resolves
+# there) — the `node_modules` copy above carries the symlink itself, but not
+# its target, which otherwise dangles in this stage and crashes the server at
+# boot the moment it's imported (a runtime MODULE_NOT_FOUND, not a build-time
+# failure — nothing in `npm run build`/`npm test` catches this, since both run
+# against the full monorepo checkout, never this pruned runtime layout).
+COPY --from=builder --chown=pythia:pythia /app/packages/pythia-client/dist ./packages/pythia-client/dist
+COPY --from=builder --chown=pythia:pythia /app/packages/pythia-client/package.json ./packages/pythia-client/package.json
 
 # Build-time sanity probe — fail the build if the entrypoint or config the
 # container runs is missing, so a broken image never reaches the registry
-# (mirrors the pool image's `test -f` guard).
+# (mirrors the pool image's `test -f` guard). The final check actually
+# resolves every `@ancientpantheon/*` organ subpath apps/pythia's OWN source
+# imports (not just `test -f` on a path) — the authoritative reproduction of
+# what `apps/pythia/dist/server.js` does at boot, so a dangling symlink, a
+# missing `exports` target, or a nested-vs-hoisted node_modules mismatch
+# fails the BUILD here instead of crashing the live container during a
+# blue-green deploy. MUST run from `apps/pythia/`, not `/app` — Node's module
+# resolution only walks UP from the importing file's own directory, never
+# down, so probing from the wrong directory silently skips exactly the
+# `apps/pythia/node_modules` nested-layout case this guard exists to catch
+# (confirmed: this exact mistake let the codex/khronoton-core nesting bug
+# through on an earlier draft of this probe, before the `cd` below was added).
 RUN test -f /app/apps/pythia/dist/server.js \
  && test -f /app/apps/pythia/config/pythia.config.json \
  && test -f /app/apps/pythia/public/index.html \
  && test -f /app/apps/pythia/public/codex-island.js \
- && test -f /app/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+ && test -f /app/node_modules/better-sqlite3/build/Release/better_sqlite3.node \
+ && cd /app/apps/pythia && node --input-type=module -e "\
+      await import('@ancientpantheon/pythia-client'); \
+      await import('@ancientpantheon/codex/ouronet'); \
+      await import('@ancientpantheon/khronoton-core/server'); \
+      await import('@ancientpantheon/khronoton-core/blockchain/stoachain');"
 
 USER pythia
 
