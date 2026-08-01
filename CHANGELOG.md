@@ -9,6 +9,41 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.4.3] — 2026-08-01
+
+### Fixed — the actual on-box deploy failure: `Dockerfile`'s runtime stage silently dropped two organs
+
+This is the real fix for the deploy failure reported after v2.4.2 shipped. Two distinct, stacked
+bugs in `Dockerfile`'s runtime stage, both newly exposed by `apps/pythia` depending on
+`@ancientpantheon/pythia-client` directly for the first time (v2.4.0) — confirmed by actually
+building the image locally with Docker and running the container, not just re-checking CI:
+
+1. **`packages/pythia-client` itself was never copied into the runtime stage.** npm workspaces
+   hoist it to `node_modules/@ancientpantheon/pythia-client` as a *symlink* to
+   `../../packages/pythia-client` — the runtime stage's `COPY .../node_modules` carried the symlink,
+   but never its target, so it dangled and crashed the server at boot (`PythiaConnector` is a real
+   class import, not just a type). Fixed: the runtime stage now also copies
+   `packages/pythia-client/dist` + its `package.json`.
+2. **The bigger one:** adding `pythia-client` as a new dependency shifted npm's hoisting decision
+   for the *whole* tree — `@ancientpantheon/codex` and `@ancientpantheon/khronoton-core` now nest
+   under `apps/pythia/node_modules/` instead of the monorepo root, and the runtime stage only ever
+   copied the root `node_modules`. This is the documented "layout trap"
+   (`docs/pantheonic-architecture/automaton/05` §1d) — npm can flip this on any install, unrelated
+   to any code change. Fixed: the builder stage now guarantees `apps/pythia/node_modules` always
+   exists (even empty), and the runtime stage copies it unconditionally alongside the root one, so
+   the image is correct regardless of which way hoisting goes on a given build.
+
+The build-time sanity probe (already present, catches this class of bug at build time instead of
+crashing a live container mid-deploy) now actually resolves every `@ancientpantheon/*` subpath
+`apps/pythia` imports — `pythia-client`, `codex/ouronet`, `khronoton-core/server`,
+`khronoton-core/blockchain/stoachain` — run from `apps/pythia/`'s own directory (not `/app`), since
+Node's module resolution only walks *up* from the importing file's location; probing from the
+wrong directory silently skips exactly the nested-layout case this guard exists to catch (caught
+this exact mistake on an earlier draft of the fix, before landing here).
+
+Verified end-to-end locally: `docker build` succeeds, the container boots cleanly (Khronoton's tick
+loop starts, no crash), and `GET /healthz` responds `200` — not just a green CI run.
+
 ## [2.4.2] — 2026-07-31
 
 ### Fixed — `SealedStore.rotateMasterKey` could leave a mixed-key vault on a failure mid-rotation

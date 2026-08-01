@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.4.2` on public npmjs — proprietary release, all rights reserved (see
+`2.4.3` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -94,6 +94,10 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.4.3** — version alignment: jumps from `2.4.2` to `2.4.3` to align with the unified Pythia
+service version line. Fixes the actual on-box deploy failure (a `Dockerfile` runtime-stage bug) —
+no changes to this package's own source, API surface, or behavior.
 
 **v2.4.2** — version alignment: jumps from `2.4.1` to `2.4.2` to align with the unified Pythia
 service version line. Service-side only (a `SealedStore.rotateMasterKey` hardening fix) — no
