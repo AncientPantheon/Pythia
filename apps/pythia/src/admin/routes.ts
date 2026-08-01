@@ -236,27 +236,41 @@ export interface VersionInfoControls {
  * `tick()` hasn't run yet for this half" (its internal `DualLinkConnector`
  * hasn't been built); `"pending"` once ticked but the pair isn't yet active
  * on-chain; `"active"` once the hub has proven and activated it.
- * `maskedSecret`/`expiresAt` are only populated (non-null) when
- * `state === "active"` — the raw secret is never sent to the browser, only
- * its `first7...last7` mask (mirrors the hub-HMAC-secret `secretMask()`
- * convention). */
+ *
+ * No secret data here anymore (`docs/work/self-connector-panel-redesign/
+ * design.md`): only one secret is ever actually used for `x-pythia-key`
+ * gating regardless of which half issued it (`DualLinkConnector.status()`'s
+ * own standard-preferred, smart-fallback dedup), so a per-half masked-secret
+ * display implied two independent credentials existed when only one ever
+ * did — misleading. The single consolidated secret now lives at the
+ * top level, on {@link SelfConnectorStatus.maskedSecret}. */
 export interface SelfConnectorHalfView {
   state: "not-linked" | "pending" | "active";
-  maskedSecret: string | null; // only non-null when state === "active"
-  expiresAt: number | null; // only non-null when state === "active"
 }
 
 /** Pythia's own dual-Apollo self-connector identity, as the admin panel shows
  * it: the two account strings derived from the currently-set dual-link-key
  * (both `null` until one is pasted), the dual-link-key itself (echoed back —
- * not sensitive, just the public composite account string), and each half's
- * connector-activation view. */
+ * not sensitive, just the public composite account string), each half's
+ * connector-activation view, and the ONE consolidated ephemeral-key value
+ * that actually gates `x-pythia-key` requests.
+ *
+ * `maskedSecret`/`expiresAt` are a straight pass-through of `SelfConnectorLoop
+ * .status()`'s own top-level `secret`/`expiresAt` (itself a pass-through of
+ * `DualLinkConnector.status()`'s standard-preferred, smart-fallback dedup —
+ * see `docs/work/self-connector-panel-redesign/design.md`), masked server-
+ * side via `maskSecret()` before it ever reaches the browser. `null` when
+ * neither half is active. This replaced showing a masked secret PER HALF
+ * (`SelfConnectorHalfView` above), which implied two independent credentials
+ * existed when only one is ever actually used. */
 export interface SelfConnectorStatus {
   standardAccount: string | null;
   smartAccount: string | null;
   dualLinkKey: string | null;
   standard: SelfConnectorHalfView;
   smart: SelfConnectorHalfView;
+  maskedSecret: string | null;
+  expiresAt: number | null;
 }
 
 /** The runtime controls the `ancient`-gated "Self Connector" panel drives:

@@ -440,14 +440,13 @@ selfConnectorLoop.start();
 // call it without either referring back into the object being constructed.
 // Maps each half's `SelfConnectorHalfStatus` (from the
 // now `DualLinkConnector`-backed loop — see docs/work/self-connector-dual-link)
-// onto the admin-facing `SelfConnectorHalfView`, masking the secret rather
-// than shipping it raw — mirrors `admin/routes.test.ts`'s already-tested
-// "REAL wiring" `makeRealApp` helper's `toHalfView` exactly.
+// onto the admin-facing `SelfConnectorHalfView` — just its state now: the
+// ephemeral secret is a single top-level value (see `selfConnectorStatus`
+// below), not a per-half one (docs/work/self-connector-panel-redesign) —
+// mirrors `admin/routes.test.ts`'s already-tested "REAL wiring" `makeRealApp`
+// helper's `toHalfView` exactly.
 function toHalfView(half: SelfConnectorHalfStatus): SelfConnectorHalfView {
-  if (half.status === "active") {
-    return { state: "active", maskedSecret: maskSecret(half.secret), expiresAt: half.expiresAt };
-  }
-  return { state: half.status, maskedSecret: null, expiresAt: null };
+  return { state: half.status };
 }
 async function selfConnectorStatus(): Promise<SelfConnectorStatus> {
   const loop = selfConnectorLoop.status();
@@ -457,6 +456,8 @@ async function selfConnectorStatus(): Promise<SelfConnectorStatus> {
     dualLinkKey: selfApolloVault.dualLinkKey(),
     standard: toHalfView(loop.standard),
     smart: toHalfView(loop.smart),
+    maskedSecret: loop.secret ? maskSecret(loop.secret) : null,
+    expiresAt: loop.expiresAt,
   };
 }
 

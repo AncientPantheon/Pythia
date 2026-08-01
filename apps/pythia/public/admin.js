@@ -1719,16 +1719,19 @@ function wireSecurity() {
 }
 
 // ── Self Connector (Pythia's own dual-Apollo Standard + Smart account pair) ───
-// The two halves' linkage state → badge text/class, mirroring securityView()'s
-// state→badge mapping. `half` is a SelfConnectorHalfView-shaped object:
-// {state, maskedSecret, expiresAt}. Generation itself happens in the Codex
-// tab, not here — this panel only ever reflects whether a dual-link-key has
-// been pasted and, if so, how far along it is.
+// The two halves' linkage state → chip text/class, reusing the framed-card
+// .deploy-chip pill system (see styles.css: --not-linked/--pending/--active
+// variants alongside the existing deploy-status --running/--success/--failed
+// ones). `half` is a SelfConnectorHalfView-shaped object: {state} — no
+// per-half secret anymore, see selfconn-ttl-card below for the single
+// consolidated one. Generation itself happens in the Codex tab, not here —
+// this panel only ever reflects whether a dual-link-key has been pasted and,
+// if so, how far along it is.
 function selfConnectorHalfView(half) {
   const state = half && half.state;
-  if (state === "active") return { cls: "sec-badge--sealed", text: "Active" };
-  if (state === "pending") return { cls: "sec-badge--warn", text: "Pending" };
-  return { cls: "sec-badge--warn", text: "Not linked" };
+  if (state === "active") return { cls: "deploy-chip--active", text: "Active" };
+  if (state === "pending") return { cls: "deploy-chip--pending", text: "Pending" };
+  return { cls: "deploy-chip--not-linked", text: "Not linked" };
 }
 
 // Renders a countdown-to-expiry string off a millisecond delta: "23h 58m" for
@@ -1747,9 +1750,16 @@ function formatCountdown(ms) {
   return `${minutes}m ${seconds}s`;
 }
 
+// Pythia's own self-connector ephemeral-secret TTL (v2.6.0's
+// SELF_EPHEMERAL_SECRET_TTL_MS on the server), hardcoded here only to drive
+// the timer bar's depleting width. Safe ONLY because this panel exclusively
+// shows PYTHIA'S OWN identity — never a generic consumer's connector, whose
+// TTL this constant would not necessarily match.
+const SELF_TTL_MS = 24 * 60 * 60 * 1000;
+
 // The last status object fetched by loadSelfConnector(), re-rendered every
-// second by the countdown interval below so the "expires in …" text ticks
-// visually without ever issuing a second network call.
+// second by the countdown interval below so the "expires in …" text (and the
+// depleting timer bar) tick visually without ever issuing a second network call.
 let lastSelfConnectorStatus = null;
 
 function renderSelfConnector(st) {
@@ -1757,39 +1767,43 @@ function renderSelfConnector(st) {
 
   const standardBadge = document.getElementById("selfconn-standard-badge");
   const standardAccount = document.getElementById("selfconn-standard-account");
-  const standardSecret = document.getElementById("selfconn-standard-secret");
   const smartBadge = document.getElementById("selfconn-smart-badge");
   const smartAccount = document.getElementById("selfconn-smart-account");
-  const smartSecret = document.getElementById("selfconn-smart-secret");
 
   const standardView = selfConnectorHalfView(st.standard);
   if (standardBadge) {
-    standardBadge.textContent = `Standard: ${standardView.text}`;
-    standardBadge.className = "sec-badge " + standardView.cls;
+    standardBadge.textContent = standardView.text;
+    standardBadge.className = "deploy-chip " + standardView.cls;
   }
   if (standardAccount) {
     standardAccount.textContent = st.standardAccount || "not yet linked";
   }
-  if (standardSecret) {
-    standardSecret.textContent =
-      st.standard.state === "active"
-        ? `${st.standard.maskedSecret} — expires in ${formatCountdown(st.standard.expiresAt - Date.now())}`
-        : "";
-  }
 
   const smartView = selfConnectorHalfView(st.smart);
   if (smartBadge) {
-    smartBadge.textContent = `Smart: ${smartView.text}`;
-    smartBadge.className = "sec-badge " + smartView.cls;
+    smartBadge.textContent = smartView.text;
+    smartBadge.className = "deploy-chip " + smartView.cls;
   }
   if (smartAccount) {
     smartAccount.textContent = st.smartAccount || "not yet linked";
   }
-  if (smartSecret) {
-    smartSecret.textContent =
-      st.smart.state === "active"
-        ? `${st.smart.maskedSecret} — expires in ${formatCountdown(st.smart.expiresAt - Date.now())}`
-        : "";
+
+  // ONE consolidated ephemeral secret for the whole pair (standard-preferred,
+  // smart-fallback — already deduped server-side), read ONCE — not per half.
+  const ttlCard = document.getElementById("selfconn-ttl-card");
+  if (ttlCard) ttlCard.hidden = !st.maskedSecret;
+  if (st.maskedSecret) {
+    const secretEl = document.getElementById("selfconn-secret");
+    if (secretEl) secretEl.textContent = st.maskedSecret;
+    const countdownEl = document.getElementById("selfconn-countdown");
+    if (countdownEl) countdownEl.textContent = `expires in ${formatCountdown(st.expiresAt - Date.now())}`;
+    // Clamped to [0, 100] so a slightly-stale cached status, or clock drift,
+    // can never produce an invalid CSS width value.
+    const fillEl = document.getElementById("selfconn-ttl-fill");
+    if (fillEl && st.expiresAt != null) {
+      const pct = Math.max(0, Math.min(100, ((st.expiresAt - Date.now()) / SELF_TTL_MS) * 100));
+      fillEl.style.width = `${pct}%`;
+    }
   }
 }
 

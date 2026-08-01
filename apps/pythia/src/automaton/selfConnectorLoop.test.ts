@@ -98,9 +98,12 @@ function keyFor(pair: { standardAccount: string; smartAccount: string }): string
  * Topic 1/2's own server logic, already tested elsewhere) — just a well-formed
  * 200 challenge + verify pair, scoped to proving THIS loop composes correctly.
  * `failAccount`, when set, makes the verify route answer 401 for that one
- * apollo account only (proves per-half isolation).
+ * apollo account only (proves per-half isolation). `allPending`, when set,
+ * makes EVERY account answer 202 regardless of which half — mirrors Pythia's
+ * realistic "neither half is active yet" starting state for BOTH halves at
+ * once (the single-`pendingAccount` option below only covers one half).
  */
-function buildStubApp(opts: { failAccount?: string; pendingAccount?: string } = {}) {
+function buildStubApp(opts: { failAccount?: string; pendingAccount?: string; allPending?: boolean } = {}) {
   const app = new Hono();
   const verifyCalls: string[] = [];
 
@@ -114,7 +117,7 @@ function buildStubApp(opts: { failAccount?: string; pendingAccount?: string } = 
     if (opts.failAccount && body.apolloAccount === opts.failAccount) {
       return c.json({ error: "signature verification failed" }, 401);
     }
-    if (opts.pendingAccount && body.apolloAccount === opts.pendingAccount) {
+    if (opts.allPending || (opts.pendingAccount && body.apolloAccount === opts.pendingAccount)) {
       // Mirrors the REAL server's 202 — ownership proven, but the on-chain
       // dual link isn't active yet. This is Pythia's own realistic starting
       // state (design.md: "neither of Pythia's own accounts is active yet")
@@ -140,6 +143,8 @@ describe("SelfConnectorLoop — status() before any dual-link-key is set", () =>
     expect(loop.status()).toEqual({
       standard: { status: "not-linked" },
       smart: { status: "not-linked" },
+      secret: null,
+      expiresAt: null,
     });
   });
 });
@@ -159,6 +164,8 @@ describe("SelfConnectorLoop — tick() with no dual-link-key set", () => {
     expect(loop.status()).toEqual({
       standard: { status: "not-linked" },
       smart: { status: "not-linked" },
+      secret: null,
+      expiresAt: null,
     });
   });
 });
@@ -199,7 +206,9 @@ describe("SelfConnectorLoop — tick()", () => {
       vault,
     });
 
+    const beforeTick = Date.now();
     await loop.tick();
+    const afterTick = Date.now();
     const status = loop.status();
 
     expect(status.standard).toMatchObject({
@@ -212,6 +221,22 @@ describe("SelfConnectorLoop — tick()", () => {
     });
     expect((status.standard as { expiresAt: number }).expiresAt).toBeGreaterThan(Date.now());
     expect((status.smart as { expiresAt: number }).expiresAt).toBeGreaterThan(Date.now());
+
+    // Top-level `secret`/`expiresAt` is DualLinkConnector's own dedup, always
+    // standard-preferred when both halves are active. Regression-tested via
+    // TWO genuinely independent checks: `secret` against the fixed, known
+    // string the stub issues per-account (proves WHICH half's value won —
+    // this alone already distinguishes standard from smart); `expiresAt`
+    // against a `before`/`after`-bracketed window matching `buildStubApp`'s
+    // own known `Date.now() + 3h` formula (proves the VALUE is a real,
+    // freshly-issued timestamp, not just "equals `status.standard.expiresAt`"
+    // — comparing a field to a captured copy of that SAME field would prove
+    // nothing, since `DualLinkConnector.status()`'s own implementation makes
+    // `active` a literal reference to the standard half's own result object).
+    const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+    expect(status.secret).toBe(`secret-for-${standardAccount}`);
+    expect(status.expiresAt).toBeGreaterThanOrEqual(beforeTick + THREE_HOURS_MS);
+    expect(status.expiresAt).toBeLessThanOrEqual(afterTick + THREE_HOURS_MS);
   });
 
   it("codex decommissioned (cleared) AFTER a successful link but BEFORE any tick: tick() resolves without throwing, and status() reports pending (not active, not a crash) for both halves", async () => {
@@ -265,6 +290,8 @@ describe("SelfConnectorLoop — tick()", () => {
     expect(loop.status()).toEqual({
       standard: { status: "not-linked" },
       smart: { status: "not-linked" },
+      secret: null,
+      expiresAt: null,
     });
   });
 
@@ -305,6 +332,51 @@ describe("SelfConnectorLoop — tick()", () => {
       expect.anything(),
     );
     errorSpy.mockRestore();
+  });
+
+  it("top-level status() falls back to the SMART half's secret when the standard half fails: the top-level fields are NOT just always the standard half's, proving the fallback (not just 'some secret')", async () => {
+    const c = codex();
+    const pair = await seedCodexWithRealPair(c);
+    const { standardAccount, smartAccount } = pair;
+    const vault = new SelfApolloVault(store(), c);
+    vault.setDualLinkKey(keyFor(pair));
+    const { app } = buildStubApp({ failAccount: standardAccount });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new SelfConnectorLoop({
+      baseUrl: BASE_URL,
+      fetchImpl: createInProcessFetch(app),
+      vault,
+    });
+
+    await expect(loop.tick()).resolves.toBeUndefined();
+    const status = loop.status();
+
+    expect(status.smart).toMatchObject({ status: "active", secret: `secret-for-${smartAccount}` });
+    const expectedExpiresAt = (status.smart as { expiresAt: number }).expiresAt;
+    expect(status.secret).toBe(`secret-for-${smartAccount}`);
+    expect(status.expiresAt).toBe(expectedExpiresAt);
+    errorSpy.mockRestore();
+  });
+
+  it("top-level status() stays null/null when both halves are still pending (neither active yet) — not just 'not-linked', a genuinely distinct outcome", async () => {
+    const c = codex();
+    const pair = await seedCodexWithRealPair(c);
+    const vault = new SelfApolloVault(store(), c);
+    vault.setDualLinkKey(keyFor(pair));
+    const { app } = buildStubApp({ allPending: true });
+    const loop = new SelfConnectorLoop({
+      baseUrl: BASE_URL,
+      fetchImpl: createInProcessFetch(app),
+      vault,
+    });
+
+    await expect(loop.tick()).resolves.toBeUndefined();
+    const status = loop.status();
+
+    expect(status.standard).toEqual({ status: "pending" });
+    expect(status.smart).toEqual({ status: "pending" });
+    expect(status.secret).toBeNull();
+    expect(status.expiresAt).toBeNull();
   });
 
   it("a half reported PENDING by the server (proven ownership, not yet an active dual link — the realistic steady state before the manual on-chain deploy+link step) is cached and reported, not lost as not-linked", async () => {

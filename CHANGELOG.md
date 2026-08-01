@@ -9,6 +9,28 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.3] — 2026-08-01
+
+### Changed — Self Connector panel redesigned around a single consolidated ephemeral key
+
+The admin Self Connector panel previously showed two independent-looking masked ephemeral secrets,
+one per Apollo half — misleading, since `DualLinkConnector.status()` (the SDK class Pythia's own
+self-connector already wraps) has always computed exactly ONE consolidated `secret`/`expiresAt`
+(standard-preferred, smart-fallback) as the sole value ever used for real `x-pythia-key` gating.
+`SelfConnectorLoop.status()` and `admin/routes.ts`'s `SelfConnectorStatus` now surface that single
+top-level `maskedSecret`/`expiresAt` pair; each half's own view is reduced to just its linkage state
+(`not-linked` / `pending` / `active`).
+
+The panel itself is also rebuilt around the same `.deploy-card`/`.deploy-row`/`.deploy-chip` framed
+visual language the Update & Deploy tab already uses, instead of its prior ad-hoc layout: a
+diagnostic row per half (account + state chip, three visually distinct tones), and one ephemeral-key
+card showing the masked secret alongside a new depleting timer bar (`.ttl-bar`/`.ttl-bar-fill`) and
+countdown, shown only while a secret is actually active.
+
+`websites/Pantheon/docs/pantheonic-architecture/organs/06-pythia-client-wire-in.md` is corrected to
+describe this single-consolidated-secret pattern as the reference implementation, replacing its
+earlier (incorrect) per-half guidance.
+
 ## [2.7.2] — 2026-08-01
 
 ### Fixed — pasting a dual-link-key into the Self Connector panel now checks the chain immediately

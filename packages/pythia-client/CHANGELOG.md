@@ -2,6 +2,14 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.3 — 2026-08-01
+
+Version alignment: the client jumps from `2.7.2` to `2.7.3` to align with the unified Pythia
+service version line. This release is service-side only (the admin Self Connector panel now shows
+a single consolidated ephemeral secret, matching `DualLinkConnector.status()`'s own already-existing
+dedup, instead of two misleading per-half ones — see `CHANGELOG.md` at the repo root) — no changes
+to this package's own source, API surface, or behavior.
+
 ## 2.7.2 — 2026-08-01
 
 Version alignment: the client jumps from `2.7.1` to `2.7.2` to align with the unified Pythia

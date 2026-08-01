@@ -136,19 +136,39 @@ export class SelfConnectorLoop {
    * yet, or `tick()` has never run" (no internal `DualLinkConnector` has
    * ever been built); once a connector exists, its own cached
    * `DualLinkHalfStatus` (`"pending"`/`"active"`) passes through.
+   *
+   * `secret`/`expiresAt` are the single consolidated ephemeral-key value —
+   * NOT a new dedup implementation, a straight pass-through of
+   * `DualLinkConnector.status()`'s own top-level `secret`/`expiresAt`
+   * (standard preferred, smart fallback, both `null` if neither half is
+   * active — see `dualLinkConnector.ts`). `SelfConnectorLoop` never had its
+   * own opinion on which half's secret "wins"; it just surfaces the one
+   * `DualLinkConnector` already computed, since that's the same value that
+   * actually gates `x-pythia-key` (`docs/work/self-connector-panel-
+   * redesign/design.md`). `null` when `dualLinkConnector` itself is `null`
+   * (nothing linked yet — see that field's own doc comment).
    */
-  status(): { standard: SelfConnectorHalfStatus; smart: SelfConnectorHalfStatus } {
+  status(): {
+    standard: SelfConnectorHalfStatus;
+    smart: SelfConnectorHalfStatus;
+    secret: string | null;
+    expiresAt: number | null;
+  } {
+    const dualLinkStatus = this.dualLinkConnector?.status();
     return {
-      standard: this.halfStatus("standard"),
-      smart: this.halfStatus("smart"),
+      standard: this.halfStatus(dualLinkStatus, "standard"),
+      smart: this.halfStatus(dualLinkStatus, "smart"),
+      secret: dualLinkStatus?.secret ?? null,
+      expiresAt: dualLinkStatus?.expiresAt ?? null,
     };
   }
 
-  private halfStatus(which: Half): SelfConnectorHalfStatus {
-    if (!this.dualLinkConnector) return { status: "not-linked" };
-    return this.mapHalfStatus(
-      which === "standard" ? this.dualLinkConnector.status().standard : this.dualLinkConnector.status().smart,
-    );
+  private halfStatus(
+    dualLinkStatus: ReturnType<DualLinkConnector["status"]> | undefined,
+    which: Half,
+  ): SelfConnectorHalfStatus {
+    if (!dualLinkStatus) return { status: "not-linked" };
+    return this.mapHalfStatus(which === "standard" ? dualLinkStatus.standard : dualLinkStatus.smart);
   }
 
   private mapHalfStatus(half: DualLinkHalfStatus): SelfConnectorHalfStatus {

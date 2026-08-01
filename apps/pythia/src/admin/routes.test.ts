@@ -17,6 +17,10 @@ import { CodexStore } from "../automaton/codexStore.js";
 import { seedCodexWithRealPair } from "../automaton/codexApolloFixtures.js";
 import { createInProcessFetch } from "../connectors/self/inProcessFetch.js";
 import { maskSecret, DUAL_LINK_BAR } from "@ancientpantheon/pythia-client";
+import { registerConnectorAuth } from "../routes/connectorAuth.js";
+import { AuthNonceStore } from "../connectors/auth/nonceStore.js";
+import { EphemeralKeyStore } from "../connectors/auth/ephemeralKeyStore.js";
+import { DualLinkCache } from "../connectors/auth/dualLinkCache.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -127,8 +131,10 @@ describe("admin /admin/self-connector — SelfConnectorAdminControls extra", () 
     standardAccount: "k:standard-account",
     smartAccount: "w:smart-account",
     dualLinkKey: "fixture-dual-link-key",
-    standard: { state: "active", maskedSecret: "pk_eph_...abcdefg", expiresAt: 1_700_000_000_000 },
-    smart: { state: "pending", maskedSecret: null, expiresAt: null },
+    standard: { state: "active" },
+    smart: { state: "pending" },
+    maskedSecret: "pk_eph_...abcdefg",
+    expiresAt: 1_700_000_000_000,
   };
 
   function makeApp(withSelfConnector: boolean) {
@@ -279,13 +285,11 @@ describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLo
 
   // Maps a loop half-status onto the admin view shape — mirrors, on purpose,
   // the exact closure T5 wires into the real `index.ts` composition root (see
-  // that task's doc comment): `maskSecret`-ing the secret when active, nulls
-  // otherwise, state copied through 1:1.
+  // that task's doc comment): a half's view is now JUST its state — the
+  // ephemeral secret is a single top-level value (see `status()` below),
+  // not a per-half one (`docs/work/self-connector-panel-redesign/design.md`).
   function toHalfView(half: SelfConnectorHalfStatus): SelfConnectorHalfView {
-    if (half.status === "active") {
-      return { state: "active", maskedSecret: maskSecret(half.secret), expiresAt: half.expiresAt };
-    }
-    return { state: half.status, maskedSecret: null, expiresAt: null };
+    return { state: half.status };
   }
 
   function makeCodex(): CodexStore {
@@ -320,6 +324,8 @@ describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLo
         dualLinkKey: vault.dualLinkKey(),
         standard: toHalfView(loopStatus.standard),
         smart: toHalfView(loopStatus.smart),
+        maskedSecret: loopStatus.secret ? maskSecret(loopStatus.secret) : null,
+        expiresAt: loopStatus.expiresAt,
       };
     }
     registerAdmin(
@@ -350,13 +356,21 @@ describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLo
     const cookie = await ancientCookie();
 
     const res = await app.request("/admin/self-connector", { headers: { cookie } });
-    expect(await res.json()).toEqual({
+    const body = (await res.json()) as SelfConnectorStatus;
+    expect(body).toEqual({
       standardAccount: null,
       smartAccount: null,
       dualLinkKey: null,
-      standard: { state: "not-linked", maskedSecret: null, expiresAt: null },
-      smart: { state: "not-linked", maskedSecret: null, expiresAt: null },
+      standard: { state: "not-linked" },
+      smart: { state: "not-linked" },
+      maskedSecret: null,
+      expiresAt: null,
     });
+    // Explicit on the two NEW top-level fields specifically: nothing has
+    // ticked yet in this test, so the consolidated secret/expiry stay null
+    // too, same as each half individually.
+    expect(body.maskedSecret).toBeNull();
+    expect(body.expiresAt).toBeNull();
   });
 
   it("POST /admin/self-connector/link with the codex-held pair's own dual-link-key succeeds, drives an IMMEDIATE tick (post-v2.7.1 fix — no more waiting up to 24h for the scheduled interval), and the subsequent GET echoes the key with both halves now pending", async () => {
@@ -426,5 +440,105 @@ describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLo
 
     const after = await app.request("/admin/self-connector", { headers: { cookie } });
     expect((await after.json() as SelfConnectorStatus).dualLinkKey).toBeNull();
+  });
+
+  it("once a real tick reaches active (real Codex-backed signing round trip against a REAL registerConnectorAuth on the same app), maskedSecret is a genuinely masked string — never the raw secret", async () => {
+    // Every other test in this describe block registers ONLY `registerAdmin`
+    // on `app`, so any tick a `link()` call triggers necessarily 404s per
+    // half and status can never progress past "pending" — which means the
+    // `maskedSecret: loopStatus.secret ? maskSecret(loopStatus.secret) : null`
+    // ternary's TRUTHY branch (the one line standing between Pythia's real
+    // `x-pythia-key` value and an admin session response) was never exercised
+    // anywhere in this suite (CONFIRMED HIGH, review round of
+    // docs/work/self-connector-panel-redesign). This test is the one place
+    // that registers a REAL `registerConnectorAuth` alongside `registerAdmin`
+    // on the same app, with a `DualLinkCache` pre-seeded active for the
+    // seeded pair and `readApolloPublicKey` resolving to the pair's REAL
+    // public keys — so `SelfConnectorLoop.tick()` drives a genuine
+    // challenge/verify/sign round trip (real Codex-backed Apollo signatures,
+    // via `SelfApolloVault.createSigner`) all the way to "active", and a real
+    // ephemeral secret gets issued and masked.
+    const codex = makeCodex();
+    const pair = await seedCodexWithRealPair(codex);
+    const app = new Hono();
+    const dir = scratch();
+    const vault = new SelfApolloVault(
+      new SealedStore({ dir, keyProvider: () => parseMasterKey(MASTER_KEY) }),
+      codex,
+    );
+    const loop = new SelfConnectorLoop({
+      baseUrl: "http://pythia.self",
+      fetchImpl: createInProcessFetch(app),
+      vault,
+    });
+    async function status(): Promise<SelfConnectorStatus> {
+      const loopStatus = loop.status();
+      return {
+        standardAccount: vault.standardAccount(),
+        smartAccount: vault.smartAccount(),
+        dualLinkKey: vault.dualLinkKey(),
+        standard: toHalfView(loopStatus.standard),
+        smart: toHalfView(loopStatus.smart),
+        maskedSecret: loopStatus.secret ? maskSecret(loopStatus.secret) : null,
+        expiresAt: loopStatus.expiresAt,
+      };
+    }
+    registerAdmin(
+      app,
+      { sessionSecret: SECRET } as OidcConfig,
+      new ConnectorStore({ filePath: join(dir, "conn.json") }),
+      {
+        selfConnector: {
+          status,
+          link: async (dualLinkKey: string) => {
+            vault.setDualLinkKey(dualLinkKey);
+            await loop.tick();
+            return status();
+          },
+        },
+      },
+    );
+    const dualLinkCache = new DualLinkCache({
+      poll: async () => new Set([pair.standardAccount, pair.smartAccount]),
+    });
+    await dualLinkCache.refreshNow();
+    registerConnectorAuth(app, {
+      nonceStore: new AuthNonceStore(),
+      ephemeralKeyStore: new EphemeralKeyStore(),
+      dualLinkCache,
+      readApolloPublicKey: async (apolloAccount: string) =>
+        apolloAccount === pair.standardAccount ? pair.standardPublicKey : pair.smartPublicKey,
+    });
+
+    const cookie = await ancientCookie();
+    const dualLinkKey = `${pair.standardAccount}${DUAL_LINK_BAR}${pair.smartAccount}`;
+    const linkRes = await app.request("/admin/self-connector/link", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ dualLinkKey }),
+    });
+    expect(linkRes.status).toBe(200);
+    const linked = (await linkRes.json()) as SelfConnectorStatus;
+    expect(linked.standard.state).toBe("active");
+    expect(linked.smart.state).toBe("active");
+
+    // The RAW secret, read directly off the loop (test-only visibility — the
+    // route never exposes this) — used as the independent oracle to prove
+    // `maskedSecret` is a real, correctly-masked transform of it, not the raw
+    // value itself and not a fixture placeholder.
+    const rawSecret = loop.status().secret;
+    expect(rawSecret).not.toBeNull();
+    expect(linked.maskedSecret).toBe(maskSecret(rawSecret as string));
+    expect(linked.maskedSecret).not.toBe(rawSecret);
+    expect(linked.maskedSecret).not.toBeNull();
+    expect(linked.expiresAt).not.toBeNull();
+
+    // The subsequent GET must echo the exact same masked value — proving the
+    // route's own computation (not just this test's local `status()` helper)
+    // takes the same truthy branch on a genuinely active loop.
+    const after = await app.request("/admin/self-connector", { headers: { cookie } });
+    const afterStatus = (await after.json()) as SelfConnectorStatus;
+    expect(afterStatus.maskedSecret).toBe(linked.maskedSecret);
+    expect(afterStatus.maskedSecret).not.toBe(rawSecret);
   });
 });
