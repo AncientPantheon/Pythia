@@ -1720,18 +1720,46 @@ function wireSecurity() {
 
 // ── Self Connector (Pythia's own dual-Apollo Standard + Smart account pair) ───
 // The two halves' generation state → badge text/class, mirroring securityView()'s
-// state→badge mapping.
-function selfConnectorHalfView(state) {
+// state→badge mapping. `half` is a SelfConnectorHalfView-shaped object:
+// {state, maskedSecret, expiresAt}.
+function selfConnectorHalfView(half) {
+  const state = half && half.state;
   if (state === "active") return { cls: "sec-badge--sealed", text: "Active" };
   if (state === "pending") return { cls: "sec-badge--warn", text: "Pending" };
+  if (state === "not-linked") return { cls: "sec-badge--warn", text: "Not linked" };
   return { cls: "sec-badge--warn", text: "Not generated" };
 }
 
+// Renders a countdown-to-expiry string off a millisecond delta: "23h 58m" for
+// an hour or more remaining, "42m 10s" under an hour, "expired" once the
+// delta has crossed zero (or below, e.g. if the browser clock lags a tick).
+function formatCountdown(ms) {
+  if (ms <= 0) return "expired";
+  const totalSeconds = Math.floor(ms / 1000);
+  if (ms >= 60 * 60 * 1000) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+// The last status object fetched by loadSelfConnector(), re-rendered every
+// second by the countdown interval below so the "expires in …" text ticks
+// visually without ever issuing a second network call.
+let lastSelfConnectorStatus = null;
+
 function renderSelfConnector(st) {
+  lastSelfConnectorStatus = st;
+
   const standardBadge = document.getElementById("selfconn-standard-badge");
   const standardAccount = document.getElementById("selfconn-standard-account");
+  const standardSecret = document.getElementById("selfconn-standard-secret");
   const smartBadge = document.getElementById("selfconn-smart-badge");
   const smartAccount = document.getElementById("selfconn-smart-account");
+  const smartSecret = document.getElementById("selfconn-smart-secret");
   const generateBtn = document.getElementById("selfconn-generate-btn");
 
   const standardView = selfConnectorHalfView(st.standard);
@@ -1742,6 +1770,12 @@ function renderSelfConnector(st) {
   if (standardAccount) {
     standardAccount.textContent = st.standardAccount || "not yet generated";
   }
+  if (standardSecret) {
+    standardSecret.textContent =
+      st.standard.state === "active"
+        ? `${st.standard.maskedSecret} — expires in ${formatCountdown(st.standard.expiresAt - Date.now())}`
+        : "";
+  }
 
   const smartView = selfConnectorHalfView(st.smart);
   if (smartBadge) {
@@ -1751,14 +1785,28 @@ function renderSelfConnector(st) {
   if (smartAccount) {
     smartAccount.textContent = st.smartAccount || "not yet generated";
   }
+  if (smartSecret) {
+    smartSecret.textContent =
+      st.smart.state === "active"
+        ? `${st.smart.maskedSecret} — expires in ${formatCountdown(st.smart.expiresAt - Date.now())}`
+        : "";
+  }
 
   // Nothing left to generate once both halves exist — regeneration is intentionally
   // not supported, so the button just disappears rather than staying inert.
   if (generateBtn) {
-    generateBtn.hidden = st.standard !== "not-generated" && st.smart !== "not-generated";
+    generateBtn.hidden = st.standard.state !== "not-generated" && st.smart.state !== "not-generated";
   }
 }
 
+// Live monitor: refresh on open, then poll every 60s while the panel stays
+// visible; self-cancels once you navigate away (the view becomes hidden) —
+// mirrors loadPythFlush()'s own polling shape. Without this, the 1s local
+// countdown tick in wireSelfConnector() only ever re-renders the LAST
+// fetched status: an admin tab left open past that cached expiresAt would
+// show "expired" even though SelfConnectorLoop's own server-side refresh
+// (well before the real TTL) has already kept the actual secret live.
+let selfConnectorPollTimer = null;
 async function loadSelfConnector() {
   try {
     const res = await fetch("/admin/self-connector", { headers: { accept: "application/json" } });
@@ -1767,40 +1815,100 @@ async function loadSelfConnector() {
   } catch {
     /* leave as-is */
   }
+  if (selfConnectorPollTimer) clearInterval(selfConnectorPollTimer);
+  selfConnectorPollTimer = setInterval(() => {
+    const view = document.querySelector('[data-view="self-connector"]');
+    if (!view || view.hidden) {
+      clearInterval(selfConnectorPollTimer);
+      selfConnectorPollTimer = null;
+      return;
+    }
+    void loadSelfConnector();
+  }, 60000);
 }
 
 function wireSelfConnector() {
+  // Ticks the displayed countdown once a second off the last fetched status —
+  // harmless (a no-op) if the self-connector view has never been opened,
+  // since lastSelfConnectorStatus stays null until loadSelfConnector() runs.
+  setInterval(() => {
+    const st = lastSelfConnectorStatus;
+    if (st) renderSelfConnector(st);
+  }, 1000);
+
   const generateBtn = document.getElementById("selfconn-generate-btn");
-  const err = document.getElementById("selfconn-generate-error");
-  if (!generateBtn) return;
-  generateBtn.addEventListener("click", async () => {
-    if (err) err.hidden = true;
-    // Disable IMMEDIATELY on click, before the request is even sent — a
-    // double-click or a second browser tab firing this same POST while the
-    // first is still in flight can race the server's own generation (both
-    // requests observing "not yet generated" before either writes), silently
-    // orphaning whichever account the losing response displayed (that string
-    // is what the admin would otherwise go pay real on-chain STOA to
-    // register). The server-side fix is the real guarantee (see
-    // SelfApolloVault.ensureGenerated's in-flight memoization); this is
-    // belt-and-suspenders so the UI itself can't even offer the race.
-    generateBtn.disabled = true;
-    try {
-      const res = await fetch("/admin/self-connector/generate", {
-        method: "POST",
-        headers: { accept: "application/json" },
-      });
-      if (!res.ok) {
-        if (err) { err.textContent = "Generate failed — is your ancient session still valid?"; err.hidden = false; }
-        return;
+  const generateErr = document.getElementById("selfconn-generate-error");
+  if (generateBtn) {
+    generateBtn.addEventListener("click", async () => {
+      if (generateErr) generateErr.hidden = true;
+      // Disable IMMEDIATELY on click, before the request is even sent — a
+      // double-click or a second browser tab firing this same POST while the
+      // first is still in flight can race the server's own generation (both
+      // requests observing "not yet generated" before either writes), silently
+      // orphaning whichever account the losing response displayed (that string
+      // is what the admin would otherwise go pay real on-chain STOA to
+      // register). The server-side fix is the real guarantee (see
+      // SelfApolloVault.ensureGenerated's in-flight memoization); this is
+      // belt-and-suspenders so the UI itself can't even offer the race.
+      generateBtn.disabled = true;
+      try {
+        const res = await fetch("/admin/self-connector/generate", {
+          method: "POST",
+          headers: { accept: "application/json" },
+        });
+        if (!res.ok) {
+          if (generateErr) { generateErr.textContent = "Generate failed — is your ancient session still valid?"; generateErr.hidden = false; }
+          return;
+        }
+        renderSelfConnector(await res.json());
+      } catch {
+        if (generateErr) { generateErr.textContent = "Network error."; generateErr.hidden = false; }
+      } finally {
+        generateBtn.disabled = false;
       }
-      renderSelfConnector(await res.json());
-    } catch {
-      if (err) { err.textContent = "Network error."; err.hidden = false; }
-    } finally {
-      generateBtn.disabled = false;
-    }
-  });
+    });
+  }
+
+  const linkBtn = document.getElementById("selfconn-link-btn");
+  const linkInput = document.getElementById("selfconn-link-input");
+  const linkErr = document.getElementById("selfconn-link-error");
+  if (linkBtn) {
+    linkBtn.addEventListener("click", async () => {
+      if (linkErr) linkErr.hidden = true;
+      // Same immediate-disable rationale as the Generate button above — a
+      // second click (or tab) while the first link POST is still in flight
+      // shouldn't be able to race it.
+      linkBtn.disabled = true;
+      try {
+        const dualLinkKey = ((linkInput && linkInput.value) || "").trim();
+        const res = await fetch("/admin/self-connector/link", {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ dualLinkKey }),
+        });
+        if (!res.ok) {
+          // The server surfaces a specific validation message (e.g. "does not
+          // match this vault's own standard account") on 400 — show it
+          // verbatim when present; fall back to a generic message only if the
+          // body isn't JSON or carries no `error` field.
+          let message = "Link failed — is your ancient session still valid?";
+          try {
+            const body = await res.json();
+            if (body && typeof body.error === "string") message = body.error;
+          } catch {
+            /* body wasn't JSON — keep the generic fallback message */
+          }
+          if (linkErr) { linkErr.textContent = message; linkErr.hidden = false; }
+          return;
+        }
+        renderSelfConnector(await res.json());
+      } catch {
+        if (linkErr) { linkErr.textContent = "Network error."; linkErr.hidden = false; }
+      } finally {
+        linkBtn.disabled = false;
+      }
+    });
+  }
 }
 
 // ── Codex island (the React codex-ui, lazy-loaded on first open) ──────────────

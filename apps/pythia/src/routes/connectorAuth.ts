@@ -5,7 +5,11 @@ import { apolloVerify } from "../connectors/verify/apolloVerify.js";
 import { isStandardApollo, isSmartApollo } from "./connectorVerify.js";
 import { MAX_RELAY_BODY_BYTES } from "./relay.js";
 import type { AuthNonceStore } from "../connectors/auth/nonceStore.js";
-import type { EphemeralKeyStore } from "../connectors/auth/ephemeralKeyStore.js";
+import {
+  type EphemeralKeyStore,
+  DEFAULT_EPHEMERAL_SECRET_TTL_MS,
+  SELF_EPHEMERAL_SECRET_TTL_MS,
+} from "../connectors/auth/ephemeralKeyStore.js";
 import { APOLLO_ACCOUNT_LEN, type DualLinkCache } from "../connectors/auth/dualLinkCache.js";
 
 /** ₱ = U+20B1 (Standard), Π = U+03A0 (Smart) — reuses connectorVerify.ts's
@@ -42,6 +46,13 @@ export interface ConnectorAuthDeps {
   pendingActivation?: {
     recordProof(apolloAccount: string, counterpart: string): void;
   };
+  /** Optional — identifies Pythia's own self-connector accounts, which get
+   * the longer `SELF_EPHEMERAL_SECRET_TTL_MS` instead of the normal
+   * `DEFAULT_EPHEMERAL_SECRET_TTL_MS` (see docs/work/self-connector-dual-link/
+   * design.md — "differentiated TTLs"). The composition root wires this to a
+   * closure comparing against `selfApolloVault.standardAccount()`/
+   * `smartAccount()`. Omitted (or returning `false`) means the default TTL. */
+  isSelfAccount?: (apolloAccount: string) => boolean;
 }
 
 /**
@@ -156,7 +167,10 @@ export function registerConnectorAuth(app: Hono, deps: ConnectorAuthDeps): void 
       );
     }
 
-    const { secret, expiresAt } = deps.ephemeralKeyStore.issue(apolloAccount);
+    const ttlMs = deps.isSelfAccount?.(apolloAccount)
+      ? SELF_EPHEMERAL_SECRET_TTL_MS
+      : DEFAULT_EPHEMERAL_SECRET_TTL_MS;
+    const { secret, expiresAt } = deps.ephemeralKeyStore.issue(apolloAccount, ttlMs);
     return c.json({ secret, expiresAt });
   });
 }

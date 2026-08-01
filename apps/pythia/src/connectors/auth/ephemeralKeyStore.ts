@@ -1,7 +1,12 @@
 import { randomBytes, createHash } from "node:crypto";
 
-/** Ephemeral secrets refresh every 3 hours (design.md Decision 2). */
-export const EPHEMERAL_SECRET_TTL_MS = 3 * 60 * 60 * 1000;
+/** Ephemeral secrets refresh every 6 hours by default (design.md Decision 2,
+ * revised in docs/work/self-connector-dual-link/design.md — "differentiated
+ * TTLs"). */
+export const DEFAULT_EPHEMERAL_SECRET_TTL_MS = 6 * 60 * 60 * 1000;
+/** Pythia's own self-connector identity gets a materially longer lifetime —
+ * fewer unnecessary re-verifies for a long-lived internal identity. */
+export const SELF_EPHEMERAL_SECRET_TTL_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -40,10 +45,16 @@ export class EphemeralKeyStore {
     this.sweepIntervalMs = opts.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
   }
 
-  /** Mint a fresh ephemeral secret for `apolloAccount`. Returned raw, once. */
-  issue(apolloAccount: string): { secret: string; expiresAt: number } {
+  /** Mint a fresh ephemeral secret for `apolloAccount`. Returned raw, once.
+   * `ttlMs` defaults to `DEFAULT_EPHEMERAL_SECRET_TTL_MS` — callers that need
+   * a different lifetime (e.g. `SELF_EPHEMERAL_SECRET_TTL_MS` for Pythia's own
+   * identity) pass it explicitly. */
+  issue(
+    apolloAccount: string,
+    ttlMs: number = DEFAULT_EPHEMERAL_SECRET_TTL_MS,
+  ): { secret: string; expiresAt: number } {
     const secret = `pk_eph_${randomBytes(24).toString("base64url")}`;
-    const expiresAt = this.clock() + EPHEMERAL_SECRET_TTL_MS;
+    const expiresAt = this.clock() + ttlMs;
     this.entries.set(hashSecret(secret), { apolloAccount, expiresAt });
     return { secret, expiresAt };
   }

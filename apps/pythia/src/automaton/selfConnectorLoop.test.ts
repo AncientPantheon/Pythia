@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { DUAL_LINK_BAR } from "@ancientpantheon/pythia-client";
 import { ensureSodiumReady, parseMasterKey } from "../codex/vault.js";
 import { SealedStore } from "../codex/sealedStore.js";
 import { SelfApolloVault } from "./selfApollo.js";
@@ -58,6 +59,12 @@ function buildStubApp(opts: { failAccount?: string; pendingAccount?: string } = 
   return { app, verifyCalls };
 }
 
+/** Builds the well-formed dual-link-key for `accounts` (`vault.ensureGenerated()`'s
+ * result), joined via the SDK's own `DUAL_LINK_BAR` separator. */
+function keyFor(accounts: { standardAccount: string | null; smartAccount: string | null }): string {
+  return `${accounts.standardAccount}${DUAL_LINK_BAR}${accounts.smartAccount}`;
+}
+
 describe("SelfConnectorLoop — status() before generation", () => {
   it("reports not-generated for both halves when the vault has never been generated", () => {
     const vault = new SelfApolloVault(store());
@@ -74,10 +81,46 @@ describe("SelfConnectorLoop — status() before generation", () => {
   });
 });
 
-describe("SelfConnectorLoop — tick()", () => {
-  it("pre-tick status is not yet active even though both halves are generated", async () => {
+describe("SelfConnectorLoop — status() after generation, before linking", () => {
+  it("reports not-linked for BOTH halves once the vault is generated but setDualLinkKey has never been called", async () => {
     const vault = new SelfApolloVault(store());
     await vault.ensureGenerated();
+    const { app } = buildStubApp();
+    const loop = new SelfConnectorLoop({
+      baseUrl: BASE_URL,
+      fetchImpl: createInProcessFetch(app),
+      vault,
+    });
+
+    expect(loop.status()).toEqual({
+      standard: { status: "not-linked" },
+      smart: { status: "not-linked" },
+    });
+  });
+
+  it("tick() with NO setDualLinkKey call ever made still drives both halves to active — the loop derives its OWN key from the vault's known accounts, it never waits for a paste (regression: an earlier version gated construction on vault.dualLinkKey() and broke the pre-link ownership-proof flow selfConnectorIntegration.test.ts depends on)", async () => {
+    const vault = new SelfApolloVault(store());
+    const { standardAccount, smartAccount } = await vault.ensureGenerated();
+    const { app, verifyCalls } = buildStubApp();
+    const loop = new SelfConnectorLoop({
+      baseUrl: BASE_URL,
+      fetchImpl: createInProcessFetch(app),
+      vault,
+    });
+
+    await expect(loop.tick()).resolves.toBeUndefined();
+    expect(verifyCalls).toHaveLength(2); // both halves DID attempt a challenge/verify — no paste required
+    const status = loop.status();
+    expect(status.standard).toMatchObject({ status: "active", secret: `secret-for-${standardAccount}` });
+    expect(status.smart).toMatchObject({ status: "active", secret: `secret-for-${smartAccount}` });
+  });
+});
+
+describe("SelfConnectorLoop — tick()", () => {
+  it("pre-tick status is not yet active even though both halves are generated and linked", async () => {
+    const vault = new SelfApolloVault(store());
+    const accounts = await vault.ensureGenerated();
+    vault.setDualLinkKey(keyFor(accounts));
     const { app } = buildStubApp();
     const loop = new SelfConnectorLoop({
       baseUrl: BASE_URL,
@@ -97,7 +140,9 @@ describe("SelfConnectorLoop — tick()", () => {
 
   it("after a successful tick, both halves report active with the stub's secret + expiresAt", async () => {
     const vault = new SelfApolloVault(store());
-    const { standardAccount, smartAccount } = await vault.ensureGenerated();
+    const accounts = await vault.ensureGenerated();
+    const { standardAccount, smartAccount } = accounts;
+    vault.setDualLinkKey(keyFor(accounts));
     const { app } = buildStubApp();
     const loop = new SelfConnectorLoop({
       baseUrl: BASE_URL,
@@ -120,7 +165,7 @@ describe("SelfConnectorLoop — tick()", () => {
     expect((status.smart as { expiresAt: number }).expiresAt).toBeGreaterThan(Date.now());
   });
 
-  it("only processes a half whose account exists — the not-yet-generated half stays not-generated and no error is thrown", async () => {
+  it("a half missing entirely (never generated) means no valid dual-link-key can ever be set — tick() stays a no-op and neither half reaches active, but nothing throws", async () => {
     const s = store();
     const seedVault = new SelfApolloVault(s);
     await seedVault.ensureGenerated();
@@ -136,13 +181,42 @@ describe("SelfConnectorLoop — tick()", () => {
 
     await expect(loop.tick()).resolves.toBeUndefined();
     const status = loop.status();
-    expect(status.standard.status).toBe("active");
-    expect(status.smart).toEqual({ status: "not-generated" });
+    // The standard account exists, but tick() can't derive a key (needs
+    // BOTH halves) — stays "not-linked", never reaches the connector.
+    expect(status.standard).toEqual({ status: "not-linked" });
+    expect(status.smart).toEqual({ status: "not-generated" }); // no account at all
+  });
+
+  it("the MIRROR case: only the SMART half exists on disk — tick() stays a no-op for the same reason (guard is symmetric, not just checked one-sided)", async () => {
+    // The sibling test above only ever deletes the smart half, leaving
+    // standard behind — this proves the OTHER branch of `tick()`'s `if
+    // (!standardAccount || !smartAccount) return;` guard, which a regression
+    // checking only one side (e.g. `if (!standardAccount) return;`) would
+    // still pass.
+    const s = store();
+    const seedVault = new SelfApolloVault(s);
+    await seedVault.ensureGenerated();
+    s.delete("self-apollo-standard"); // only the smart half remains on disk
+
+    const vault = new SelfApolloVault(s);
+    const { app } = buildStubApp();
+    const loop = new SelfConnectorLoop({
+      baseUrl: BASE_URL,
+      fetchImpl: createInProcessFetch(app),
+      vault,
+    });
+
+    await expect(loop.tick()).resolves.toBeUndefined();
+    const status = loop.status();
+    expect(status.standard).toEqual({ status: "not-generated" }); // no account at all
+    expect(status.smart).toEqual({ status: "not-linked" }); // account exists, but can't derive a key alone
   });
 
   it("isolates a half's verify failure: the failing half's status stays unchanged while the other half still goes active, and the log names the FAILING half specifically", async () => {
     const vault = new SelfApolloVault(store());
-    const { standardAccount } = await vault.ensureGenerated();
+    const accounts = await vault.ensureGenerated();
+    const { standardAccount } = accounts;
+    vault.setDualLinkKey(keyFor(accounts));
     const { app } = buildStubApp({ failAccount: standardAccount! });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const loop = new SelfConnectorLoop({
@@ -154,7 +228,7 @@ describe("SelfConnectorLoop — tick()", () => {
     await expect(loop.tick()).resolves.toBeUndefined();
     const status = loop.status();
 
-    expect(status.standard).toEqual({ status: "not-generated" }); // never succeeded — unchanged
+    expect(status.standard).toEqual({ status: "pending" }); // never succeeded — still the initial pending state
     expect(status.smart.status).toBe("active");
     // Regression: a bug that logged the wrong half (e.g. always "smart"
     // regardless of which one actually failed) would pass a bare
@@ -168,7 +242,9 @@ describe("SelfConnectorLoop — tick()", () => {
 
   it("a half reported PENDING by the server (proven ownership, not yet an active dual link — the realistic steady state before the manual on-chain deploy+link step) is cached and reported, not lost as not-generated", async () => {
     const vault = new SelfApolloVault(store());
-    const { standardAccount, smartAccount } = await vault.ensureGenerated();
+    const accounts = await vault.ensureGenerated();
+    const { standardAccount, smartAccount } = accounts;
+    vault.setDualLinkKey(keyFor(accounts));
     const { app } = buildStubApp({ pendingAccount: standardAccount! });
     const loop = new SelfConnectorLoop({
       baseUrl: BASE_URL,
@@ -193,7 +269,8 @@ describe("SelfConnectorLoop — start()/stop()", () => {
 
   it("start() drives tick()-work on the interval; stop() halts further ticks", async () => {
     const vault = new SelfApolloVault(store());
-    await vault.ensureGenerated();
+    const accounts = await vault.ensureGenerated();
+    vault.setDualLinkKey(keyFor(accounts));
     const { app, verifyCalls } = buildStubApp();
     const loop = new SelfConnectorLoop({
       baseUrl: BASE_URL,
@@ -216,7 +293,8 @@ describe("SelfConnectorLoop — start()/stop()", () => {
 
   it("start() is idempotent — a second call while already running does not create a second timer", async () => {
     const vault = new SelfApolloVault(store());
-    await vault.ensureGenerated();
+    const accounts = await vault.ensureGenerated();
+    vault.setDualLinkKey(keyFor(accounts));
     const { app, verifyCalls } = buildStubApp();
     const loop = new SelfConnectorLoop({
       baseUrl: BASE_URL,
@@ -235,17 +313,19 @@ describe("SelfConnectorLoop — start()/stop()", () => {
     loop.stop();
   });
 
-  it("reuses the SAME connector (and its cached, still-valid secret) across multiple ticks — does not rebuild + re-verify from scratch every interval", async () => {
-    // Regression: plan.md's T5 explicitly requires each half's PythiaConnector
-    // be "constructed ONCE and reused across ticks (not rebuilt every tick)."
-    // If a regression rebuilt it per tick (each with a fresh, empty
-    // InMemorySecretStorage), every interval would perform a full
-    // challenge->sign->verify round trip forever instead of returning the
-    // cached secret cheaply once still within its refresh margin — defeating
-    // the whole point of PythiaConnector's own caching. A single-tick test
-    // can't catch this; it takes a SECOND tick to prove reuse.
+  it("reuses the SAME internal DualLinkConnector (built exactly once, lazily, off the vault's dual-link-key) across multiple ticks — does not rebuild + re-verify from scratch every interval", async () => {
+    // Regression: plan.md's T3 explicitly requires the internal
+    // `DualLinkConnector` be "constructed ONCE and reused across ticks (not
+    // rebuilt every tick)." If a regression rebuilt it per tick (each with a
+    // fresh, empty InMemorySecretStorage per half), every interval would
+    // perform a full challenge->sign->verify round trip forever instead of
+    // returning the cached secret cheaply once still within its refresh
+    // margin — defeating the whole point of PythiaConnector's own caching
+    // (inherited here through DualLinkConnector). A single-tick test can't
+    // catch this; it takes a SECOND tick to prove reuse.
     const vault = new SelfApolloVault(store());
-    await vault.ensureGenerated();
+    const accounts = await vault.ensureGenerated();
+    vault.setDualLinkKey(keyFor(accounts));
     const { app, verifyCalls } = buildStubApp();
     const loop = new SelfConnectorLoop({
       baseUrl: BASE_URL,

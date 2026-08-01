@@ -42,9 +42,11 @@ import { detectEgressIp, cachedEgressIp } from "./hub/egressIp.js";
 import { NodePool } from "./pool/nodePool.js";
 import { probeNodes } from "./health/probeNodes.js";
 import { enrichHubNodes } from "./hub/hubNodes.js";
-import type { HubAdminControls, SelfConnectorStatus } from "./admin/routes.js";
+import type { HubAdminControls, SelfConnectorStatus, SelfConnectorHalfView } from "./admin/routes.js";
 import { SelfApolloVault } from "./automaton/selfApollo.js";
 import { SelfConnectorLoop } from "./automaton/selfConnectorLoop.js";
+import type { SelfConnectorHalfStatus } from "./automaton/selfConnectorLoop.js";
+import { maskSecret } from "@ancientpantheon/pythia-client";
 import { createInProcessFetch } from "./connectors/self/inProcessFetch.js";
 import { StatsStore } from "./stats/store.js";
 import { loadConsumerMap } from "./stats/consumers.js";
@@ -400,6 +402,8 @@ registerConnectorAuth(app, {
   readApolloPublicKey: readApolloPublicKeyForAuth,
   readApolloCounterpart: readApolloCounterpartForAuth,
   pendingActivation: pendingActivationTracker,
+  isSelfAccount: (account) =>
+    account === selfApolloVault.standardAccount() || account === selfApolloVault.smartAccount(),
 });
 // Public list of admin-curated Apollo-ownership verifiers for the Verify popup.
 registerVerifiers(app, { store: verifierStore });
@@ -431,20 +435,27 @@ selfConnectorLoop.start();
 // Registered before the static catch-all so `/admin/*` is not shadowed.
 // Computes the admin "Self Connector" panel's status from the two live
 // pieces above (`selfApolloVault` + `selfConnectorLoop`) — a named local
-// function so both `status()` and `generate()` in the extras object below
-// can call it without either referring back into the object being
-// constructed. `"active"` wins per-half once the loop has ever ticked that
-// half to a live secret; otherwise `"pending"` once the account exists but
-// hasn't gone active yet, else `"not-generated"`.
+// function so `status()`, `generate()`, and `link()` in the extras object
+// below can all call it without any of them referring back into the object
+// being constructed. Maps each half's `SelfConnectorHalfStatus` (from the
+// now `DualLinkConnector`-backed loop — see docs/work/self-connector-dual-link)
+// onto the admin-facing `SelfConnectorHalfView`, masking the secret rather
+// than shipping it raw — mirrors `admin/routes.test.ts`'s already-tested
+// "REAL wiring" `makeRealApp` helper's `toHalfView` exactly.
+function toHalfView(half: SelfConnectorHalfStatus): SelfConnectorHalfView {
+  if (half.status === "active") {
+    return { state: "active", maskedSecret: maskSecret(half.secret), expiresAt: half.expiresAt };
+  }
+  return { state: half.status, maskedSecret: null, expiresAt: null };
+}
 async function selfConnectorStatus(): Promise<SelfConnectorStatus> {
-  const standardAccount = selfApolloVault.standardAccount();
-  const smartAccount = selfApolloVault.smartAccount();
   const loop = selfConnectorLoop.status();
   return {
-    standardAccount,
-    smartAccount,
-    standard: loop.standard.status === "active" ? "active" : standardAccount ? "pending" : "not-generated",
-    smart: loop.smart.status === "active" ? "active" : smartAccount ? "pending" : "not-generated",
+    standardAccount: selfApolloVault.standardAccount(),
+    smartAccount: selfApolloVault.smartAccount(),
+    dualLinkKey: selfApolloVault.dualLinkKey(),
+    standard: toHalfView(loop.standard),
+    smart: toHalfView(loop.smart),
   };
 }
 
@@ -505,6 +516,10 @@ if (oidcConfig) {
       status: () => selfConnectorStatus(),
       generate: async () => {
         await selfApolloVault.ensureGenerated();
+        return selfConnectorStatus();
+      },
+      link: async (dualLinkKey: string) => {
+        selfApolloVault.setDualLinkKey(dualLinkKey);
         return selfConnectorStatus();
       },
     },

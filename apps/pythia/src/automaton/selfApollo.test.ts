@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vite
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PythiaConnectorValidationError, DUAL_LINK_BAR } from "@ancientpantheon/pythia-client";
 import { ensureSodiumReady, parseMasterKey } from "../codex/vault.js";
 import { SealedStore } from "../codex/sealedStore.js";
 import { isStandardApollo, isSmartApollo } from "../routes/connectorVerify.js";
@@ -189,5 +190,86 @@ describe("SelfApolloVault — createSigner", () => {
     await expect(
       signer.sign({ apolloAccount: "₱.whatever", nonce: "n", rp: "pythia.ancientholdings.eu" }),
     ).rejects.toThrow(/the "standard" half has not been generated yet/);
+  });
+});
+
+describe("SelfApolloVault — dualLinkKey", () => {
+  it("dualLinkKey() is null before any setDualLinkKey call", async () => {
+    const vault = new SelfApolloVault(store());
+    await vault.ensureGenerated();
+    expect(vault.dualLinkKey()).toBeNull();
+  });
+
+  it("setDualLinkKey with a well-formed key whose halves exactly match the vault's own generated accounts succeeds, and dualLinkKey() then returns that exact key", async () => {
+    const vault = new SelfApolloVault(store());
+    const { standardAccount, smartAccount } = await vault.ensureGenerated();
+    const key = `${standardAccount}${DUAL_LINK_BAR}${smartAccount}`;
+
+    vault.setDualLinkKey(key);
+
+    expect(vault.dualLinkKey()).toBe(key);
+  });
+
+  it("setDualLinkKey with a malformed key (wrong length) throws PythiaConnectorValidationError and dualLinkKey() remains null afterward", async () => {
+    const vault = new SelfApolloVault(store());
+    await vault.ensureGenerated();
+
+    expect(() => vault.setDualLinkKey("too-short")).toThrow(PythiaConnectorValidationError);
+    expect(vault.dualLinkKey()).toBeNull();
+  });
+
+  it("setDualLinkKey with a well-formed key whose standard half does NOT match the vault's own generated standard account throws an Error naming which half, and dualLinkKey() remains null afterward", async () => {
+    const vault = new SelfApolloVault(store());
+    const { smartAccount } = await vault.ensureGenerated();
+
+    // An independently-generated OTHER vault's standard half — well-formed
+    // (real ₱. account, correct length), just not THIS vault's own. A
+    // genuinely SEPARATE sealed-store directory is essential here: reusing
+    // `store()` (same `dir`) would make `otherVault.ensureGenerated()` see
+    // the SAME already-sealed entries `vault` just created and hand back the
+    // SAME accounts (idempotent by design), silently defeating this
+    // fixture's whole point.
+    const otherDir = mkdtempSync(join(tmpdir(), "pythia-selfapollo-other-"));
+    const otherVault = new SelfApolloVault(
+      new SealedStore({ dir: otherDir, keyProvider: () => parseMasterKey(KEY) }),
+    );
+    const { standardAccount: otherStandardAccount } = await otherVault.ensureGenerated();
+    rmSync(otherDir, { recursive: true, force: true });
+
+    // Joined with THIS vault's OWN real smart half — proving the check is
+    // per-half, not just "any mismatch anywhere" (the smart half here DOES
+    // match; only the standard half is wrong).
+    const key = `${otherStandardAccount}${DUAL_LINK_BAR}${smartAccount}`;
+
+    // Tightened past a bare /does not match/: a regression that swapped the
+    // two throw branches (e.g. always naming "smart" regardless of which
+    // half actually mismatched) would still satisfy that looser regex —
+    // assert the message names the SPECIFIC failing half.
+    expect(() => vault.setDualLinkKey(key)).toThrow(/does not match/);
+    expect(() => vault.setDualLinkKey(key)).toThrow(/standard/);
+    expect(vault.dualLinkKey()).toBeNull();
+  });
+
+  it("setDualLinkKey with a well-formed key whose SMART half does NOT match the vault's own generated smart account throws an Error naming the smart half specifically, and dualLinkKey() remains null afterward", async () => {
+    // Mirrors the standard-half test above — the two throw branches in
+    // setDualLinkKey are independent, and a regression could break either
+    // one without the other test catching it.
+    const vault = new SelfApolloVault(store());
+    const { standardAccount } = await vault.ensureGenerated();
+
+    const otherDir = mkdtempSync(join(tmpdir(), "pythia-selfapollo-other-smart-"));
+    const otherVault = new SelfApolloVault(
+      new SealedStore({ dir: otherDir, keyProvider: () => parseMasterKey(KEY) }),
+    );
+    const { smartAccount: otherSmartAccount } = await otherVault.ensureGenerated();
+    rmSync(otherDir, { recursive: true, force: true });
+
+    // Joined with THIS vault's OWN real standard half — the standard half
+    // here DOES match; only the smart half is wrong.
+    const key = `${standardAccount}${DUAL_LINK_BAR}${otherSmartAccount}`;
+
+    expect(() => vault.setDualLinkKey(key)).toThrow(/does not match/);
+    expect(() => vault.setDualLinkKey(key)).toThrow(/smart/);
+    expect(vault.dualLinkKey()).toBeNull();
   });
 });

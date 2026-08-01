@@ -1,4 +1,4 @@
-import type { ApolloSigner } from "@ancientpantheon/pythia-client";
+import { splitDualLinkKey, type ApolloSigner } from "@ancientpantheon/pythia-client";
 import type { SealedStore } from "../codex/sealedStore.js";
 import { buildChallengeMessage } from "../connectors/verify/canonicalMessage.js";
 
@@ -18,6 +18,12 @@ const ENTRY_NAMES = {
   standard: "self-apollo-standard",
   smart: "self-apollo-smart",
 } as const;
+
+/** Holds the pasted dual-link-key as plain text — a public composite account
+ * string, NOT the `SealedHalf` JSON shape the two account halves above use
+ * (there's no private key material in it). Sealed anyway since it already
+ * lives in the same vault and durability-across-restart matters. */
+const DUAL_LINK_KEY_ENTRY = "self-dual-link-key";
 
 type Half = keyof typeof ENTRY_NAMES;
 
@@ -107,6 +113,37 @@ export class SelfApolloVault {
    * store can't decrypt (locked/no key). */
   smartAccount(): string | null {
     return parseHalf(this.store, ENTRY_NAMES.smart)?.account ?? null;
+  }
+
+  /** The currently-set dual-link-key (the public composite account string
+   * pasted via `setDualLinkKey`), or `null` if none has been set yet. */
+  dualLinkKey(): string | null {
+    return this.store.get(DUAL_LINK_KEY_ENTRY) ?? null;
+  }
+
+  /**
+   * Validates `key` via `splitDualLinkKey` (throws
+   * `PythiaConnectorValidationError` unchanged for a malformed key), then
+   * confirms BOTH resulting halves exactly match this vault's own held
+   * `standardAccount()`/`smartAccount()` (throws a clear `Error` naming the
+   * mismatched half otherwise) — this is the SELF panel, so pasting a key for
+   * any pair other than Pythia's own is always a mistake, and this should
+   * reject immediately at paste time rather than surface later as a
+   * confusing mid-tick `onError`. Only on a full match is the key sealed.
+   */
+  setDualLinkKey(key: string): void {
+    const { standardApollo, smartApollo } = splitDualLinkKey(key);
+    if (standardApollo !== this.standardAccount()) {
+      throw new Error(
+        `self-apollo: pasted dual-link-key's standard half (${standardApollo}) does not match this vault's own standard account (${this.standardAccount()})`,
+      );
+    }
+    if (smartApollo !== this.smartAccount()) {
+      throw new Error(
+        `self-apollo: pasted dual-link-key's smart half (${smartApollo}) does not match this vault's own smart account (${this.smartAccount()})`,
+      );
+    }
+    this.store.set(DUAL_LINK_KEY_ENTRY, key);
   }
 
   /**

@@ -2,6 +2,23 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.6.0 — 2026-08-01
+
+- **Added: `maskSecret(secret)`** — a tiny, pure, dependency-free helper that masks an ephemeral
+  secret for display, returning `` `${secret.slice(0, 7)}...${secret.slice(-7)}` `` for any string
+  of at least 14 characters (every real ephemeral secret is well over this) and the string
+  unchanged, un-masked, for anything shorter — never produces overlapping or negative-slice
+  garbage on a short input. Extracted from the masked-secret display Pythia's own Self Connector
+  admin panel now uses, published so any consumer building a UI around an active connector's
+  secret doesn't have to reimplement this from scratch.
+- **Fixed: `APOLLO_ACCOUNT_LEN` and `DUAL_LINK_BAR` are now re-exported from the package's public
+  `index.ts`.** Both existed in source (`dualLinkKey.ts`, shipped in v2.5.0) but were never actually
+  wired into the top-level export list — a v2.5.0 oversight. A consumer building a composite
+  `dual-link-key` string (e.g. `` `${standardApollo}${DUAL_LINK_BAR}${smartApollo}` ``) or
+  validating an Apollo account's length against the same constant `splitDualLinkKey` uses
+  internally can now import both directly from `@ancientpantheon/pythia-client`.
+- No removals, no breaking changes to any existing export.
+
 ## 2.5.0 — 2026-08-01
 
 - **Added: `splitDualLinkKey`** — validates and splits a composite on-chain `dual-link-key`

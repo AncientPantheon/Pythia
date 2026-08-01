@@ -12,7 +12,11 @@ vi.mock("../connectors/verify/apolloVerify.js", () => ({
 
 import { registerConnectorAuth } from "./connectorAuth.js";
 import { AuthNonceStore } from "../connectors/auth/nonceStore.js";
-import { EphemeralKeyStore } from "../connectors/auth/ephemeralKeyStore.js";
+import {
+  EphemeralKeyStore,
+  DEFAULT_EPHEMERAL_SECRET_TTL_MS,
+  SELF_EPHEMERAL_SECRET_TTL_MS,
+} from "../connectors/auth/ephemeralKeyStore.js";
 import { DualLinkCache } from "../connectors/auth/dualLinkCache.js";
 
 const STANDARD_PREFIX = "₱.";
@@ -39,6 +43,7 @@ function appWith(deps: {
   readApolloPublicKey?: (apolloAccount: string) => Promise<string>;
   readApolloCounterpart?: (apolloAccount: string) => Promise<string | null>;
   pendingActivation?: { recordProof(apolloAccount: string, counterpart: string): void };
+  isSelfAccount?: (apolloAccount: string) => boolean;
 }): { app: Hono; nonceStore: AuthNonceStore; ephemeralKeyStore: EphemeralKeyStore } {
   const app = new Hono();
   const nonceStore = new AuthNonceStore();
@@ -50,6 +55,7 @@ function appWith(deps: {
     readApolloPublicKey: deps.readApolloPublicKey ?? (async (a) => `pub-for-${a}`),
     readApolloCounterpart: deps.readApolloCounterpart,
     pendingActivation: deps.pendingActivation,
+    isSelfAccount: deps.isSelfAccount,
   });
   return { app, nonceStore, ephemeralKeyStore };
 }
@@ -199,6 +205,40 @@ describe("connector auth (headless challenge/verify)", () => {
 
     const replay = await verify(app, { apolloAccount: ALICE, nonce, signature: "good-sig" });
     expect(replay.status).toBe(400);
+  });
+
+  it("issues a secret with the SELF TTL when isSelfAccount returns true for the verified account", async () => {
+    const dualLinkCache = await activeDualLinkCache([ALICE]);
+    const { app } = appWith({ dualLinkCache, isSelfAccount: (a) => a === ALICE });
+
+    const c = await challenge(app, ALICE);
+    const { nonce } = (await c.json()) as { nonce: string };
+    const v = await verify(app, { apolloAccount: ALICE, nonce, signature: "good-sig" });
+    expect(v.status).toBe(200);
+    const { expiresAt } = (await v.json()) as { expiresAt: number };
+
+    expect(expiresAt).toBeGreaterThan(Date.now() + SELF_EPHEMERAL_SECRET_TTL_MS - 5000);
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + SELF_EPHEMERAL_SECRET_TTL_MS);
+  });
+
+  it("issues a secret with the shorter DEFAULT TTL when isSelfAccount is omitted (or false), distinctly shorter than the self case", async () => {
+    const dualLinkCache = await activeDualLinkCache([ALICE, BOB]);
+    const { app } = appWith({ dualLinkCache, isSelfAccount: (a) => a === ALICE });
+
+    const cSelf = await challenge(app, ALICE);
+    const { nonce: nonceSelf } = (await cSelf.json()) as { nonce: string };
+    const vSelf = await verify(app, { apolloAccount: ALICE, nonce: nonceSelf, signature: "good-sig" });
+    const { expiresAt: selfExpiresAt } = (await vSelf.json()) as { expiresAt: number };
+
+    const cOther = await challenge(app, BOB);
+    const { nonce: nonceOther } = (await cOther.json()) as { nonce: string };
+    const vOther = await verify(app, { apolloAccount: BOB, nonce: nonceOther, signature: "good-sig" });
+    expect(vOther.status).toBe(200);
+    const { expiresAt: otherExpiresAt } = (await vOther.json()) as { expiresAt: number };
+
+    expect(otherExpiresAt).toBeGreaterThan(Date.now() + DEFAULT_EPHEMERAL_SECRET_TTL_MS - 5000);
+    expect(otherExpiresAt).toBeLessThanOrEqual(Date.now() + DEFAULT_EPHEMERAL_SECRET_TTL_MS);
+    expect(otherExpiresAt).toBeLessThan(selfExpiresAt);
   });
 });
 

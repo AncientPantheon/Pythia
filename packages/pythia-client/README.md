@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.5.0` on public npmjs — proprietary release, all rights reserved (see
+`2.6.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -30,10 +30,12 @@ connector-auth protocol, holding no key material of its own (it signs through
 an injected `ApolloSigner` and persists through an injected `SecretStorage`) —
 with its own `PythiaConnectorError` taxonomy. Also ships `splitDualLinkKey`
 (validates + splits an on-chain `dual-link-key` into its two Apollo-account
-halves) and `DualLinkConnector` (drives both halves of an already-active
-dual-Apollo pair on a schedule, reporting one unified status). The package
-carries **no runtime dependencies** — it rests only on the runtime `fetch` and
-its own types.
+halves, alongside its `APOLLO_ACCOUNT_LEN`/`DUAL_LINK_BAR` constants) and
+`DualLinkConnector` (drives both halves of an already-active dual-Apollo pair
+on a schedule, reporting one unified status). Also ships `maskSecret` — a
+tiny, pure helper for masking an ephemeral secret in a UI (`first7...last7`).
+The package carries **no runtime dependencies** — it rests only on the
+runtime `fetch` and its own types.
 
 ## Usage
 
@@ -127,6 +129,12 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.6.0** — adds `maskSecret(secret)` (a tiny, pure, dependency-free helper masking an ephemeral
+secret to `first7...last7` for display, returning short inputs — under 14 chars — unchanged), and
+fixes `APOLLO_ACCOUNT_LEN`/`DUAL_LINK_BAR` (from `v2.5.0`'s `dualLinkKey.ts`) not having been
+re-exported from the package's top-level `index.ts` despite existing in source. No removals, no
+breaking changes to any existing export.
 
 **v2.5.0** — adds `splitDualLinkKey` (validates + splits an on-chain `dual-link-key` —
 `<standard-apollo>|<smart-apollo>`, the literal `PYTHIA|T|DualLinks` table key, 325 chars — into its

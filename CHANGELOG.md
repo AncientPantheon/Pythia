@@ -9,6 +9,32 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.6.0] — 2026-08-01
+
+### Added — Pythia's Self Connector gains a paste-in Link control, and a differentiated ephemeral-secret TTL
+
+Pythia's own self-connector identity now composes the published `DualLinkConnector`
+(`@ancientpantheon/pythia-client`) instead of a private, duplicate per-half tick loop — the same
+mechanism any future consumer with an active dual-link-key uses. See
+`docs/work/self-connector-dual-link/{design,plan}.md` for the full rationale.
+
+- **Differentiated ephemeral-secret TTL.** `EphemeralKeyStore.issue()` now takes an optional TTL:
+  6h by default (up from a flat 3h) for any verified consumer, 24h specifically for Pythia's own
+  self-connector identity (`connectorAuth.ts`'s verify handler resolves which TTL to pass via a new
+  `isSelfAccount` predicate checked against the composition root's own known accounts).
+- **Self Connector admin panel gains a "Link" control.** An operator can paste an already-active
+  on-chain dual-link-key; it's validated immediately against Pythia's own held accounts (rejecting
+  a key that doesn't match), then stored and used to drive the same `DualLinkConnector` mechanism.
+  Once active, the panel displays each half's ephemeral secret masked (`first7...last7`, via the
+  newly-published `maskSecret`) plus a live countdown to expiry.
+- **Internal consolidation.** `SelfConnectorLoop` now composes `DualLinkConnector` directly,
+  self-deriving its own dual-link-key from its two known accounts and proving ownership toward
+  on-chain activation the moment both halves exist — the pasted key is a confirmation/validation
+  action, not a functional prerequisite for the underlying proof loop.
+
+No breaking changes to any published contract — the reshaped `SelfConnectorStatus` admin type is
+Pythia's own internal admin contract, not a published API.
+
 ## [2.5.0] — 2026-08-01
 
 ### Added — `@ancientpantheon/pythia-client` gains `splitDualLinkKey` + `DualLinkConnector`

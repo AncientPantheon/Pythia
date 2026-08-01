@@ -34,7 +34,11 @@ export {
 export { InMemorySecretStorage } from "./secretStorage.js";
 export type { SecretStorage } from "./secretStorage.js";
 
-export { splitDualLinkKey } from "./dualLinkKey.js";
+export {
+  splitDualLinkKey,
+  APOLLO_ACCOUNT_LEN,
+  DUAL_LINK_BAR,
+} from "./dualLinkKey.js";
 export type { DualLinkHalves } from "./dualLinkKey.js";
 export { DualLinkConnector } from "./dualLinkConnector.js";
 export type {
@@ -42,3 +46,5 @@ export type {
   DualLinkStatus,
   DualLinkHalfStatus,
 } from "./dualLinkConnector.js";
+
+export { maskSecret } from "./maskSecret.js";

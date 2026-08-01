@@ -227,24 +227,56 @@ export interface VersionInfoControls {
   get(): Promise<{ installed: string; available: string | null; updateAvailable: boolean }>;
 }
 
+/** One half (standard or smart) of Pythia's own self-connector, as the admin
+ * panel renders it. `"not-generated"` before the keypair exists; `"not-linked"`
+ * once generated but `tick()` hasn't run yet for this half (its internal
+ * `DualLinkConnector` hasn't been built) — NOT "no dual-link-key pasted", see
+ * below; `"pending"` once ticked but the pair isn't yet active on-chain;
+ * `"active"` once the hub has proven and activated it. `maskedSecret`/
+ * `expiresAt` are only populated (non-null) when `state === "active"` — the
+ * raw secret is never sent to the browser, only its `first7...last7` mask
+ * (mirrors the hub-HMAC-secret `secretMask()` convention).
+ *
+ * Important: this progression is driven ENTIRELY by `SelfConnectorLoop`
+ * ticking — it self-derives its own dual-link-key from the vault's two
+ * generated accounts (`standard + DUAL_LINK_BAR + smart`) the moment BOTH
+ * exist, and never waits for `SelfConnectorStatus.dualLinkKey` (the pasted
+ * confirmation, see below) to be set. So `standard`/`smart` can legitimately
+ * reach `"pending"` or `"active"` while `dualLinkKey` is still `null` — this
+ * is deliberate, not a bug (see `selfConnectorLoop.ts`'s `dualLinkConnector`
+ * field doc comment for the full rationale: gating on a paste instead would
+ * have broken the pre-link ownership-proof flow `PendingActivationTracker`
+ * depends on). Pasting a dual-link-key via `link()` below still performs
+ * real, useful validation (immediate rejection of a key that doesn't match
+ * this vault's own accounts) — it just isn't a PREREQUISITE for this status
+ * to progress. */
+export interface SelfConnectorHalfView {
+  state: "not-generated" | "not-linked" | "pending" | "active";
+  maskedSecret: string | null; // only non-null when state === "active"
+  expiresAt: number | null; // only non-null when state === "active"
+}
+
 /** Pythia's own dual-Apollo self-connector identity, as the admin panel shows it:
- * the two account strings (once generated) plus each half's connector-activation
- * state. `"not-generated"` before the keypair exists, `"pending"` once generated
- * but not yet an active connector on the hub, `"active"` once the hub has proven
- * and activated it. */
+ * the two account strings (once generated), the currently-set dual-link-key
+ * (echoed back — not sensitive, just the public composite account string), and
+ * each half's connector-activation view. */
 export interface SelfConnectorStatus {
   standardAccount: string | null;
   smartAccount: string | null;
-  standard: "not-generated" | "pending" | "active";
-  smart: "not-generated" | "pending" | "active";
+  dualLinkKey: string | null;
+  standard: SelfConnectorHalfView;
+  smart: SelfConnectorHalfView;
 }
 
 /** The runtime controls the `ancient`-gated "Self Connector" panel drives: read
- * Pythia's own standard/smart self-connector status, and (idempotently) generate
- * the underlying keypairs — safe to call repeatedly, a no-op once generated. */
+ * Pythia's own standard/smart self-connector status, (idempotently) generate
+ * the underlying keypairs — safe to call repeatedly, a no-op once generated —
+ * and link a pasted dual-link-key to the vault (throws on a malformed key or
+ * one that doesn't match this vault's own accounts). */
 export interface SelfConnectorAdminControls {
   status(): Promise<SelfConnectorStatus>;
   generate(): Promise<SelfConnectorStatus>;
+  link(dualLinkKey: string): Promise<SelfConnectorStatus>;
 }
 
 /** Optional admin subsystems wired when present. */
@@ -605,5 +637,22 @@ export function registerAdmin(
     app.post("/admin/self-connector/generate", gate, async (c) =>
       c.json(await selfConnector.generate()),
     );
+
+    // Distinct from every other route in this file that can fail validation
+    // (e.g. `/admin/connectors`, which checks and returns 400 directly): this
+    // one specifically wraps `selfConnector.link()` in try/catch because its
+    // real implementation calls `vault.setDualLinkKey()`, which THROWS on a
+    // bad key rather than returning a result type.
+    app.post("/admin/self-connector/link", gate, async (c) => {
+      const body = (await c.req.json().catch(() => null)) as
+        | { dualLinkKey?: unknown }
+        | null;
+      const dualLinkKey = typeof body?.dualLinkKey === "string" ? body.dualLinkKey : "";
+      try {
+        return c.json(await selfConnector.link(dualLinkKey));
+      } catch (err) {
+        return c.json({ error: err instanceof Error ? err.message : "invalid dual-link-key" }, 400);
+      }
+    });
   }
 }

@@ -7,12 +7,14 @@ import { postForm, createAdminGate, registerAdmin } from "./routes.js";
 import { signSession } from "./session.js";
 import { ConnectorStore } from "../connectors/store.js";
 import type { OidcConfig } from "./oidcConfig.js";
-import type { SelfConnectorStatus } from "./routes.js";
+import type { SelfConnectorStatus, SelfConnectorHalfView } from "./routes.js";
 import { ensureSodiumReady, parseMasterKey } from "../codex/vault.js";
 import { SealedStore } from "../codex/sealedStore.js";
 import { SelfApolloVault } from "../automaton/selfApollo.js";
 import { SelfConnectorLoop } from "../automaton/selfConnectorLoop.js";
+import type { SelfConnectorHalfStatus } from "../automaton/selfConnectorLoop.js";
 import { createInProcessFetch } from "../connectors/self/inProcessFetch.js";
+import { maskSecret, DUAL_LINK_BAR } from "@ancientpantheon/pythia-client";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -122,8 +124,9 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
   const FIXTURE: SelfConnectorStatus = {
     standardAccount: "k:standard-account",
     smartAccount: "w:smart-account",
-    standard: "active",
-    smart: "pending",
+    dualLinkKey: "fixture-dual-link-key",
+    standard: { state: "active", maskedSecret: "pk_eph_...abcdefg", expiresAt: 1_700_000_000_000 },
+    smart: { state: "pending", maskedSecret: null, expiresAt: null },
   };
 
   function makeApp(withSelfConnector: boolean) {
@@ -138,6 +141,7 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
             selfConnector: {
               status: vi.fn(async () => ({ ...FIXTURE })),
               generate: vi.fn(async () => ({ ...FIXTURE })),
+              link: vi.fn(async () => ({ ...FIXTURE })),
             },
           }
         : {},
@@ -181,6 +185,69 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
       (await app.request("/admin/self-connector/generate", { method: "POST" })).status,
     ).toBe(401);
   });
+
+  it("POST /admin/self-connector/link calls the fake's link() with the posted dualLinkKey and returns its result", async () => {
+    const app = new Hono();
+    const dir = scratch();
+    const linkMock = vi.fn(async () => ({ ...FIXTURE }));
+    registerAdmin(
+      app,
+      { sessionSecret: SECRET } as OidcConfig,
+      new ConnectorStore({ filePath: join(dir, "conn.json") }),
+      {
+        selfConnector: {
+          status: vi.fn(async () => ({ ...FIXTURE })),
+          generate: vi.fn(async () => ({ ...FIXTURE })),
+          link: linkMock,
+        },
+      },
+    );
+    const res = await app.request("/admin/self-connector/link", {
+      method: "POST",
+      headers: { cookie: await ancientCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ dualLinkKey: "posted-dual-link-key" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(FIXTURE);
+    expect(linkMock).toHaveBeenCalledTimes(1);
+    expect(linkMock).toHaveBeenCalledWith("posted-dual-link-key");
+  });
+
+  it("POST /admin/self-connector/link 401s when unauthenticated", async () => {
+    const app = makeApp(true);
+    const res = await app.request("/admin/self-connector/link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dualLinkKey: "posted-dual-link-key" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /admin/self-connector/link surfaces the fake's thrown message as a 400", async () => {
+    const app = new Hono();
+    const dir = scratch();
+    registerAdmin(
+      app,
+      { sessionSecret: SECRET } as OidcConfig,
+      new ConnectorStore({ filePath: join(dir, "conn.json") }),
+      {
+        selfConnector: {
+          status: vi.fn(async () => ({ ...FIXTURE })),
+          generate: vi.fn(async () => ({ ...FIXTURE })),
+          link: vi.fn(async () => {
+            throw new Error("some validation message");
+          }),
+        },
+      },
+    );
+    const res = await app.request("/admin/self-connector/link", {
+      method: "POST",
+      headers: { cookie: await ancientCookie(), "content-type": "application/json" },
+      body: JSON.stringify({ dualLinkKey: "posted-dual-link-key" }),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "some validation message" });
+  });
 });
 
 describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + SelfConnectorLoop wiring", () => {
@@ -212,6 +279,17 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     return `pythia_admin_session=${t}`;
   }
 
+  // Maps a loop half-status onto the admin view shape — mirrors, on purpose,
+  // the exact closure T5 wires into the real `index.ts` composition root (see
+  // that task's doc comment): `maskSecret`-ing the secret when active, nulls
+  // otherwise, state copied through 1:1.
+  function toHalfView(half: SelfConnectorHalfStatus): SelfConnectorHalfView {
+    if (half.status === "active") {
+      return { state: "active", maskedSecret: maskSecret(half.secret), expiresAt: half.expiresAt };
+    }
+    return { state: half.status, maskedSecret: null, expiresAt: null };
+  }
+
   function makeRealApp() {
     const app = new Hono();
     const dir = scratch();
@@ -224,15 +302,13 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
       vault,
     });
     async function status(): Promise<SelfConnectorStatus> {
-      const standardAccount = vault.standardAccount();
-      const smartAccount = vault.smartAccount();
       const loopStatus = loop.status();
       return {
-        standardAccount,
-        smartAccount,
-        standard:
-          loopStatus.standard.status === "active" ? "active" : standardAccount ? "pending" : "not-generated",
-        smart: loopStatus.smart.status === "active" ? "active" : smartAccount ? "pending" : "not-generated",
+        standardAccount: vault.standardAccount(),
+        smartAccount: vault.smartAccount(),
+        dualLinkKey: vault.dualLinkKey(),
+        standard: toHalfView(loopStatus.standard),
+        smart: toHalfView(loopStatus.smart),
       };
     }
     registerAdmin(
@@ -246,13 +322,17 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
             await vault.ensureGenerated();
             return status();
           },
+          link: async (dualLinkKey: string) => {
+            vault.setDualLinkKey(dualLinkKey);
+            return status();
+          },
         },
       },
     );
     return app;
   }
 
-  it("reports not-generated before generation, then a populated pending status after POST /admin/self-connector/generate", async () => {
+  it("reports not-generated before generation, then a populated not-linked status after POST /admin/self-connector/generate", async () => {
     const app = makeRealApp();
     const cookie = await ancientCookie();
 
@@ -260,8 +340,9 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     expect(await before.json()).toEqual({
       standardAccount: null,
       smartAccount: null,
-      standard: "not-generated",
-      smart: "not-generated",
+      dualLinkKey: null,
+      standard: { state: "not-generated", maskedSecret: null, expiresAt: null },
+      smart: { state: "not-generated", maskedSecret: null, expiresAt: null },
     });
 
     const genRes = await app.request("/admin/self-connector/generate", {
@@ -271,11 +352,85 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     const generated = (await genRes.json()) as SelfConnectorStatus;
     expect(generated.standardAccount).not.toBeNull();
     expect(generated.smartAccount).not.toBeNull();
-    expect(generated.standard).toBe("pending");
-    expect(generated.smart).toBe("pending");
+    // Generated, but no dual-link-key posted yet — "not-linked", not "pending".
+    expect(generated.standard).toEqual({ state: "not-linked", maskedSecret: null, expiresAt: null });
+    expect(generated.smart).toEqual({ state: "not-linked", maskedSecret: null, expiresAt: null });
 
     // A second GET reads back the same populated state — generation persisted.
     const after = await app.request("/admin/self-connector", { headers: { cookie } });
     expect(await after.json()).toEqual(generated);
+  });
+
+  it("POST /admin/self-connector/link with the real generated pair's own accounts succeeds and the subsequent GET echoes the posted dualLinkKey", async () => {
+    const app = makeRealApp();
+    const cookie = await ancientCookie();
+
+    const genRes = await app.request("/admin/self-connector/generate", {
+      method: "POST",
+      headers: { cookie },
+    });
+    const generated = (await genRes.json()) as SelfConnectorStatus;
+    const dualLinkKey = `${generated.standardAccount}${DUAL_LINK_BAR}${generated.smartAccount}`;
+
+    const linkRes = await app.request("/admin/self-connector/link", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ dualLinkKey }),
+    });
+    expect(linkRes.status).toBe(200);
+    const linked = (await linkRes.json()) as SelfConnectorStatus;
+    expect(linked.dualLinkKey).toBe(dualLinkKey);
+
+    const after = await app.request("/admin/self-connector", { headers: { cookie } });
+    const afterStatus = (await after.json()) as SelfConnectorStatus;
+    expect(afterStatus.dualLinkKey).toBe(dualLinkKey);
+    // No tick has run in this describe block (no stub connector-auth server is
+    // wired here — that's `selfConnectorLoop.test.ts`'s job) so the internal
+    // `DualLinkConnector` hasn't been built yet: both halves still read
+    // "not-linked" from `SelfConnectorLoop.status()`'s own cache, even though
+    // a key IS now set — it only flips to "pending" on the first `tick()`.
+    expect(afterStatus.standard.state).toBe("not-linked");
+    expect(afterStatus.smart.state).toBe("not-linked");
+  });
+
+  it("POST /admin/self-connector/link with a key that doesn't match this vault's own accounts is rejected with a real 400 from the REAL vault's own validation, and dualLinkKey stays unset", async () => {
+    // The two existing link tests above only ever exercise the SUCCESS path
+    // (a matching key) for real, or a FAKE thrown error against the T4 fake
+    // `selfConnector` — neither drives the route's try/catch against a REAL
+    // `SelfApolloVault.setDualLinkKey()` throw, which is what production
+    // actually calls (see `index.ts`'s `link` closure, mirrored by
+    // `makeRealApp` above). This proves that real path end to end.
+    const app = makeRealApp();
+    const cookie = await ancientCookie();
+
+    const genRes = await app.request("/admin/self-connector/generate", {
+      method: "POST",
+      headers: { cookie },
+    });
+    const generated = (await genRes.json()) as SelfConnectorStatus;
+
+    // A well-formed key, but with a standard half from a DIFFERENT,
+    // independently-generated pair — genuinely mismatched, not just
+    // malformed (mirrors selfApollo.test.ts's own mismatch fixture).
+    const otherDir = mkdtempSync(join(tmpdir(), "pyth-selfconn-real-other-"));
+    tmpDirs.push(otherDir);
+    const otherVault = new SelfApolloVault(
+      new SealedStore({ dir: otherDir, keyProvider: () => parseMasterKey(MASTER_KEY) }),
+    );
+    const { standardAccount: otherStandardAccount } = await otherVault.ensureGenerated();
+    const mismatchedKey = `${otherStandardAccount}${DUAL_LINK_BAR}${generated.smartAccount}`;
+
+    const linkRes = await app.request("/admin/self-connector/link", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ dualLinkKey: mismatchedKey }),
+    });
+    expect(linkRes.status).toBe(400);
+    const body = (await linkRes.json()) as { error: string };
+    expect(body.error).toMatch(/does not match/);
+    expect(body.error).toMatch(/standard/);
+
+    const after = await app.request("/admin/self-connector", { headers: { cookie } });
+    expect((await after.json() as SelfConnectorStatus).dualLinkKey).toBeNull();
   });
 });

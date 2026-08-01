@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { EphemeralKeyStore, EPHEMERAL_SECRET_TTL_MS } from "./ephemeralKeyStore.js";
+import {
+  EphemeralKeyStore,
+  DEFAULT_EPHEMERAL_SECRET_TTL_MS,
+  SELF_EPHEMERAL_SECRET_TTL_MS,
+} from "./ephemeralKeyStore.js";
 
 describe("EphemeralKeyStore", () => {
   it("resolves an issued secret back to the account that minted it", () => {
@@ -22,7 +26,7 @@ describe("EphemeralKeyStore", () => {
     const { secret } = store.issue("₱.consumer-b");
 
     // Just before expiry: still resolves.
-    now += EPHEMERAL_SECRET_TTL_MS - 1;
+    now += DEFAULT_EPHEMERAL_SECRET_TTL_MS - 1;
     expect(store.resolve(secret)).toEqual({ apolloAccount: "₱.consumer-b" });
 
     // Past expiry: resolve fails and deletes the entry as a side effect.
@@ -39,9 +43,21 @@ describe("EphemeralKeyStore", () => {
     store.issue("₱.consumer-d");
     store.issue("₱.consumer-e");
 
-    now += EPHEMERAL_SECRET_TTL_MS + 1;
+    now += DEFAULT_EPHEMERAL_SECRET_TTL_MS + 1;
     expect(store.sweepExpired()).toBe(2);
     expect(store.sweepExpired()).toBe(0);
+  });
+
+  it("issues a longer-lived secret when called with SELF_EPHEMERAL_SECRET_TTL_MS, distinctly longer than the default", () => {
+    const now = 5_000_000;
+    const store = new EphemeralKeyStore({ clock: () => now });
+
+    const selfIssue = store.issue("₱.self-account", SELF_EPHEMERAL_SECRET_TTL_MS);
+    const defaultIssue = store.issue("₱.other-account");
+
+    expect(selfIssue.expiresAt).toBe(now + SELF_EPHEMERAL_SECRET_TTL_MS);
+    expect(defaultIssue.expiresAt).toBe(now + DEFAULT_EPHEMERAL_SECRET_TTL_MS);
+    expect(selfIssue.expiresAt).toBeGreaterThan(defaultIssue.expiresAt);
   });
 
   it("never collides between two issue() calls for different accounts", () => {
