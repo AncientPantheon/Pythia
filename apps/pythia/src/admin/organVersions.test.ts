@@ -18,12 +18,12 @@ function npmStub(distTagLatest: string | null, ok = true): FetchImpl {
 }
 
 describe("organ version reporting", () => {
-  it("lists the three automaton organs (Codex + Khronoton + Pythia's own connector), in order", () => {
-    expect(ORGAN_PACKAGES.map((o) => o.key)).toEqual(["codex", "khronoton", "pythia-client"]);
+  it("lists the three automaton organs in the fixed, canonical cross-Pantheon order — Pythia, Codex, Khronoton (automaton/05 §1e)", () => {
+    expect(ORGAN_PACKAGES.map((o) => o.key)).toEqual(["pythia-client", "codex", "khronoton"]);
     expect(ORGAN_PACKAGES.map((o) => o.pkg)).toEqual([
+      "@ancientpantheon/pythia-client",
       "@ancientpantheon/codex",
       "@ancientpantheon/khronoton-core",
-      "@ancientpantheon/pythia-client",
     ]);
   });
 
@@ -63,11 +63,11 @@ describe("organ version reporting", () => {
     expect(offline.every((o) => o.available === null && o.updateAvailable === false)).toBe(true);
   });
 
-  it("collectOrganVersions returns exactly 3 entries, in ORGAN_PACKAGES order, pythia-client third", async () => {
+  it("collectOrganVersions returns exactly 3 entries, in ORGAN_PACKAGES order, pythia-client first", async () => {
     const organs = await collectOrganVersions({ fetchImpl: npmStub("1.0.0") });
     expect(organs).toHaveLength(3);
-    expect(organs.map((o) => o.key)).toEqual(["codex", "khronoton", "pythia-client"]);
-    expect(organs[2].pkg).toBe("@ancientpantheon/pythia-client");
-    expect(organs[2].label).toBe("Pythia");
+    expect(organs.map((o) => o.key)).toEqual(["pythia-client", "codex", "khronoton"]);
+    expect(organs[0].pkg).toBe("@ancientpantheon/pythia-client");
+    expect(organs[0].label).toBe("Pythia");
   });
 });

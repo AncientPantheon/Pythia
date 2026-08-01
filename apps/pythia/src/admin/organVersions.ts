@@ -17,10 +17,16 @@ export interface OrganPackage {
   label: string;
 }
 
+// Row order is fixed and centralized — NOT this file's call. Per
+// `docs/pantheonic-architecture/automaton/05-deploy-panel-and-progress.md`
+// §1e, every conformant panel across every automaton shows the CONSTRUCTORS
+// group in the same order: Pythia, Codex, Khronoton. Do not reorder this
+// array to "whatever order Pythia happened to adopt them in" — that's
+// exactly the inconsistency §1e exists to prevent.
 export const ORGAN_PACKAGES: readonly OrganPackage[] = [
+  { key: "pythia-client", pkg: "@ancientpantheon/pythia-client", label: "Pythia" },
   { key: "codex", pkg: "@ancientpantheon/codex", label: "Codex" },
   { key: "khronoton", pkg: "@ancientpantheon/khronoton-core", label: "Khronoton" },
-  { key: "pythia-client", pkg: "@ancientpantheon/pythia-client", label: "Pythia" },
 ] as const;
 
 export interface OrganVersion {
