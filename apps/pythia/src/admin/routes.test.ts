@@ -13,6 +13,8 @@ import { SealedStore } from "../codex/sealedStore.js";
 import { SelfApolloVault } from "../automaton/selfApollo.js";
 import { SelfConnectorLoop } from "../automaton/selfConnectorLoop.js";
 import type { SelfConnectorHalfStatus } from "../automaton/selfConnectorLoop.js";
+import { CodexStore } from "../automaton/codexStore.js";
+import { seedCodexWithRealPair } from "../automaton/codexApolloFixtures.js";
 import { createInProcessFetch } from "../connectors/self/inProcessFetch.js";
 import { maskSecret, DUAL_LINK_BAR } from "@ancientpantheon/pythia-client";
 
@@ -108,7 +110,7 @@ describe("postForm — token-exchange redirect handling", () => {
   });
 });
 
-describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls extra", () => {
+describe("admin /admin/self-connector — SelfConnectorAdminControls extra", () => {
   const SECRET = "unit-test-session-secret-at-least-32-chars";
   const tmpDirs: string[] = [];
   afterEach(() => {
@@ -140,7 +142,6 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
         ? {
             selfConnector: {
               status: vi.fn(async () => ({ ...FIXTURE })),
-              generate: vi.fn(async () => ({ ...FIXTURE })),
               link: vi.fn(async () => ({ ...FIXTURE })),
             },
           }
@@ -169,21 +170,17 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
     expect(await res.json()).toEqual(FIXTURE);
   });
 
-  it("POST /admin/self-connector/generate calls the fake's generate() and returns its result", async () => {
+  it("POST /admin/self-connector/generate no longer exists — 404s (route removed along with generate())", async () => {
     const res = await makeApp(true).request("/admin/self-connector/generate", {
       method: "POST",
       headers: { cookie: await ancientCookie() },
     });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(FIXTURE);
+    expect(res.status).toBe(404);
   });
 
-  it("401s both routes when unauthenticated", async () => {
-    const app = makeApp(true);
-    expect((await app.request("/admin/self-connector")).status).toBe(401);
-    expect(
-      (await app.request("/admin/self-connector/generate", { method: "POST" })).status,
-    ).toBe(401);
+  it("401s when unauthenticated", async () => {
+    const res = await makeApp(true).request("/admin/self-connector");
+    expect(res.status).toBe(401);
   });
 
   it("POST /admin/self-connector/link calls the fake's link() with the posted dualLinkKey and returns its result", async () => {
@@ -197,7 +194,6 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
       {
         selfConnector: {
           status: vi.fn(async () => ({ ...FIXTURE })),
-          generate: vi.fn(async () => ({ ...FIXTURE })),
           link: linkMock,
         },
       },
@@ -233,7 +229,6 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
       {
         selfConnector: {
           status: vi.fn(async () => ({ ...FIXTURE })),
-          generate: vi.fn(async () => ({ ...FIXTURE })),
           link: vi.fn(async () => {
             throw new Error("some validation message");
           }),
@@ -250,13 +245,16 @@ describe("admin /admin/self-connector[/generate] — SelfConnectorAdminControls 
   });
 });
 
-describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + SelfConnectorLoop wiring", () => {
-  // The T4 suite above proves the route contract against a FAKE
+describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLoop wiring", () => {
+  // The FAKE suite above proves the route contract against a FAKE
   // SelfConnectorAdminControls; this proves the composition-root's own
-  // status()/generate() shape (mirrored here — index.ts itself has no
+  // status()/link() shape (mirrored here — index.ts itself has no
   // test-import surface, see selfConnectorIntegration.test.ts's doc comment)
-  // actually round-trips when driven by REAL SelfApolloVault/SelfConnectorLoop
-  // instances: not-generated before generation, populated + pending after.
+  // actually round-trips when driven by REAL SelfApolloVault/SelfConnectorLoop/
+  // CodexStore instances: null/not-linked before a paste, populated + pending
+  // after — there's no local generation step to drive through anymore, so
+  // Codex's own ouroAccounts snapshot is seeded directly, mirroring T2's own
+  // `seedCodexWithRealPair` fixture (`selfApollo.test.ts`).
   const SECRET = "unit-test-session-secret-at-least-32-chars";
   const MASTER_KEY = Buffer.from(new Uint8Array(32).fill(9)).toString("base64");
   const tmpDirs: string[] = [];
@@ -290,11 +288,24 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     return { state: half.status, maskedSecret: null, expiresAt: null };
   }
 
-  function makeRealApp() {
+  function makeCodex(): CodexStore {
+    return new CodexStore(
+      new SealedStore({ dir: scratch(), keyProvider: () => parseMasterKey(MASTER_KEY) }),
+    );
+  }
+
+  // `seedCodexWithRealPair` is imported from `../automaton/codexApolloFixtures.js`
+  // (see the top-of-file import) rather than defined locally here — that file's
+  // own doc comment explains why: `encryptStringV2` may only be imported from
+  // inside `automaton/`, per `keyless-invariant.test.ts`'s directory-scoped
+  // (not filename-scoped) exemption for this specific check.
+
+  function makeRealApp(codex: CodexStore) {
     const app = new Hono();
     const dir = scratch();
     const vault = new SelfApolloVault(
       new SealedStore({ dir, keyProvider: () => parseMasterKey(MASTER_KEY) }),
+      codex,
     );
     const loop = new SelfConnectorLoop({
       baseUrl: "http://pythia.self",
@@ -318,10 +329,6 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
       {
         selfConnector: {
           status,
-          generate: async () => {
-            await vault.ensureGenerated();
-            return status();
-          },
           link: async (dualLinkKey: string) => {
             vault.setDualLinkKey(dualLinkKey);
             return status();
@@ -332,45 +339,28 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     return app;
   }
 
-  it("reports not-generated before generation, then a populated not-linked status after POST /admin/self-connector/generate", async () => {
-    const app = makeRealApp();
+  it("reports null accounts and not-linked halves before any dualLinkKey is posted, even though Codex already holds a real pair", async () => {
+    const codex = makeCodex();
+    await seedCodexWithRealPair(codex);
+    const app = makeRealApp(codex);
     const cookie = await ancientCookie();
 
-    const before = await app.request("/admin/self-connector", { headers: { cookie } });
-    expect(await before.json()).toEqual({
+    const res = await app.request("/admin/self-connector", { headers: { cookie } });
+    expect(await res.json()).toEqual({
       standardAccount: null,
       smartAccount: null,
       dualLinkKey: null,
-      standard: { state: "not-generated", maskedSecret: null, expiresAt: null },
-      smart: { state: "not-generated", maskedSecret: null, expiresAt: null },
+      standard: { state: "not-linked", maskedSecret: null, expiresAt: null },
+      smart: { state: "not-linked", maskedSecret: null, expiresAt: null },
     });
-
-    const genRes = await app.request("/admin/self-connector/generate", {
-      method: "POST",
-      headers: { cookie },
-    });
-    const generated = (await genRes.json()) as SelfConnectorStatus;
-    expect(generated.standardAccount).not.toBeNull();
-    expect(generated.smartAccount).not.toBeNull();
-    // Generated, but no dual-link-key posted yet — "not-linked", not "pending".
-    expect(generated.standard).toEqual({ state: "not-linked", maskedSecret: null, expiresAt: null });
-    expect(generated.smart).toEqual({ state: "not-linked", maskedSecret: null, expiresAt: null });
-
-    // A second GET reads back the same populated state — generation persisted.
-    const after = await app.request("/admin/self-connector", { headers: { cookie } });
-    expect(await after.json()).toEqual(generated);
   });
 
-  it("POST /admin/self-connector/link with the real generated pair's own accounts succeeds and the subsequent GET echoes the posted dualLinkKey", async () => {
-    const app = makeRealApp();
+  it("POST /admin/self-connector/link with the codex-held pair's own dual-link-key succeeds and the subsequent GET echoes it while both halves stay not-linked (no tick has run)", async () => {
+    const codex = makeCodex();
+    const pair = await seedCodexWithRealPair(codex);
+    const app = makeRealApp(codex);
     const cookie = await ancientCookie();
-
-    const genRes = await app.request("/admin/self-connector/generate", {
-      method: "POST",
-      headers: { cookie },
-    });
-    const generated = (await genRes.json()) as SelfConnectorStatus;
-    const dualLinkKey = `${generated.standardAccount}${DUAL_LINK_BAR}${generated.smartAccount}`;
+    const dualLinkKey = `${pair.standardAccount}${DUAL_LINK_BAR}${pair.smartAccount}`;
 
     const linkRes = await app.request("/admin/self-connector/link", {
       method: "POST",
@@ -380,6 +370,8 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     expect(linkRes.status).toBe(200);
     const linked = (await linkRes.json()) as SelfConnectorStatus;
     expect(linked.dualLinkKey).toBe(dualLinkKey);
+    expect(linked.standardAccount).toBe(pair.standardAccount);
+    expect(linked.smartAccount).toBe(pair.smartAccount);
 
     const after = await app.request("/admin/self-connector", { headers: { cookie } });
     const afterStatus = (await after.json()) as SelfConnectorStatus;
@@ -393,32 +385,26 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     expect(afterStatus.smart.state).toBe("not-linked");
   });
 
-  it("POST /admin/self-connector/link with a key that doesn't match this vault's own accounts is rejected with a real 400 from the REAL vault's own validation, and dualLinkKey stays unset", async () => {
-    // The two existing link tests above only ever exercise the SUCCESS path
-    // (a matching key) for real, or a FAKE thrown error against the T4 fake
-    // `selfConnector` — neither drives the route's try/catch against a REAL
-    // `SelfApolloVault.setDualLinkKey()` throw, which is what production
-    // actually calls (see `index.ts`'s `link` closure, mirrored by
+  it("POST /admin/self-connector/link with a half not held by Pythia's own Codex is rejected with a real 400 from the REAL vault's own validation, and dualLinkKey stays unset", async () => {
+    // The link test above only ever exercises the SUCCESS path (a matching,
+    // codex-held key) for real, or a FAKE thrown error against the FAKE
+    // `selfConnector` suite above — neither drives the route's try/catch
+    // against a REAL `SelfApolloVault.setDualLinkKey()` throw, which is what
+    // production actually calls (see `index.ts`'s `link` closure, mirrored by
     // `makeRealApp` above). This proves that real path end to end.
-    const app = makeRealApp();
+    const codex = makeCodex();
+    const pair = await seedCodexWithRealPair(codex);
+    const app = makeRealApp(codex);
     const cookie = await ancientCookie();
 
-    const genRes = await app.request("/admin/self-connector/generate", {
-      method: "POST",
-      headers: { cookie },
-    });
-    const generated = (await genRes.json()) as SelfConnectorStatus;
-
-    // A well-formed key, but with a standard half from a DIFFERENT,
-    // independently-generated pair — genuinely mismatched, not just
-    // malformed (mirrors selfApollo.test.ts's own mismatch fixture).
-    const otherDir = mkdtempSync(join(tmpdir(), "pyth-selfconn-real-other-"));
-    tmpDirs.push(otherDir);
-    const otherVault = new SelfApolloVault(
-      new SealedStore({ dir: otherDir, keyProvider: () => parseMasterKey(MASTER_KEY) }),
-    );
-    const { standardAccount: otherStandardAccount } = await otherVault.ensureGenerated();
-    const mismatchedKey = `${otherStandardAccount}${DUAL_LINK_BAR}${generated.smartAccount}`;
+    // A well-formed key, but the standard half comes from an account that was
+    // NEVER seeded into this codex's own snapshot at all — genuinely not
+    // held, not just malformed (mirrors selfApollo.test.ts's own "missing
+    // half" fixture — "not held by Codex", not "a different vault's
+    // generated account", which no longer means anything).
+    const registry = await import("@ouronet/dalos-crypto/registry");
+    const unrelated = registry.Apollo.generateRandom();
+    const mismatchedKey = `${unrelated.standardAddress}${DUAL_LINK_BAR}${pair.smartAccount}`;
 
     const linkRes = await app.request("/admin/self-connector/link", {
       method: "POST",
@@ -427,7 +413,7 @@ describe("admin /admin/self-connector[/generate] — REAL SelfApolloVault + Self
     });
     expect(linkRes.status).toBe(400);
     const body = (await linkRes.json()) as { error: string };
-    expect(body.error).toMatch(/does not match/);
+    expect(body.error).toMatch(/not held by Pythia's own Codex/);
     expect(body.error).toMatch(/standard/);
 
     const after = await app.request("/admin/self-connector", { headers: { cookie } });

@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.6.0` on public npmjs — proprietary release, all rights reserved (see
+`2.7.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -129,6 +129,11 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.7.0** — version alignment: jumps from `2.6.0` to `2.7.0` to align with the unified Pythia
+service version line. Service-side only (Pythia's self-connector signing now routes through her
+own Codex instead of generating locally) — no changes to this package's own source, API surface,
+or behavior.
 
 **v2.6.0** — adds `maskSecret(secret)` (a tiny, pure, dependency-free helper masking an ephemeral
 secret to `first7...last7` for display, returning short inputs — under 14 chars — unchanged), and

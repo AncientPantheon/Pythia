@@ -9,6 +9,37 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.0] — 2026-08-01
+
+### Changed — Pythia's self-connector signing now routes through her own Codex, never generates locally
+
+Pythia no longer generates or holds her own Apollo private key material anywhere in her own code.
+The admin generates + activates her Standard+Smart Apollo pair using Pythia's own embedded Codex
+admin tab (proper seed-word/confirmation UX, unchanged — a pre-existing Codex feature). Ongoing
+unattended signing is delegated to Codex's own `autoSignApolloChallenge`
+(`@ancientpantheon/codex/ouronet`, bumped to `^0.7.0`), which decrypts the account's key material
+from Codex's own already-sealed snapshot and signs — zero human interaction after initial Codex
+setup, the same "re-read fresh every call, never cached" discipline Khronoton's Kadena signing
+already uses.
+
+- **Removed:** the Self Connector panel's "Generate" button and its `POST
+  /admin/self-connector/generate` route — local key generation is gone entirely. Only the
+  paste-a-dual-link-key field remains.
+- **Removed:** the `self-apollo-standard`/`self-apollo-smart` sealed vault entries — Pythia's vault
+  now holds only the pasted dual-link-key (public data); no private key material of her own.
+- **Added:** `apps/pythia/src/automaton/codexApolloSigner.ts` — a Codex-backed `ApolloSigner`,
+  validating a pasted dual-link-key's two halves are actually held by Codex's current snapshot
+  before accepting it.
+- **Changed:** `SelfConnectorLoop`'s own tick/refresh interval is now 24h (matching Pythia's own
+  24h ephemeral-secret TTL, shipped in v2.6.0) — distinct from the published `DualLinkConnector`'s
+  own 3h default, which every other consumer still uses unchanged.
+- **Retired:** `SelfConnectorLoop`'s ability to prove ownership of a not-yet-linked pair (the
+  pre-link ownership-proof flow feeding `PendingActivationTracker`) for Pythia's OWN identity
+  specifically — she no longer has any account knowledge independent of an explicitly pasted key.
+  The generic mechanism remains fully intact and tested for real external consumers.
+
+See `docs/work/self-connector-codex-signing/{design,plan,review}.md` for the full rationale.
+
 ## [2.6.0] — 2026-08-01
 
 ### Added — Pythia's Self Connector gains a paste-in Link control, and a differentiated ephemeral-secret TTL

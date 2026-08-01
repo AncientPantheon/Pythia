@@ -228,38 +228,29 @@ export interface VersionInfoControls {
 }
 
 /** One half (standard or smart) of Pythia's own self-connector, as the admin
- * panel renders it. `"not-generated"` before the keypair exists; `"not-linked"`
- * once generated but `tick()` hasn't run yet for this half (its internal
- * `DualLinkConnector` hasn't been built) — NOT "no dual-link-key pasted", see
- * below; `"pending"` once ticked but the pair isn't yet active on-chain;
- * `"active"` once the hub has proven and activated it. `maskedSecret`/
- * `expiresAt` are only populated (non-null) when `state === "active"` — the
- * raw secret is never sent to the browser, only its `first7...last7` mask
- * (mirrors the hub-HMAC-secret `secretMask()` convention).
- *
- * Important: this progression is driven ENTIRELY by `SelfConnectorLoop`
- * ticking — it self-derives its own dual-link-key from the vault's two
- * generated accounts (`standard + DUAL_LINK_BAR + smart`) the moment BOTH
- * exist, and never waits for `SelfConnectorStatus.dualLinkKey` (the pasted
- * confirmation, see below) to be set. So `standard`/`smart` can legitimately
- * reach `"pending"` or `"active"` while `dualLinkKey` is still `null` — this
- * is deliberate, not a bug (see `selfConnectorLoop.ts`'s `dualLinkConnector`
- * field doc comment for the full rationale: gating on a paste instead would
- * have broken the pre-link ownership-proof flow `PendingActivationTracker`
- * depends on). Pasting a dual-link-key via `link()` below still performs
- * real, useful validation (immediate rejection of a key that doesn't match
- * this vault's own accounts) — it just isn't a PREREQUISITE for this status
- * to progress. */
+ * panel renders it. There is no local generation step anymore (`docs/work/
+ * self-connector-codex-signing/design.md`) — generation and on-chain
+ * activation happen exclusively via Codex's own admin tab — so there's
+ * nothing to distinguish "not generated" from "not linked" here: `"not-linked"`
+ * covers both "no dual-link-key has been pasted yet" and "pasted, but
+ * `tick()` hasn't run yet for this half" (its internal `DualLinkConnector`
+ * hasn't been built); `"pending"` once ticked but the pair isn't yet active
+ * on-chain; `"active"` once the hub has proven and activated it.
+ * `maskedSecret`/`expiresAt` are only populated (non-null) when
+ * `state === "active"` — the raw secret is never sent to the browser, only
+ * its `first7...last7` mask (mirrors the hub-HMAC-secret `secretMask()`
+ * convention). */
 export interface SelfConnectorHalfView {
-  state: "not-generated" | "not-linked" | "pending" | "active";
+  state: "not-linked" | "pending" | "active";
   maskedSecret: string | null; // only non-null when state === "active"
   expiresAt: number | null; // only non-null when state === "active"
 }
 
-/** Pythia's own dual-Apollo self-connector identity, as the admin panel shows it:
- * the two account strings (once generated), the currently-set dual-link-key
- * (echoed back — not sensitive, just the public composite account string), and
- * each half's connector-activation view. */
+/** Pythia's own dual-Apollo self-connector identity, as the admin panel shows
+ * it: the two account strings derived from the currently-set dual-link-key
+ * (both `null` until one is pasted), the dual-link-key itself (echoed back —
+ * not sensitive, just the public composite account string), and each half's
+ * connector-activation view. */
 export interface SelfConnectorStatus {
   standardAccount: string | null;
   smartAccount: string | null;
@@ -268,14 +259,14 @@ export interface SelfConnectorStatus {
   smart: SelfConnectorHalfView;
 }
 
-/** The runtime controls the `ancient`-gated "Self Connector" panel drives: read
- * Pythia's own standard/smart self-connector status, (idempotently) generate
- * the underlying keypairs — safe to call repeatedly, a no-op once generated —
- * and link a pasted dual-link-key to the vault (throws on a malformed key or
- * one that doesn't match this vault's own accounts). */
+/** The runtime controls the `ancient`-gated "Self Connector" panel drives:
+ * read Pythia's own standard/smart self-connector status, and link a pasted
+ * dual-link-key to the vault (throws on a malformed key, or one whose halves
+ * aren't both held by Pythia's own Codex — see `SelfApolloVault.
+ * setDualLinkKey`). No generation control here: generation happens
+ * exclusively via Codex's own admin tab. */
 export interface SelfConnectorAdminControls {
   status(): Promise<SelfConnectorStatus>;
-  generate(): Promise<SelfConnectorStatus>;
   link(dualLinkKey: string): Promise<SelfConnectorStatus>;
 }
 
@@ -633,10 +624,6 @@ export function registerAdmin(
   // ── ancient-gated Self Connector — Pythia's own dual-Apollo identity ────────
   if (selfConnector) {
     app.get("/admin/self-connector", gate, async (c) => c.json(await selfConnector.status()));
-
-    app.post("/admin/self-connector/generate", gate, async (c) =>
-      c.json(await selfConnector.generate()),
-    );
 
     // Distinct from every other route in this file that can fail validation
     // (e.g. `/admin/connectors`, which checks and returns 400 directly): this

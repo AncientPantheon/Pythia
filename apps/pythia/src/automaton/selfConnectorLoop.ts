@@ -1,11 +1,14 @@
-import { DualLinkConnector, DUAL_LINK_BAR } from "@ancientpantheon/pythia-client";
+import { DualLinkConnector } from "@ancientpantheon/pythia-client";
 import type { DualLinkHalfStatus } from "@ancientpantheon/pythia-client";
 import type { SelfApolloVault } from "./selfApollo.js";
 
-/** Matches the ephemeral secret's own TTL (`EphemeralKeyStore`, Topic 1) — a
- * refresh well inside that window keeps both halves' secrets perpetually
- * fresh without hammering the verify route. */
-const DEFAULT_INTERVAL_MS = 3 * 60 * 60 * 1000;
+/** This class (unlike the published `DualLinkConnector` any other consumer
+ * constructs, whose own `DEFAULT_INTERVAL_MS` stays 3h) has exactly ONE
+ * construction site — Pythia's own self-connector (`index.ts`) — so its own
+ * default IS Pythia's interval: 24h, matching her 24h ephemeral-secret TTL
+ * (v2.6.0), not the 3h default other consumers' own `DualLinkConnector`
+ * instances use. */
+const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export interface SelfConnectorLoopOptions {
   /** Required by `Transport`'s constructor; NEVER actually dialed — `fetchImpl`
@@ -13,12 +16,11 @@ export interface SelfConnectorLoopOptions {
   baseUrl: string;
   fetchImpl: typeof fetch;
   vault: SelfApolloVault;
-  /** Refresh cadence in ms. Default 3h — see {@link DEFAULT_INTERVAL_MS}. */
+  /** Refresh cadence in ms. Default 24h — see {@link DEFAULT_INTERVAL_MS}. */
   intervalMs?: number;
 }
 
 export type SelfConnectorHalfStatus =
-  | { status: "not-generated" }
   | { status: "not-linked" }
   | { status: "pending" }
   | { status: "active"; secret: string; expiresAt: number };
@@ -48,25 +50,23 @@ export class SelfConnectorLoop {
   private readonly intervalMs: number;
   private timer: ReturnType<typeof setInterval> | undefined;
 
-  /** Lazily built, once BOTH of the vault's own accounts exist — then reused
-   * across every subsequent tick, never rebuilt. `null` means the vault's
-   * accounts don't both exist yet (nothing to do).
+  /** Lazily built, once `vault.dualLinkKey()` is set — then reused across
+   * every subsequent tick, never rebuilt. `null` means no key has been
+   * pasted yet (nothing to do).
    *
-   * Deliberately gated on `vault.standardAccount()`/`smartAccount()`, NOT on
-   * `vault.dualLinkKey()` (the operator-pasted confirmation): unlike an
-   * arbitrary external consumer, `SelfApolloVault` always deterministically
-   * knows both of its own halves the moment they're generated, so it never
-   * needs to be TOLD its own dual-link-key — it can always derive
-   * `standard + DUAL_LINK_BAR + smart` itself. Gating construction on a
-   * paste instead (an earlier version of this class did exactly that) broke
-   * a real, already-shipped capability: proving ownership of a NOT-YET-linked
-   * pair to feed `PendingActivationTracker` (see
-   * `docs/work/connector-activation-resolver/`, `selfConnectorIntegration.
-   * test.ts`) — that flow ticks immediately after generation, well before
-   * any pair is linked or any key exists to paste. `setDualLinkKey()`
-   * remains a genuinely useful operator-facing confirmation/validation
-   * action (the admin panel echoes it, and a mismatched paste is rejected
-   * immediately) — it just isn't a PREREQUISITE for this loop's own ticking. */
+   * Gated on `vault.dualLinkKey()` (the operator-pasted confirmation), NOT on
+   * the vault's own account getters independently: `SelfApolloVault` no
+   * longer generates or otherwise discovers its own accounts (`docs/work/
+   * self-connector-codex-signing/design.md`) — `standardAccount()`/
+   * `smartAccount()` are themselves DERIVED from `dualLinkKey()` now, so
+   * there is no account knowledge independent of an explicitly pasted key
+   * for this gate to check separately. This is a deliberate REVERSION of a
+   * prior redesign (`self-connector-dual-link`) that gated construction on
+   * the vault's own accounts specifically so this loop could prove ownership
+   * of a NOT-YET-linked pair ahead of a paste — that capability is retired
+   * along with local generation (see `selfConnectorIntegration.test.ts`'s
+   * doc comment for the retirement rationale); the paste is now the ONLY
+   * source of truth. */
   private dualLinkConnector: DualLinkConnector | null = null;
 
   constructor(options: SelfConnectorLoopOptions) {
@@ -78,21 +78,19 @@ export class SelfConnectorLoop {
 
   /**
    * If no internal `DualLinkConnector` exists yet, attempts to lazily build
-   * one from the vault's own two accounts (self-derived key — see the
-   * `dualLinkConnector` field's doc comment for why this doesn't wait on a
-   * paste): either account still missing means still nothing to do (a
-   * no-op). Once a connector exists (this call or a prior one), delegates to
-   * its own `tick()` — per-half error isolation is `DualLinkConnector`'s own
-   * job from here on.
+   * one from the vault's own pasted `dualLinkKey()` (see the
+   * `dualLinkConnector` field's doc comment for why this waits on a paste):
+   * no key yet means still nothing to do (a no-op). Once a connector exists
+   * (this call or a prior one), delegates to its own `tick()` — per-half
+   * error isolation is `DualLinkConnector`'s own job from here on.
    */
   async tick(): Promise<void> {
     if (!this.dualLinkConnector) {
-      const standardAccount = this.vault.standardAccount();
-      const smartAccount = this.vault.smartAccount();
-      if (!standardAccount || !smartAccount) return; // not both generated yet — nothing to do
+      const dualLinkKey = this.vault.dualLinkKey();
+      if (!dualLinkKey) return; // no dual-link-key pasted yet — nothing to do
       try {
         this.dualLinkConnector = new DualLinkConnector({
-          dualLinkKey: `${standardAccount}${DUAL_LINK_BAR}${smartAccount}`,
+          dualLinkKey,
           baseUrl: this.baseUrl,
           standardSigner: this.vault.createSigner("standard"),
           smartSigner: this.vault.createSigner("smart"),
@@ -101,15 +99,15 @@ export class SelfConnectorLoop {
         });
       } catch (error) {
         // `DualLinkConnector`'s constructor calls `splitDualLinkKey`, which
-        // throws on a malformed composite key. The self-derived key here
-        // should always be well-formed (both halves come straight from
-        // `Apollo.generateRandom()`'s own output shape), but this is reached
-        // from `start()`'s `setInterval(() => { void this.tick(); }, ...)` —
-        // an uncaught throw here would become an unhandled promise
-        // rejection, same failure mode `DualLinkConnector.tickHalf`'s own
-        // `onError` double-guard exists to prevent one layer down. Log and
-        // leave `dualLinkConnector` null so a later tick can retry, rather
-        // than crash the loop (or the process) outright.
+        // throws on a malformed composite key. `setDualLinkKey` already
+        // validates the key before sealing it, so a malformed key should
+        // never be reachable here in practice — but this is reached from
+        // `start()`'s `setInterval(() => { void this.tick(); }, ...)`, and an
+        // uncaught throw here would become an unhandled promise rejection,
+        // same failure mode `DualLinkConnector.tickHalf`'s own `onError`
+        // double-guard exists to prevent one layer down. Log and leave
+        // `dualLinkConnector` null so a later tick can retry, rather than
+        // crash the loop (or the process) outright — defense-in-depth.
         console.error("self-connector-loop: failed to construct the internal DualLinkConnector —", error);
         return;
       }
@@ -134,23 +132,19 @@ export class SelfConnectorLoop {
 
   /**
    * Reads the cached per-half status WITHOUT triggering any new network/
-   * signer call. `"not-generated"` covers "the account doesn't exist yet"
-   * (checked live against `vault`); `"not-linked"` covers "the account
-   * exists, but `tick()` has never run yet" (so no internal
-   * `DualLinkConnector` has ever been built — see that field's doc comment:
-   * this is no longer gated on a pasted key, just on having ticked at least
-   * once); once a connector exists, its own cached `DualLinkHalfStatus`
-   * (`"pending"`/`"active"`) passes through.
+   * signer call. `"not-linked"` covers "no dual-link-key has been pasted
+   * yet, or `tick()` has never run" (no internal `DualLinkConnector` has
+   * ever been built); once a connector exists, its own cached
+   * `DualLinkHalfStatus` (`"pending"`/`"active"`) passes through.
    */
   status(): { standard: SelfConnectorHalfStatus; smart: SelfConnectorHalfStatus } {
     return {
-      standard: this.halfStatus("standard", this.vault.standardAccount()),
-      smart: this.halfStatus("smart", this.vault.smartAccount()),
+      standard: this.halfStatus("standard"),
+      smart: this.halfStatus("smart"),
     };
   }
 
-  private halfStatus(which: Half, account: string | null): SelfConnectorHalfStatus {
-    if (!account) return { status: "not-generated" };
+  private halfStatus(which: Half): SelfConnectorHalfStatus {
     if (!this.dualLinkConnector) return { status: "not-linked" };
     return this.mapHalfStatus(
       which === "standard" ? this.dualLinkConnector.status().standard : this.dualLinkConnector.status().smart,

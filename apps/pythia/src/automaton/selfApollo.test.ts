@@ -1,19 +1,21 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { encryptStringV2 } from "@stoachain/stoa-core/crypto";
+import type { IOuroAccount } from "@ancientpantheon/codex/ouronet";
 import { PythiaConnectorValidationError, DUAL_LINK_BAR } from "@ancientpantheon/pythia-client";
 import { ensureSodiumReady, parseMasterKey } from "../codex/vault.js";
 import { SealedStore } from "../codex/sealedStore.js";
-import { isStandardApollo, isSmartApollo } from "../routes/connectorVerify.js";
-import { apolloVerify } from "../connectors/verify/apolloVerify.js";
 import { buildChallengeMessage } from "../connectors/verify/canonicalMessage.js";
+import { CodexStore } from "./codexStore.js";
 import { SelfApolloVault } from "./selfApollo.js";
 
 const KEY = Buffer.from(new Uint8Array(32).fill(7)).toString("base64");
 
 let dir: string;
 const store = () => new SealedStore({ dir, keyProvider: () => parseMasterKey(KEY) });
+const codex = () => new CodexStore(store());
 
 beforeAll(async () => {
   await ensureSodiumReady();
@@ -23,253 +25,168 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe("SelfApolloVault — ensureGenerated", () => {
-  it("is idempotent: a second call returns the same accounts and generates nothing new", async () => {
-    const vault = new SelfApolloVault(store());
-    const first = await vault.ensureGenerated();
-    expect(first.standardAccount).not.toBeNull();
-    expect(first.smartAccount).not.toBeNull();
+/**
+ * Builds real, independently-generated Standard + Smart Apollo accounts
+ * (mirrors `codexApolloSigner.test.ts`'s own `seedRealAccount`
+ * fixture-building approach — genuine keypairs via `Apollo.generateRandom()`,
+ * encrypted via `encryptStringV2`, real `originMode`/`originCurve` fields
+ * Codex needs to re-derive). Deliberately TWO independent `generateRandom()`
+ * calls, never one call's two address forms off a single keypair — Pythia's
+ * own standard + smart accounts are a genuinely unrelated pair, matching
+ * `design.md`'s own accounts shape. Seeds `c`'s snapshot with only whichever
+ * of `which` are requested (default: both) — a caller can request just one
+ * half seeded while still getting BOTH accounts' addresses back, to build a
+ * well-formed-but-not-codex-held half for the "missing half" tests.
+ */
+async function seedCodexWithHalves(
+  c: CodexStore,
+  which: readonly ("standard" | "smart")[] = ["standard", "smart"],
+): Promise<{ standardAccount: string; smartAccount: string; standardPublicKey: string; smartPublicKey: string }> {
+  const registry = await import("@ouronet/dalos-crypto/registry");
+  const codexPassword = c.getOrCreateCodexPassword();
 
-    const registry = await import("@ouronet/dalos-crypto/registry");
-    const spy = vi.spyOn(registry.Apollo, "generateRandom");
+  const standardFull = registry.Apollo.generateRandom();
+  const smartFull = registry.Apollo.generateRandom();
 
-    const second = await vault.ensureGenerated();
-    expect(second).toEqual(first);
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
-  });
+  const accounts: IOuroAccount[] = [];
+  if (which.includes("standard")) {
+    accounts.push({
+      id: "test-self-standard",
+      version: "1.0",
+      isSmart: false,
+      address: standardFull.standardAddress,
+      guard: null,
+      stoaChainLedger: null,
+      publicKey: standardFull.keyPair.publ,
+      secret: await encryptStringV2(standardFull.privateKey.bitString, codexPassword),
+      backup: "",
+      originMode: "bitString",
+      originCurve: "apollo",
+    });
+  }
+  if (which.includes("smart")) {
+    accounts.push({
+      id: "test-self-smart",
+      version: "1.0",
+      isSmart: true,
+      address: smartFull.smartAddress,
+      guard: null,
+      stoaChainLedger: null,
+      publicKey: smartFull.keyPair.publ,
+      secret: await encryptStringV2(smartFull.privateKey.bitString, codexPassword),
+      backup: "",
+      originMode: "bitString",
+      originCurve: "apollo",
+    });
+  }
+  c.saveBackup(JSON.stringify({ ouroAccounts: accounts }));
 
-  it("concurrent calls share ONE generation — never race to independently mint + overwrite a half's keypair (regression: HIGH concurrency-race fix)", async () => {
-    // Two near-simultaneous calls (e.g. a double-click on the admin
-    // "Generate" button, or two admin tabs) must never each observe
-    // "not yet generated" and independently call Apollo.generateRandom(),
-    // with the second silently clobbering the first's sealed entry — that
-    // would orphan whichever account string the LOSING response displayed
-    // (the one an admin might already be about to pay real on-chain STOA to
-    // register).
-    const vault = new SelfApolloVault(store());
-    const registry = await import("@ouronet/dalos-crypto/registry");
-    const spy = vi.spyOn(registry.Apollo, "generateRandom");
+  return {
+    standardAccount: standardFull.standardAddress,
+    smartAccount: smartFull.smartAddress,
+    standardPublicKey: standardFull.keyPair.publ,
+    smartPublicKey: smartFull.keyPair.publ,
+  };
+}
 
-    const [a, b] = await Promise.all([
-      vault.ensureGenerated(),
-      vault.ensureGenerated(),
-    ]);
+const seedCodexWithRealPair = (c: CodexStore) => seedCodexWithHalves(c, ["standard", "smart"]);
 
-    expect(a).toEqual(b);
-    // Exactly one generation per half (standard + smart), not two.
-    expect(spy).toHaveBeenCalledTimes(2);
-    spy.mockRestore();
-  });
-
-  it("a failed in-flight generation does not wedge a later, separate attempt", async () => {
-    const vault = new SelfApolloVault(store());
-    const registry = await import("@ouronet/dalos-crypto/registry");
-    const spy = vi
-      .spyOn(registry.Apollo, "generateRandom")
-      .mockImplementationOnce(() => {
-        throw new Error("simulated generation failure");
-      });
-
-    await expect(vault.ensureGenerated()).rejects.toThrow(
-      "simulated generation failure",
-    );
-    spy.mockRestore();
-
-    const result = await vault.ensureGenerated();
-    expect(result.standardAccount).not.toBeNull();
-    expect(result.smartAccount).not.toBeNull();
-  });
-
-  it("produces a standardAccount recognized as ₱. and a smartAccount recognized as Π.", async () => {
-    const vault = new SelfApolloVault(store());
-    const { standardAccount, smartAccount } = await vault.ensureGenerated();
-    expect(isStandardApollo(standardAccount!)).toBe(true);
-    expect(isSmartApollo(smartAccount!)).toBe(true);
-  });
-
-  it("generates only the missing half when one already exists, leaving the existing half's sealed bytes untouched", async () => {
-    const s = store();
-    const seedVault = new SelfApolloVault(s);
-    // Seed ONLY the standard half directly via a fresh vault, then discard its
-    // smart entry so only "self-apollo-standard" exists on disk.
-    await seedVault.ensureGenerated();
-    s.delete("self-apollo-smart");
-    expect(s.has("self-apollo-standard")).toBe(true);
-    expect(s.has("self-apollo-smart")).toBe(false);
-
-    const before = readFileSync(join(dir, "self-apollo-standard.sealed"));
-    const standardAccountBefore = seedVault.standardAccount();
-
-    const vault = new SelfApolloVault(s);
-    const result = await vault.ensureGenerated();
-
-    const after = readFileSync(join(dir, "self-apollo-standard.sealed"));
-    expect(after).toEqual(before); // byte-identical — never re-sealed
-    expect(result.standardAccount).toBe(standardAccountBefore);
-    expect(result.smartAccount).not.toBeNull();
-    expect(isSmartApollo(result.smartAccount!)).toBe(true);
-  });
-});
+function keyFor(pair: { standardAccount: string; smartAccount: string }): string {
+  return `${pair.standardAccount}${DUAL_LINK_BAR}${pair.smartAccount}`;
+}
 
 describe("SelfApolloVault — accessors", () => {
-  it("standardAccount()/smartAccount() are null before generation", () => {
-    const vault = new SelfApolloVault(store());
+  it("standardAccount()/smartAccount()/dualLinkKey() are all null before any setDualLinkKey call", () => {
+    const vault = new SelfApolloVault(store(), codex());
     expect(vault.standardAccount()).toBeNull();
     expect(vault.smartAccount()).toBeNull();
-  });
-
-  it("standardAccount()/smartAccount() read back the generated accounts", async () => {
-    const vault = new SelfApolloVault(store());
-    const { standardAccount, smartAccount } = await vault.ensureGenerated();
-    expect(vault.standardAccount()).toBe(standardAccount);
-    expect(vault.smartAccount()).toBe(smartAccount);
-  });
-});
-
-describe("SelfApolloVault — createSigner", () => {
-  it("a signature from the standard signer round-trips through the real apolloVerify", async () => {
-    const vault = new SelfApolloVault(store());
-    const { standardAccount } = await vault.ensureGenerated();
-    const signer = vault.createSigner("standard");
-    const { signature } = await signer.sign({
-      apolloAccount: standardAccount!,
-      nonce: "some-nonce",
-      rp: "pythia.ancientholdings.eu",
-    });
-
-    const registry = await import("@ouronet/dalos-crypto/registry");
-    const raw = JSON.parse(store().get("self-apollo-standard")!) as { publ: string };
-    const message = buildChallengeMessage({
-      apollo: standardAccount!,
-      nonce: "some-nonce",
-      rp: "pythia.ancientholdings.eu",
-    });
-    expect(registry.Apollo.verify?.(signature, message, raw.publ)).toBe(true);
-
-    const ok = await apolloVerify(signature, message, raw.publ);
-    expect(ok).toBe(true);
-  });
-
-  it("a signature from the smart signer round-trips through the real apolloVerify", async () => {
-    const vault = new SelfApolloVault(store());
-    const { smartAccount } = await vault.ensureGenerated();
-    const signer = vault.createSigner("smart");
-    const { signature } = await signer.sign({
-      apolloAccount: smartAccount!,
-      nonce: "another-nonce",
-      rp: "pythia.ancientholdings.eu",
-    });
-
-    const raw = JSON.parse(store().get("self-apollo-smart")!) as { publ: string };
-    const message = buildChallengeMessage({
-      apollo: smartAccount!,
-      nonce: "another-nonce",
-      rp: "pythia.ancientholdings.eu",
-    });
-    const ok = await apolloVerify(signature, message, raw.publ);
-    expect(ok).toBe(true);
-  });
-
-  it("a signer asked to sign for the OTHER half's account rejects up front (regression: LOW cross-check fix) — never silently signs a message that would fail to verify anyway", async () => {
-    const vault = new SelfApolloVault(store());
-    const { standardAccount, smartAccount } = await vault.ensureGenerated();
-    const signer = vault.createSigner("standard");
-    await expect(
-      signer.sign({ apolloAccount: smartAccount!, nonce: "cross-nonce", rp: "pythia.ancientholdings.eu" }),
-    ).rejects.toThrow(/asked to sign for .* but the "standard" half holds/);
-    // Sanity: the SAME signer signing for its OWN account still works.
-    await expect(
-      signer.sign({ apolloAccount: standardAccount!, nonce: "cross-nonce", rp: "pythia.ancientholdings.eu" }),
-    ).resolves.toEqual({ signature: expect.any(String) });
-  });
-
-  it("signing with a not-yet-generated half rejects with a clear, specific message instead of signing garbage", async () => {
-    const vault = new SelfApolloVault(store());
-    const signer = vault.createSigner("standard");
-    await expect(
-      signer.sign({ apolloAccount: "₱.whatever", nonce: "n", rp: "pythia.ancientholdings.eu" }),
-    ).rejects.toThrow(/the "standard" half has not been generated yet/);
-  });
-});
-
-describe("SelfApolloVault — dualLinkKey", () => {
-  it("dualLinkKey() is null before any setDualLinkKey call", async () => {
-    const vault = new SelfApolloVault(store());
-    await vault.ensureGenerated();
     expect(vault.dualLinkKey()).toBeNull();
   });
 
-  it("setDualLinkKey with a well-formed key whose halves exactly match the vault's own generated accounts succeeds, and dualLinkKey() then returns that exact key", async () => {
-    const vault = new SelfApolloVault(store());
-    const { standardAccount, smartAccount } = await vault.ensureGenerated();
-    const key = `${standardAccount}${DUAL_LINK_BAR}${smartAccount}`;
+  it("after setDualLinkKey with both halves held by the codex, dualLinkKey()/standardAccount()/smartAccount() all return the expected derived values", async () => {
+    const c = codex();
+    const pair = await seedCodexWithRealPair(c);
+    const vault = new SelfApolloVault(store(), c);
 
-    vault.setDualLinkKey(key);
+    vault.setDualLinkKey(keyFor(pair));
 
-    expect(vault.dualLinkKey()).toBe(key);
+    expect(vault.dualLinkKey()).toBe(keyFor(pair));
+    expect(vault.standardAccount()).toBe(pair.standardAccount);
+    expect(vault.smartAccount()).toBe(pair.smartAccount);
   });
+});
 
-  it("setDualLinkKey with a malformed key (wrong length) throws PythiaConnectorValidationError and dualLinkKey() remains null afterward", async () => {
-    const vault = new SelfApolloVault(store());
-    await vault.ensureGenerated();
-
+describe("SelfApolloVault — setDualLinkKey", () => {
+  it("a malformed key (wrong length) still throws PythiaConnectorValidationError, unchanged from before this redesign", () => {
+    const vault = new SelfApolloVault(store(), codex());
     expect(() => vault.setDualLinkKey("too-short")).toThrow(PythiaConnectorValidationError);
     expect(vault.dualLinkKey()).toBeNull();
   });
 
-  it("setDualLinkKey with a well-formed key whose standard half does NOT match the vault's own generated standard account throws an Error naming which half, and dualLinkKey() remains null afterward", async () => {
-    const vault = new SelfApolloVault(store());
-    const { smartAccount } = await vault.ensureGenerated();
+  it("a well-formed key whose standard half is NOT held by the codex throws mentioning 'not held by Pythia's own Codex' AND 'standard', and dualLinkKey() stays null", async () => {
+    const c = codex();
+    const pair = await seedCodexWithHalves(c, ["smart"]); // only the smart half is actually seeded
+    const vault = new SelfApolloVault(store(), c);
 
-    // An independently-generated OTHER vault's standard half — well-formed
-    // (real ₱. account, correct length), just not THIS vault's own. A
-    // genuinely SEPARATE sealed-store directory is essential here: reusing
-    // `store()` (same `dir`) would make `otherVault.ensureGenerated()` see
-    // the SAME already-sealed entries `vault` just created and hand back the
-    // SAME accounts (idempotent by design), silently defeating this
-    // fixture's whole point.
-    const otherDir = mkdtempSync(join(tmpdir(), "pythia-selfapollo-other-"));
-    const otherVault = new SelfApolloVault(
-      new SealedStore({ dir: otherDir, keyProvider: () => parseMasterKey(KEY) }),
-    );
-    const { standardAccount: otherStandardAccount } = await otherVault.ensureGenerated();
-    rmSync(otherDir, { recursive: true, force: true });
-
-    // Joined with THIS vault's OWN real smart half — proving the check is
-    // per-half, not just "any mismatch anywhere" (the smart half here DOES
-    // match; only the standard half is wrong).
-    const key = `${otherStandardAccount}${DUAL_LINK_BAR}${smartAccount}`;
-
-    // Tightened past a bare /does not match/: a regression that swapped the
-    // two throw branches (e.g. always naming "smart" regardless of which
-    // half actually mismatched) would still satisfy that looser regex —
-    // assert the message names the SPECIFIC failing half.
-    expect(() => vault.setDualLinkKey(key)).toThrow(/does not match/);
-    expect(() => vault.setDualLinkKey(key)).toThrow(/standard/);
+    expect(() => vault.setDualLinkKey(keyFor(pair))).toThrow(/not held by Pythia's own Codex/);
+    expect(() => vault.setDualLinkKey(keyFor(pair))).toThrow(/standard/);
     expect(vault.dualLinkKey()).toBeNull();
   });
 
-  it("setDualLinkKey with a well-formed key whose SMART half does NOT match the vault's own generated smart account throws an Error naming the smart half specifically, and dualLinkKey() remains null afterward", async () => {
-    // Mirrors the standard-half test above — the two throw branches in
-    // setDualLinkKey are independent, and a regression could break either
-    // one without the other test catching it.
-    const vault = new SelfApolloVault(store());
-    const { standardAccount } = await vault.ensureGenerated();
+  it("a well-formed key whose SMART half is NOT held by the codex throws mentioning 'not held by Pythia's own Codex' AND 'smart', and dualLinkKey() stays null", async () => {
+    const c = codex();
+    const pair = await seedCodexWithHalves(c, ["standard"]); // only the standard half is actually seeded
+    const vault = new SelfApolloVault(store(), c);
 
-    const otherDir = mkdtempSync(join(tmpdir(), "pythia-selfapollo-other-smart-"));
-    const otherVault = new SelfApolloVault(
-      new SealedStore({ dir: otherDir, keyProvider: () => parseMasterKey(KEY) }),
-    );
-    const { smartAccount: otherSmartAccount } = await otherVault.ensureGenerated();
-    rmSync(otherDir, { recursive: true, force: true });
-
-    // Joined with THIS vault's OWN real standard half — the standard half
-    // here DOES match; only the smart half is wrong.
-    const key = `${standardAccount}${DUAL_LINK_BAR}${otherSmartAccount}`;
-
-    expect(() => vault.setDualLinkKey(key)).toThrow(/does not match/);
-    expect(() => vault.setDualLinkKey(key)).toThrow(/smart/);
+    expect(() => vault.setDualLinkKey(keyFor(pair))).toThrow(/not held by Pythia's own Codex/);
+    expect(() => vault.setDualLinkKey(keyFor(pair))).toThrow(/smart/);
     expect(vault.dualLinkKey()).toBeNull();
+  });
+});
+
+describe("SelfApolloVault — createSigner", () => {
+  it("signing before any setDualLinkKey call rejects with a message containing 'no dual-link-key set'", async () => {
+    const vault = new SelfApolloVault(store(), codex());
+    const signer = vault.createSigner("standard");
+    await expect(
+      signer.sign({ apolloAccount: "₱.whatever", nonce: "n", rp: "pythia.ancientholdings.eu" }),
+    ).rejects.toThrow(/no dual-link-key set/);
+  });
+
+  it("after setDualLinkKey with a real, codex-held pair, the standard signer produces a signature that independently verifies via Apollo.verify against the seeded keypair — a REAL round trip, not a mock", async () => {
+    const c = codex();
+    const pair = await seedCodexWithRealPair(c);
+    const vault = new SelfApolloVault(store(), c);
+    vault.setDualLinkKey(keyFor(pair));
+
+    const signer = vault.createSigner("standard");
+    const { signature } = await signer.sign({
+      apolloAccount: pair.standardAccount,
+      nonce: "n",
+      rp: "pythia.ancientholdings.eu",
+    });
+    expect(signature).toEqual(expect.any(String));
+
+    const registry = await import("@ouronet/dalos-crypto/registry");
+    const message = buildChallengeMessage({ apollo: pair.standardAccount, nonce: "n", rp: "pythia.ancientholdings.eu" });
+    expect(registry.Apollo.verify?.(signature, message, pair.standardPublicKey)).toBe(true);
+  });
+
+  it("after setDualLinkKey with a real, codex-held pair, the smart signer produces a signature that independently verifies via Apollo.verify against the seeded keypair", async () => {
+    const c = codex();
+    const pair = await seedCodexWithRealPair(c);
+    const vault = new SelfApolloVault(store(), c);
+    vault.setDualLinkKey(keyFor(pair));
+
+    const signer = vault.createSigner("smart");
+    const { signature } = await signer.sign({
+      apolloAccount: pair.smartAccount,
+      nonce: "n2",
+      rp: "pythia.ancientholdings.eu",
+    });
+
+    const registry = await import("@ouronet/dalos-crypto/registry");
+    const message = buildChallengeMessage({ apollo: pair.smartAccount, nonce: "n2", rp: "pythia.ancientholdings.eu" });
+    expect(registry.Apollo.verify?.(signature, message, pair.smartPublicKey)).toBe(true);
   });
 });

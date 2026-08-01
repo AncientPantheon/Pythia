@@ -257,7 +257,7 @@ export const pendingActivationTracker = new PendingActivationTracker();
 // (`selfConnectorLoop.ts`) that talks to Pythia's OWN routes in-process — never
 // a real network hairpin — via `createInProcessFetch(app)` below. `app` and
 // `sealedVault` are both already constructed above this point.
-export const selfApolloVault = new SelfApolloVault(sealedVault);
+export const selfApolloVault = new SelfApolloVault(sealedVault, codexStore);
 export const selfConnectorLoop = new SelfConnectorLoop({
   baseUrl: "http://pythia.self",
   fetchImpl: createInProcessFetch(app),
@@ -425,8 +425,9 @@ ephemeralKeyStore.start();
 pendingActivationTracker.start();
 
 // Begin Pythia's own self-connector refresh loop (see `selfApolloVault`/
-// `selfConnectorLoop` above) — a no-op tick for either half until its
-// keypair has been generated via the admin "Self Connector" panel.
+// `selfConnectorLoop` above) — a no-op tick for either half until a
+// dual-link-key (generated + activated via the admin "Codex" tab) has been
+// pasted into the admin "Self Connector" panel.
 selfConnectorLoop.start();
 
 // The human admin surface (connector manager) is gated on the AncientHoldings
@@ -435,9 +436,9 @@ selfConnectorLoop.start();
 // Registered before the static catch-all so `/admin/*` is not shadowed.
 // Computes the admin "Self Connector" panel's status from the two live
 // pieces above (`selfApolloVault` + `selfConnectorLoop`) — a named local
-// function so `status()`, `generate()`, and `link()` in the extras object
-// below can all call it without any of them referring back into the object
-// being constructed. Maps each half's `SelfConnectorHalfStatus` (from the
+// function so `status()` and `link()` in the extras object below can both
+// call it without either referring back into the object being constructed.
+// Maps each half's `SelfConnectorHalfStatus` (from the
 // now `DualLinkConnector`-backed loop — see docs/work/self-connector-dual-link)
 // onto the admin-facing `SelfConnectorHalfView`, masking the secret rather
 // than shipping it raw — mirrors `admin/routes.test.ts`'s already-tested
@@ -511,13 +512,9 @@ if (oidcConfig) {
       },
     },
     // The "Self Connector" panel: Pythia's own dual-Apollo identity — read
-    // status, or (idempotently) generate the underlying keypairs.
+    // status, or link a dual-link-key generated + activated via the Codex tab.
     selfConnector: {
       status: () => selfConnectorStatus(),
-      generate: async () => {
-        await selfApolloVault.ensureGenerated();
-        return selfConnectorStatus();
-      },
       link: async (dualLinkKey: string) => {
         selfApolloVault.setDualLinkKey(dualLinkKey);
         return selfConnectorStatus();

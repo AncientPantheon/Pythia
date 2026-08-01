@@ -1719,15 +1719,16 @@ function wireSecurity() {
 }
 
 // ── Self Connector (Pythia's own dual-Apollo Standard + Smart account pair) ───
-// The two halves' generation state → badge text/class, mirroring securityView()'s
+// The two halves' linkage state → badge text/class, mirroring securityView()'s
 // state→badge mapping. `half` is a SelfConnectorHalfView-shaped object:
-// {state, maskedSecret, expiresAt}.
+// {state, maskedSecret, expiresAt}. Generation itself happens in the Codex
+// tab, not here — this panel only ever reflects whether a dual-link-key has
+// been pasted and, if so, how far along it is.
 function selfConnectorHalfView(half) {
   const state = half && half.state;
   if (state === "active") return { cls: "sec-badge--sealed", text: "Active" };
   if (state === "pending") return { cls: "sec-badge--warn", text: "Pending" };
-  if (state === "not-linked") return { cls: "sec-badge--warn", text: "Not linked" };
-  return { cls: "sec-badge--warn", text: "Not generated" };
+  return { cls: "sec-badge--warn", text: "Not linked" };
 }
 
 // Renders a countdown-to-expiry string off a millisecond delta: "23h 58m" for
@@ -1760,7 +1761,6 @@ function renderSelfConnector(st) {
   const smartBadge = document.getElementById("selfconn-smart-badge");
   const smartAccount = document.getElementById("selfconn-smart-account");
   const smartSecret = document.getElementById("selfconn-smart-secret");
-  const generateBtn = document.getElementById("selfconn-generate-btn");
 
   const standardView = selfConnectorHalfView(st.standard);
   if (standardBadge) {
@@ -1768,7 +1768,7 @@ function renderSelfConnector(st) {
     standardBadge.className = "sec-badge " + standardView.cls;
   }
   if (standardAccount) {
-    standardAccount.textContent = st.standardAccount || "not yet generated";
+    standardAccount.textContent = st.standardAccount || "not yet linked";
   }
   if (standardSecret) {
     standardSecret.textContent =
@@ -1783,19 +1783,13 @@ function renderSelfConnector(st) {
     smartBadge.className = "sec-badge " + smartView.cls;
   }
   if (smartAccount) {
-    smartAccount.textContent = st.smartAccount || "not yet generated";
+    smartAccount.textContent = st.smartAccount || "not yet linked";
   }
   if (smartSecret) {
     smartSecret.textContent =
       st.smart.state === "active"
         ? `${st.smart.maskedSecret} — expires in ${formatCountdown(st.smart.expiresAt - Date.now())}`
         : "";
-  }
-
-  // Nothing left to generate once both halves exist — regeneration is intentionally
-  // not supported, so the button just disappears rather than staying inert.
-  if (generateBtn) {
-    generateBtn.hidden = st.standard.state !== "not-generated" && st.smart.state !== "not-generated";
   }
 }
 
@@ -1836,46 +1830,13 @@ function wireSelfConnector() {
     if (st) renderSelfConnector(st);
   }, 1000);
 
-  const generateBtn = document.getElementById("selfconn-generate-btn");
-  const generateErr = document.getElementById("selfconn-generate-error");
-  if (generateBtn) {
-    generateBtn.addEventListener("click", async () => {
-      if (generateErr) generateErr.hidden = true;
-      // Disable IMMEDIATELY on click, before the request is even sent — a
-      // double-click or a second browser tab firing this same POST while the
-      // first is still in flight can race the server's own generation (both
-      // requests observing "not yet generated" before either writes), silently
-      // orphaning whichever account the losing response displayed (that string
-      // is what the admin would otherwise go pay real on-chain STOA to
-      // register). The server-side fix is the real guarantee (see
-      // SelfApolloVault.ensureGenerated's in-flight memoization); this is
-      // belt-and-suspenders so the UI itself can't even offer the race.
-      generateBtn.disabled = true;
-      try {
-        const res = await fetch("/admin/self-connector/generate", {
-          method: "POST",
-          headers: { accept: "application/json" },
-        });
-        if (!res.ok) {
-          if (generateErr) { generateErr.textContent = "Generate failed — is your ancient session still valid?"; generateErr.hidden = false; }
-          return;
-        }
-        renderSelfConnector(await res.json());
-      } catch {
-        if (generateErr) { generateErr.textContent = "Network error."; generateErr.hidden = false; }
-      } finally {
-        generateBtn.disabled = false;
-      }
-    });
-  }
-
   const linkBtn = document.getElementById("selfconn-link-btn");
   const linkInput = document.getElementById("selfconn-link-input");
   const linkErr = document.getElementById("selfconn-link-error");
   if (linkBtn) {
     linkBtn.addEventListener("click", async () => {
       if (linkErr) linkErr.hidden = true;
-      // Same immediate-disable rationale as the Generate button above — a
+      // Disable IMMEDIATELY on click, before the request is even sent — a
       // second click (or tab) while the first link POST is still in flight
       // shouldn't be able to race it.
       linkBtn.disabled = true;

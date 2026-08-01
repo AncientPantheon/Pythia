@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.0 — 2026-08-01
+
+Version alignment: the client jumps from `2.6.0` to `2.7.0` to align with the unified Pythia
+service version line. This release is service-side only (Pythia's self-connector signing now
+routes through her own Codex instead of generating locally — see `CHANGELOG.md` at the repo root)
+— no changes to this package's own source, API surface, or behavior.
+
 ## 2.6.0 — 2026-08-01
 
 - **Added: `maskSecret(secret)`** — a tiny, pure, dependency-free helper that masks an ephemeral
