@@ -9,6 +9,19 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.1] — 2026-08-01
+
+### Fixed — flaky CI in `selfConnectorLoop.test.ts`'s real-timer tests
+
+`v2.7.0`'s tag push failed both `publish.yml` and `image.yml` at the test gate (never reached the
+actual publish/push step — confirmed neither artifact was published) — two different tests in
+`SelfConnectorLoop — start()/stop()` each under-counted verify calls by exactly one, in two
+separate CI runs. Root cause: those tests deliberately use real timers + a real Codex-backed sign
+round trip (not stubbed), and `vi.waitFor`'s default 1000ms timeout didn't leave enough margin for
+two genuine `smartDecrypt` KDF calls to complete on a slower/shared CI runner — a timing-budget gap,
+not a logic bug (passed reliably, repeatedly, locally). Fixed by giving every `vi.waitFor` in that
+describe block an explicit, generous `{ timeout: 5000 }`. No production code changed.
+
 ## [2.7.0] — 2026-08-01
 
 ### Changed — Pythia's self-connector signing now routes through her own Codex, never generates locally

@@ -342,6 +342,15 @@ describe("SelfConnectorLoop — start()/stop()", () => {
   // own convention for "fire-and-forget, don't assume instant settlement" —
   // see `selfConnectorIntegration.test.ts`) waits for the ACTUAL async chain
   // to finish instead of a simulated clock.
+  //
+  // CI-flakiness fix (confirmed via two real GH Actions failures, tagging
+  // v2.7.0: two DIFFERENT tests in this block each under-counted verifyCalls
+  // by exactly one — not a logic bug, a timing-budget one): `vi.waitFor`'s
+  // default 1000ms timeout doesn't leave enough margin for TWO real signing
+  // round trips (standard + smart, each a genuine `smartDecrypt` KDF call)
+  // to complete on a slower/shared CI runner. Every `vi.waitFor` below now
+  // passes an explicit, generous `{ timeout: 5000 }`.
+  const WAIT_FOR_REAL_SIGNING = { timeout: 5000 };
 
   it("start() drives tick()-work on the interval; stop() halts further ticks", async () => {
     const c = codex();
@@ -361,7 +370,7 @@ describe("SelfConnectorLoop — start()/stop()", () => {
 
     await vi.waitFor(() => {
       expect(verifyCalls.length).toBeGreaterThan(0);
-    });
+    }, WAIT_FOR_REAL_SIGNING);
     const countAfterFirstTick = verifyCalls.length;
 
     loop.stop();
@@ -389,7 +398,7 @@ describe("SelfConnectorLoop — start()/stop()", () => {
     // 2 halves x 2 concurrent ticks); one timer fires it once (2 halves).
     await vi.waitFor(() => {
       expect(verifyCalls.length).toBeGreaterThanOrEqual(2);
-    });
+    }, WAIT_FOR_REAL_SIGNING);
     await new Promise((resolve) => setTimeout(resolve, 150)); // real wait — a doubled timer would keep piling up extra calls
     expect(verifyCalls.length).toBe(2);
     loop.stop();
@@ -420,7 +429,7 @@ describe("SelfConnectorLoop — start()/stop()", () => {
     loop.start();
     await vi.waitFor(() => {
       expect(verifyCalls.length).toBe(2); // both halves go active on the first tick
-    });
+    }, WAIT_FOR_REAL_SIGNING);
     const countAfterFirstTick = verifyCalls.length;
 
     await new Promise((resolve) => setTimeout(resolve, 150)); // several more real interval firings — well within the 3h secret's refresh margin
