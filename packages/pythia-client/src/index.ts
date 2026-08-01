@@ -33,3 +33,12 @@ export {
 } from "./connectorErrors.js";
 export { InMemorySecretStorage } from "./secretStorage.js";
 export type { SecretStorage } from "./secretStorage.js";
+
+export { splitDualLinkKey } from "./dualLinkKey.js";
+export type { DualLinkHalves } from "./dualLinkKey.js";
+export { DualLinkConnector } from "./dualLinkConnector.js";
+export type {
+  DualLinkConnectorOptions,
+  DualLinkStatus,
+  DualLinkHalfStatus,
+} from "./dualLinkConnector.js";

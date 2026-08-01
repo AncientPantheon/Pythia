@@ -9,6 +9,32 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.5.0] — 2026-08-01
+
+### Added — `@ancientpantheon/pythia-client` gains `splitDualLinkKey` + `DualLinkConnector`
+
+A consumer that already has a dual-Apollo pair active on-chain (via Codex + either a raw `C_Link`
+or Pythia's own browser Link-verify flow) has, in hand, exactly one thing worth pasting into a
+settings field: the on-chain `dual-link-key` (`<standard-apollo>|<smart-apollo>`, the literal
+`PYTHIA|T|DualLinks` table key, 325 chars). Splitting it and orchestrating the resulting two
+`PythiaConnector`s into one usable, displayable thing existed only as private code inside the
+Pythia service itself — every other consumer was left to reimplement this from scratch, which
+already went wrong once when another consumer tried. See
+`docs/work/pythia-client-dual-link-sdk/{design,plan}.md` for the full rationale.
+
+- **`splitDualLinkKey(dualLinkKey)`** — validates and splits the composite key into its
+  `standardApollo`/`smartApollo` halves, throwing `PythiaConnectorValidationError` with a message
+  naming the specific problem (wrong length, missing/misplaced separator, a half not shaped like a
+  valid Apollo account) rather than silently slicing malformed input.
+- **`DualLinkConnector`** — a reusable class that, given a `dualLinkKey` plus one `ApolloSigner` per
+  half, drives both halves' proof/refresh round trips on a schedule (with per-half error isolation)
+  and reports one unified `status()`: both halves' individual state, plus a single live
+  `secret`/`expiresAt` a consumer can use directly. Also exposes `keyProvider()` for direct
+  `PythiaClientOptions.pythiaKey` wiring — the reusable primitive any consumer needs to actually USE
+  an already-active on-chain dual-Apollo identity, without re-deriving this logic from scratch.
+
+No removals, no breaking changes to any existing export.
+
 ## [2.4.3] — 2026-08-01
 
 ### Fixed — the actual on-box deploy failure: `Dockerfile`'s runtime stage silently dropped two organs

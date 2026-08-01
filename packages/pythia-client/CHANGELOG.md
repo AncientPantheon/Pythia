@@ -2,6 +2,33 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.5.0 — 2026-08-01
+
+- **Added: `splitDualLinkKey`** — validates and splits a composite on-chain `dual-link-key`
+  (`<standard-apollo>|<smart-apollo>`, the literal `PYTHIA|T|DualLinks` table key, 325 chars) into
+  its two Apollo-account halves. A straight port of the existing, already-tested logic private to
+  the Pythia service, now published for any consumer that has a pasted-in `dual-link-key` to work
+  with. Throws `PythiaConnectorValidationError` (the existing "caller/environment input problem"
+  class — reused, not a new taxonomy branch) with a message naming the specific problem: wrong
+  total length, a missing/misplaced separator, or a half that doesn't start with the expected ₱/Π
+  codepoint — genuinely useful to show a human in a settings-form validation flow, not a generic
+  "invalid input."
+- **Added: `DualLinkConnector`** — the class-shaped generalization of the Pythia service's own
+  `SelfConnectorLoop` pattern for an arbitrary already-active dual-link pair. Constructed with a
+  `dualLinkKey` (split — and validated — at construction time, so a malformed key fails fast,
+  before any network call) plus a signer for each half, it holds two internal `PythiaConnector`s,
+  ticks both on a schedule with per-half error isolation, and reports one usable `status()`: both
+  halves' individual state, plus a single `secret`/`expiresAt` — whichever half currently has an
+  active secret, since the gate never cares which half issued it. Also exposes `keyProvider()`
+  mirroring `PythiaConnector`'s own, for direct `PythiaClientOptions.pythiaKey` wiring. Composes two
+  real `PythiaConnector` instances internally rather than reimplementing the challenge/verify round
+  trip, so every fix/behavior `PythiaConnector` already has (in-flight-refresh dedup, the full typed
+  error mapping, refresh-margin caching) is inherited for free.
+- This is the reusable primitive any consumer — not just Pythia's own self-connector — needs to
+  actually USE an already-active on-chain dual-Apollo identity, without re-deriving this logic from
+  scratch. See `docs/work/pythia-client-dual-link-sdk/{design,plan}.md`.
+- No removals, no breaking changes to any existing export.
+
 ## 2.4.3 — 2026-08-01
 
 Version alignment: the client jumps from `2.4.2` to `2.4.3` to align with the unified Pythia

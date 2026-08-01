@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.4.3` on public npmjs — proprietary release, all rights reserved (see
+`2.5.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -28,8 +28,12 @@ and mirrors the service error taxonomy as client-side typed errors
 `PythiaConnector` — the consumer-side orchestrator for Pythia's headless
 connector-auth protocol, holding no key material of its own (it signs through
 an injected `ApolloSigner` and persists through an injected `SecretStorage`) —
-with its own `PythiaConnectorError` taxonomy. The package carries **no runtime
-dependencies** — it rests only on the runtime `fetch` and its own types.
+with its own `PythiaConnectorError` taxonomy. Also ships `splitDualLinkKey`
+(validates + splits an on-chain `dual-link-key` into its two Apollo-account
+halves) and `DualLinkConnector` (drives both halves of an already-active
+dual-Apollo pair on a schedule, reporting one unified status). The package
+carries **no runtime dependencies** — it rests only on the runtime `fetch` and
+its own types.
 
 ## Usage
 
@@ -87,6 +91,35 @@ const gatedRead = await client.read({ code: "(coin.get-balance \"k:abc\")" });
 if your account's ownership is proven but its dual link isn't active on-chain
 yet — call it again later once activation lands.
 
+### Dual-link connector (an already-active dual-Apollo pair)
+
+If you already have a dual-Apollo pair active on-chain and hold the composite
+`dual-link-key` (`<standard-apollo>|<smart-apollo>`, 325 chars), `DualLinkConnector`
+drives both halves' proof/refresh round trips for you and reports one unified,
+auto-refreshing secret:
+
+```ts
+import { PythiaClient, DualLinkConnector } from "@ancientpantheon/pythia-client";
+
+const dualLink = new DualLinkConnector({
+  baseUrl: "https://pythia.ancientholdings.eu",
+  dualLinkKey: "₱...|Π...", // your on-chain PYTHIA|T|DualLinks composite key
+  standardSigner,
+  smartSigner,
+});
+
+const client = new PythiaClient({
+  baseUrl: "https://pythia.ancientholdings.eu",
+  pythiaKey: dualLink.keyProvider(),
+});
+
+const gatedRead = await client.read({ code: "(coin.get-balance \"k:abc\")" });
+```
+
+`dualLink.status()` reports both halves' individual state plus the single
+`secret`/`expiresAt` currently in use — whichever half is active first, since
+the gate never cares which half issued it.
+
 ## Install
 
 ```sh
@@ -94,6 +127,17 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.5.0** — adds `splitDualLinkKey` (validates + splits an on-chain `dual-link-key` —
+`<standard-apollo>|<smart-apollo>`, the literal `PYTHIA|T|DualLinks` table key, 325 chars — into its
+two Apollo-account halves, throwing `PythiaConnectorValidationError` naming the specific problem on
+malformed input) and `DualLinkConnector` (the class-shaped generalization of the service's own
+`SelfConnectorLoop` pattern: given a `dualLinkKey` plus a signer per half, drives both halves'
+proof/refresh round trips on a schedule with per-half error isolation, and reports one unified
+`status()` — both halves' state plus a single live `secret`/`expiresAt` — with a `keyProvider()` for
+direct `PythiaClientOptions.pythiaKey` wiring). The reusable primitive any consumer needs to
+actually USE an already-active on-chain dual-Apollo identity. No removals, no breaking changes to
+any existing export.
 
 **v2.4.3** — version alignment: jumps from `2.4.2` to `2.4.3` to align with the unified Pythia
 service version line. Fixes the actual on-box deploy failure (a `Dockerfile` runtime-stage bug) —
