@@ -517,6 +517,16 @@ if (oidcConfig) {
       status: () => selfConnectorStatus(),
       link: async (dualLinkKey: string) => {
         selfApolloVault.setDualLinkKey(dualLinkKey);
+        // Drive an IMMEDIATE tick rather than leaving the admin staring at
+        // "not-linked" until the next scheduled interval fires — for
+        // Pythia's own self-connector that's up to 24h away (see
+        // selfConnectorLoop.ts's DEFAULT_INTERVAL_MS). tick() never throws
+        // (DualLinkConnector isolates each half's own failure internally,
+        // and the construction try/catch here is itself defended), so this
+        // is safe to await directly — a real, current attempt against the
+        // actual chain state is exactly what "Link" should mean to an
+        // admin who just pasted a key.
+        await selfConnectorLoop.tick();
         return selfConnectorStatus();
       },
     },

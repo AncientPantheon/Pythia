@@ -331,6 +331,10 @@ describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLo
           status,
           link: async (dualLinkKey: string) => {
             vault.setDualLinkKey(dualLinkKey);
+            // Mirrors index.ts's own `link` closure exactly (post-v2.7.1
+            // fix): drive an immediate tick rather than leaving the admin
+            // staring at a stale status until the next scheduled interval.
+            await loop.tick();
             return status();
           },
         },
@@ -355,7 +359,7 @@ describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLo
     });
   });
 
-  it("POST /admin/self-connector/link with the codex-held pair's own dual-link-key succeeds and the subsequent GET echoes it while both halves stay not-linked (no tick has run)", async () => {
+  it("POST /admin/self-connector/link with the codex-held pair's own dual-link-key succeeds, drives an IMMEDIATE tick (post-v2.7.1 fix — no more waiting up to 24h for the scheduled interval), and the subsequent GET echoes the key with both halves now pending", async () => {
     const codex = makeCodex();
     const pair = await seedCodexWithRealPair(codex);
     const app = makeRealApp(codex);
@@ -372,17 +376,21 @@ describe("admin /admin/self-connector — REAL SelfApolloVault + SelfConnectorLo
     expect(linked.dualLinkKey).toBe(dualLinkKey);
     expect(linked.standardAccount).toBe(pair.standardAccount);
     expect(linked.smartAccount).toBe(pair.smartAccount);
+    // `link()` now calls `loop.tick()` immediately (mirrors index.ts's own
+    // fixed closure) — this describe block registers NO stub connector-auth
+    // routes on `app` (that's `selfConnectorLoop.test.ts`'s job, with its own
+    // `buildStubApp`), so the real attempt 404s per half, caught by
+    // `DualLinkConnector.tickHalf`'s own error isolation — the internal
+    // connector IS now built (unlike before this fix), so status reads
+    // "pending" (its default steady state), NOT the stale "not-linked".
+    expect(linked.standard.state).toBe("pending");
+    expect(linked.smart.state).toBe("pending");
 
     const after = await app.request("/admin/self-connector", { headers: { cookie } });
     const afterStatus = (await after.json()) as SelfConnectorStatus;
     expect(afterStatus.dualLinkKey).toBe(dualLinkKey);
-    // No tick has run in this describe block (no stub connector-auth server is
-    // wired here — that's `selfConnectorLoop.test.ts`'s job) so the internal
-    // `DualLinkConnector` hasn't been built yet: both halves still read
-    // "not-linked" from `SelfConnectorLoop.status()`'s own cache, even though
-    // a key IS now set — it only flips to "pending" on the first `tick()`.
-    expect(afterStatus.standard.state).toBe("not-linked");
-    expect(afterStatus.smart.state).toBe("not-linked");
+    expect(afterStatus.standard.state).toBe("pending");
+    expect(afterStatus.smart.state).toBe("pending");
   });
 
   it("POST /admin/self-connector/link with a half not held by Pythia's own Codex is rejected with a real 400 from the REAL vault's own validation, and dualLinkKey stays unset", async () => {

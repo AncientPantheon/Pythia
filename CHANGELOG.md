@@ -9,6 +9,17 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.2] — 2026-08-01
+
+### Fixed — pasting a dual-link-key into the Self Connector panel now checks the chain immediately
+
+`POST /admin/self-connector/link` previously only saved the pasted key — nothing actually attempted
+a connection until the next scheduled background tick, which for Pythia's own self-connector is up
+to 24h away. An admin who pasted an already-active dual-link-key would see "Not linked" indefinitely
+with no way to force an immediate check. `link()` now drives an immediate `tick()` right after
+saving the key, so the panel reflects the real, current chain state within the same request instead
+of a stale placeholder.
+
 ## [2.7.1] — 2026-08-01
 
 ### Fixed — flaky CI in `selfConnectorLoop.test.ts`'s real-timer tests
