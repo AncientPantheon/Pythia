@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.13 — 2026-08-03
+
+Version alignment: the client jumps from `2.7.12` to `2.7.13` to align with the unified Pythia
+service version line. This release is service-side only (Khronoton can now sign with a
+chainweaver/eckowallet operator seed — see `CHANGELOG.md` at the repo root) — no changes to this
+package's own source, API surface, or behavior.
+
 ## 2.7.12 — 2026-08-02
 
 Version alignment: the client jumps from `2.7.11` to `2.7.12` to align with the unified Pythia

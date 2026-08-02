@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.13] — 2026-08-03
+
+### Fixed — Khronoton can now sign with a chainweaver/eckowallet seed (the simulate signing failure)
+
+With v2.7.12 surfacing the real error, the Khronoton simulate failed with `seed "Pythia" derived a
+different key at index 0 than the codex recorded — refusing to sign`. Root cause: the Khronoton
+`KeyResolver`'s `fromSeedAccount` re-derived every seed with the koala SLIP-10 path only, ignoring
+`seedType` — but Codex records a `chainweaver`/`eckowallet` seed's public key with Chainweaver's
+BIP32-Ed25519 (WASM) derivation. So a chainweaver "Pythia" seed re-derived a different key and the
+safety guard (correctly) refused to sign. `fromSeedAccount` is now seedType-aware — `koala` uses the
+SLIP-10 path (unchanged), `chainweaver`/`eckowallet` use Chainweaver's derivation (matching how Codex
+recorded it) — so the operator's existing seed signs with no re-setup. The wrong-key guard still
+fires on a genuine mismatch. See `docs/work/khronoton-seedtype-derivation/design.md`.
+
 ## [2.7.12] — 2026-08-02
 
 ### Fixed — the Khronoton simulate's REAL error now shows in the UI (not "network error")

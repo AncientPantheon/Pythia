@@ -4,7 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { encryptStringV2 } from "@stoachain/stoa-core/crypto";
-import type { IOuroAccount } from "@ancientpantheon/codex/ouronet";
+import {
+  kadenaGenKeypairFromSeed,
+  kadenaGenMnemonic,
+  kadenaMnemonicToSeed,
+} from "@stoachain/kadena-stoic-legacy/hd-wallet";
+import {
+  kadenaGenKeypair as kadenaGenChainweaverKeypair,
+  kadenaGenMnemonic as kadenaGenChainweaverMnemonic,
+  kadenaMnemonicToRootKeypair,
+} from "@stoachain/kadena-stoic-legacy/hd-wallet/chainweaver";
+import type { IOuroAccount, IStoaChainSeed } from "@ancientpantheon/codex/ouronet";
 import { ensureSodiumReady, parseMasterKey } from "../../codex/vault.js";
 import { SealedStore } from "../../codex/sealedStore.js";
 import { CodexStore } from "../codexStore.js";
@@ -152,6 +162,80 @@ describe("createPythiaKeyResolver — Kadena-only filtering", () => {
 
     await expect(createPythiaKeyResolver(codex).getKeyPairByPublicKey(pair.standardPublicKey)).rejects.toThrow(
       /not held by Pythia's operator codex/,
+    );
+  });
+});
+
+describe("createPythiaKeyResolver — seedType-aware seed re-derivation", () => {
+  // Seeds a kadenaSeeds entry whose account[0].publicKey is derived EXACTLY the way
+  // Codex records it (seedType-routed) — the mnemonic is sealed as `seed.secret`
+  // (smartDecrypt-compatible via encryptStringV2), mirroring how the operator's
+  // real Codex snapshot stores a seed.
+  async function seedKadenaSeed(
+    codex: CodexStore,
+    seedType: "koala" | "chainweaver",
+    mnemonic: string,
+    recordedPub: string,
+  ): Promise<void> {
+    const codexPassword = codex.getOrCreateCodexPassword();
+    const backup = codex.loadBackup();
+    const snap = backup ? JSON.parse(backup) : {};
+    const seed = {
+      id: "test-seed-pythia",
+      name: "Pythia",
+      seedType,
+      secret: await encryptStringV2(mnemonic, codexPassword),
+      main: recordedPub,
+      accounts: [{ index: 0, publicKey: recordedPub, derivationPath: "m'/44'/626'/0'" }],
+    } as unknown as IStoaChainSeed;
+    snap.kadenaSeeds = [...(Array.isArray(snap.kadenaSeeds) ? snap.kadenaSeeds : []), seed];
+    codex.saveBackup(JSON.stringify(snap));
+  }
+
+  it("re-derives a KOALA (24-word BIP39) seed account and signs — the path that already worked (regression)", async () => {
+    const codex = makeCodex();
+    const mnemonic = kadenaGenMnemonic();
+    // Record the pubkey the koala way (a different transient password than the
+    // resolver will use — the pubkey is password-independent).
+    const encSeed = await kadenaMnemonicToSeed("record-pw", mnemonic);
+    const [recordedPub] = await kadenaGenKeypairFromSeed("record-pw", encSeed, 0);
+    await seedKadenaSeed(codex, "koala", mnemonic, recordedPub);
+
+    const kp = await createPythiaKeyResolver(codex).getKeyPairByPublicKey(recordedPub);
+    expect(kp.publicKey).toBe(recordedPub);
+    expect(kp.privateKey).toMatch(/^[0-9a-fA-F]{64}$/); // koala → a plain hex Ed25519 secret
+  });
+
+  it("re-derives a CHAINWEAVER (12-word) seed account and signs — the EXACT live failure (\"seed \\\"Pythia\\\" derived a different key … refusing to sign\") now succeeds", async () => {
+    const codex = makeCodex();
+    const mnemonic = kadenaGenChainweaverMnemonic();
+    // Record the pubkey the CHAINWEAVER way — this is what Codex actually stores for
+    // a chainweaver seed, and what the pre-fix koala-only resolver could not reproduce.
+    const root = await kadenaMnemonicToRootKeypair("record-pw", mnemonic);
+    const kp0 = await kadenaGenChainweaverKeypair("record-pw", root, 0);
+    const recordedPub = kp0.publicKey;
+    await seedKadenaSeed(codex, "chainweaver", mnemonic, recordedPub);
+
+    const kp = await createPythiaKeyResolver(codex).getKeyPairByPublicKey(recordedPub);
+    expect(kp.publicKey).toBe(recordedPub);
+    expect(kp.seedType).toBe("chainweaver");
+    // Chainweaver signs via the WASM path — the encrypted extended key + password,
+    // never a decrypted hex secret.
+    expect(kp.encryptedSecretKey).toBeTruthy();
+    expect(kp.password).toBeTruthy();
+    expect(kp.privateKey).toBe("");
+  });
+
+  it("still REFUSES to sign when a seed's recorded pubkey genuinely doesn't match its mnemonic (the safety guard survives the seedType fix)", async () => {
+    const codex = makeCodex();
+    const mnemonic = kadenaGenChainweaverMnemonic();
+    // A recorded pubkey from a DIFFERENT mnemonic — the guard must still fire.
+    const otherRoot = await kadenaMnemonicToRootKeypair("x", kadenaGenChainweaverMnemonic());
+    const wrongPub = (await kadenaGenChainweaverKeypair("x", otherRoot, 0)).publicKey;
+    await seedKadenaSeed(codex, "chainweaver", mnemonic, wrongPub);
+
+    await expect(createPythiaKeyResolver(codex).getKeyPairByPublicKey(wrongPub)).rejects.toThrow(
+      /derived a different key at index/,
     );
   });
 });

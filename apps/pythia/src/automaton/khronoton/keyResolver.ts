@@ -5,6 +5,10 @@ import {
   kadenaGenKeypairFromSeed,
   kadenaMnemonicToSeed,
 } from "@stoachain/kadena-stoic-legacy/hd-wallet";
+import {
+  kadenaGenKeypair as kadenaGenChainweaverKeypair,
+  kadenaMnemonicToRootKeypair,
+} from "@stoachain/kadena-stoic-legacy/hd-wallet/chainweaver";
 import type {
   CodexSnapshot,
   IOuroAccount,
@@ -76,8 +80,28 @@ function assertHexSecret(plaintext: string, origin: string): string {
   );
 }
 
+/** Whether a seed derives through Chainweaver's BIP32-Ed25519 (WASM) scheme rather
+ *  than the koala SLIP-10 path. */
+function isChainweaverSeed(seed: IStoaChainSeed): boolean {
+  return seed.seedType === "chainweaver" || seed.seedType === "eckowallet";
+}
+
 /** Re-derive a seed account's keypair at its recorded index; the derived pubkey MUST
- * equal the requested one (a mismatch throws). */
+ * equal the requested one (a mismatch throws).
+ *
+ * SEEDTYPE-AWARE (fixed v2.7.13): the derivation MUST match how Codex RECORDED the
+ * account's public key, which Codex routes on `seedType` (its
+ * `KadenaWalletBuilder.createWalletPairFromMnemonic`):
+ *   - `koala` (24-word BIP39)               → SLIP-10 Ed25519, path `m'/44'/626'/idx'`
+ *     via `kadenaMnemonicToSeed`+`kadenaGenKeypairFromSeed`.
+ *   - `chainweaver`/`eckowallet` (12-word)  → Chainweaver BIP32-Ed25519 (WASM) via
+ *     `kadenaMnemonicToRootKeypair`+`kadenaGenChainweaverKeypair`.
+ * Both produce a PASSWORD-INDEPENDENT public key (verified), so re-deriving with a
+ * fresh transient password reproduces exactly the pubkey Codex stored. Before this
+ * fix `fromSeedAccount` always used the koala path, so a chainweaver/eckowallet seed
+ * re-derived a DIFFERENT key at the same index and this function refused to sign
+ * ("derived a different key at index N than the codex recorded") — the exact live
+ * failure signing with the operator's "Pythia" (chainweaver) gas-payer seed. */
 async function fromSeedAccount(
   seed: IStoaChainSeed,
   accountIndex: number,
@@ -86,15 +110,29 @@ async function fromSeedAccount(
 ): Promise<IKadenaKeypair> {
   const mnemonic = await smartDecrypt(seed.secret, codexPassword);
   const tempPassword = randomBytes(32).toString("base64"); // transient, never persisted.
-  const encSeed = await kadenaMnemonicToSeed(tempPassword, mnemonic);
-  const [derivedPub, encSecret] = await kadenaGenKeypairFromSeed(tempPassword, encSeed, accountIndex);
+
+  let derivedPub: string;
+  let encSecret: string;
+  if (isChainweaverSeed(seed)) {
+    const root = await kadenaMnemonicToRootKeypair(tempPassword, mnemonic);
+    const kp = await kadenaGenChainweaverKeypair(tempPassword, root, accountIndex);
+    derivedPub = kp.publicKey;
+    encSecret = kp.secretKey;
+  } else {
+    const encSeed = await kadenaMnemonicToSeed(tempPassword, mnemonic);
+    [derivedPub, encSecret] = await kadenaGenKeypairFromSeed(tempPassword, encSeed, accountIndex);
+  }
+
   if (bareKey(derivedPub) !== wantedPub) {
     throw new Error(
       `khronoton key resolver: seed "${seed.name ?? seed.id}" derived a different key at index ` +
         `${accountIndex} than the codex recorded — refusing to sign.`,
     );
   }
-  if (seed.seedType === "chainweaver" || seed.seedType === "eckowallet") {
+  if (isChainweaverSeed(seed)) {
+    // Chainweaver's extended key isn't a plain 32-byte Ed25519 secret — signing
+    // routes through the WASM path using `encryptedSecretKey` + `password`, never a
+    // decrypted hex (see Codex's own `KadenaWalletBuilder`/headless resolver).
     return { publicKey: wantedPub, privateKey: "", seedType: seed.seedType, encryptedSecretKey: encSecret, password: tempPassword };
   }
   const raw = await kadenaDecrypt(tempPassword, encSecret);
