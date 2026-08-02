@@ -115,8 +115,25 @@ export class SelfConnectorLoop {
     await this.dualLinkConnector.tick();
   }
 
+  /**
+   * Begins the periodic tick AND fires one immediately (fire-and-forget, not
+   * awaited — a slow/unreachable chain read must never delay the caller).
+   * `setInterval` alone only fires AFTER a full `intervalMs` elapses — for
+   * Pythia that's up to 24h. A dual-link-key pasted in a PRIOR process
+   * lifetime is sealed and survives a restart (`SealedStore`), but this
+   * loop's own cached status starts every fresh boot at `"not-linked"`
+   * regardless of that — so without the immediate tick, every redeploy left
+   * the admin staring at a false "not-linked" for up to 24h even though the
+   * key was still perfectly good. `tick()` never throws (`DualLinkConnector`
+   * isolates each half's own failure internally, and this class's own
+   * construction try/catch is itself defended) — the exact same reasoning
+   * `index.ts`'s `link()` closure already relies on (v2.7.2) to drive an
+   * immediate tick on a fresh paste; this closes the symmetric gap on the
+   * boot path.
+   */
   start(): void {
     if (this.timer) return;
+    void this.tick();
     this.timer = setInterval(() => {
       void this.tick();
     }, this.intervalMs);

@@ -268,14 +268,26 @@
                 <h3 class="deploy-h">Self Connector</h3>
                 <p class="panel-note">Pythia's own dual-Apollo identity — a Standard + Smart account pair Pythia can use as a StoaChain connector. Generate and activate this pair using the <a href="#codex">Codex</a> tab first. Once that pair is active on-chain, paste the resulting dual-link-key below to link it here — the same paste-in mechanism any other connector consumer uses.</p>
 
+                <!-- One "zone" per Apollo half (mirrors the Codex tab's own account-box
+                     treatment): a bordered rectangle, a label + state chip on their own
+                     top line, and the account address on its own line below — truncated
+                     with an ellipsis (styles.css's .acct-card-addr) when the zone is
+                     narrower than the 162-char address needs, instead of the address
+                     bleeding out and visually colliding with the chip. -->
                 <div class="deploy-rows">
-                  <div class="deploy-row">
-                    <span class="deploy-row-name">Standard <span id="selfconn-standard-account" class="deploy-row-sub"></span></span>
-                    <span id="selfconn-standard-badge" class="deploy-chip">…</span>
+                  <div class="acct-card">
+                    <div class="acct-card-top">
+                      <span class="acct-card-label">Standard</span>
+                      <span id="selfconn-standard-badge" class="deploy-chip">…</span>
+                    </div>
+                    <div id="selfconn-standard-account" class="acct-card-addr"></div>
                   </div>
-                  <div class="deploy-row">
-                    <span class="deploy-row-name">Smart <span id="selfconn-smart-account" class="deploy-row-sub"></span></span>
-                    <span id="selfconn-smart-badge" class="deploy-chip">…</span>
+                  <div class="acct-card">
+                    <div class="acct-card-top">
+                      <span class="acct-card-label">Smart</span>
+                      <span id="selfconn-smart-badge" class="deploy-chip">…</span>
+                    </div>
+                    <div id="selfconn-smart-account" class="acct-card-addr"></div>
                   </div>
                 </div>
 

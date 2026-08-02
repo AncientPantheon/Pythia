@@ -1777,6 +1777,10 @@ function renderSelfConnector(st) {
   }
   if (standardAccount) {
     standardAccount.textContent = st.standardAccount || "not yet linked";
+    // The zone truncates this with a CSS ellipsis (styles.css's .acct-card-addr)
+    // when it's narrower than the full 162-char address — the native title
+    // tooltip is what lets an admin still see the untruncated value on hover.
+    standardAccount.title = st.standardAccount || "";
   }
 
   const smartView = selfConnectorHalfView(st.smart);
@@ -1786,6 +1790,7 @@ function renderSelfConnector(st) {
   }
   if (smartAccount) {
     smartAccount.textContent = st.smartAccount || "not yet linked";
+    smartAccount.title = st.smartAccount || "";
   }
 
   // ONE consolidated ephemeral secret for the whole pair (standard-preferred,

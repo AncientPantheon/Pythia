@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.5] — 2026-08-02
+
+### Fixed — Self Connector panel: layout collision + false "Not linked" after every redeploy
+
+Reported live: the account address text visually overlapped the state chip (a long, unbreakable
+162-char string with no `overflow`/`text-overflow` handling bled out past its shrunk container),
+and both halves showed "Not linked" after a redeploy even though the dual-link-key was still
+sealed and valid. Each half now renders in its own bordered "zone" (mirroring the Codex tab's own
+account-box treatment) with the address ellipsis-truncated to fit its available width instead of
+colliding with the chip. `SelfConnectorLoop.start()` now fires an immediate tick in addition to its
+periodic one — a bare `setInterval` alone only fires its first tick after a full `intervalMs` (24h
+for Pythia), so every fresh boot left an already-linked pair looking falsely "not-linked" for up to
+a day. No re-linking needed — the next deploy self-heals on boot. See
+`docs/work/self-connector-boot-tick-and-layout/design.md`.
+
 ## [2.7.4] — 2026-08-02
 
 ### Fixed — a Nuke could be silently undone by an in-flight blue-green deploy

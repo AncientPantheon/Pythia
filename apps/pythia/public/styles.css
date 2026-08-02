@@ -736,6 +736,27 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .deploy-chip--pending    { color: var(--cyan); border-color: rgba(88,201,232,.35); background: rgba(88,201,232,.1); }
 .deploy-chip--active     { color: #7ce6a8; border-color: rgba(52,209,122,.35); background: rgba(52,209,122,.1); }
 
+/* Self Connector — one "zone" per Apollo half, mirroring the Codex tab's own
+   account-box treatment: a bordered rectangle, a label + state chip on their
+   own top line (so the chip has its own space and never collides with
+   anything), and the account address on its own line below. Unlike a plain
+   .deploy-row (a single-line flex row), the address here is a genuinely
+   unbreakable 162-char string with no spaces to wrap on — `white-space:
+   nowrap` + `overflow: hidden` + `text-overflow: ellipsis` shortens it to fit
+   whatever width the zone actually has, instead of it bleeding out past its
+   box and visually overlapping the chip (the exact bug this replaced). */
+.acct-card {
+  background: rgba(255,255,255,.025); border: 1px solid var(--line); border-radius: 11px;
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.acct-card-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.acct-card-label { font-weight: 600; color: var(--ink); }
+.acct-card-addr {
+  font-family: ui-monospace, monospace; font-size: 13px; color: var(--ink-mute);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* Self Connector — the single consolidated ephemeral-key card: masked secret +
    depleting timer bar + text countdown, stacked (unlike .deploy-row's row
    layout). Same bordered/radiused/padded look as .deploy-row for visual

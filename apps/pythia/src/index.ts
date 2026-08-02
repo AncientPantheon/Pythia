@@ -427,7 +427,11 @@ pendingActivationTracker.start();
 // Begin Pythia's own self-connector refresh loop (see `selfApolloVault`/
 // `selfConnectorLoop` above) — a no-op tick for either half until a
 // dual-link-key (generated + activated via the admin "Codex" tab) has been
-// pasted into the admin "Self Connector" panel.
+// pasted into the admin "Self Connector" panel. `start()` itself fires an
+// immediate tick (in addition to the periodic one) — see its own doc comment
+// for why: a dual-link-key pasted in a PRIOR process lifetime is sealed and
+// survives a restart, but every redeploy otherwise left the admin staring at
+// a false "not-linked" for up to 24h regardless.
 selfConnectorLoop.start();
 
 // The human admin surface (connector manager) is gated on the AncientHoldings

@@ -438,7 +438,13 @@ describe("SelfConnectorLoop — start()/stop()", () => {
     });
 
     loop.start();
-    expect(verifyCalls).toHaveLength(0); // no tick yet — only the interval fires it
+    // start() fires tick() immediately (fire-and-forget) — its network effect
+    // hasn't landed yet at this synchronous checkpoint (no await has run),
+    // but it IS in flight, unlike the old behavior this replaced where
+    // nothing happened until the interval's first firing. See the dedicated
+    // "fires an immediate tick" test below for a check that actually
+    // distinguishes the two.
+    expect(verifyCalls).toHaveLength(0);
 
     await vi.waitFor(() => {
       expect(verifyCalls.length).toBeGreaterThan(0);
@@ -448,6 +454,34 @@ describe("SelfConnectorLoop — start()/stop()", () => {
     loop.stop();
     await new Promise((resolve) => setTimeout(resolve, 150)); // real wait spanning several would-be intervals
     expect(verifyCalls).toHaveLength(countAfterFirstTick); // no further ticks after stop()
+  });
+
+  it("fires an immediate tick on start() — an already-linked vault reaches a real status without waiting for the interval (a bare setInterval alone only fires after a full intervalMs elapses)", async () => {
+    const c = codex();
+    const pair = await seedCodexWithRealPair(c);
+    const vault = new SelfApolloVault(store(), c);
+    vault.setDualLinkKey(keyFor(pair));
+    const { app, verifyCalls } = buildStubApp();
+    // A LONG interval — long enough that within this test's own timeout, only
+    // the immediate tick (not the periodic one) could possibly produce a
+    // verify call. This is what distinguishes this test from the one above,
+    // whose short 20ms interval can't tell the two apart.
+    const loop = new SelfConnectorLoop({
+      baseUrl: BASE_URL,
+      fetchImpl: createInProcessFetch(app),
+      vault,
+      intervalMs: 24 * 60 * 60 * 1000,
+    });
+
+    loop.start();
+    await vi.waitFor(() => {
+      expect(verifyCalls.length).toBeGreaterThan(0);
+    }, WAIT_FOR_REAL_SIGNING);
+    loop.stop();
+
+    const status = loop.status();
+    expect(status.standard.status).not.toBe("not-linked");
+    expect(status.smart.status).not.toBe("not-linked");
   });
 
   it("start() is idempotent — a second call while already running does not create a second timer", async () => {
