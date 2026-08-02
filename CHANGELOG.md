@@ -9,7 +9,7 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
-## [2.7.14] — 2026-08-03
+## [2.7.15] — 2026-08-03
 
 ### Changed — Khronoton signing DELEGATES to Codex's resolver (no more hand-rolled key derivation)
 
@@ -22,7 +22,10 @@ whole class of "each consumer hand-rolls a partial resolver" bug is removed at t
 only the Kadena-only public-key filter (Apollo accounts never enter the signer list) and a thin
 non-derivation ouro-account fallback; Codex's own wrong-key refusal guard propagates unchanged. See
 `docs/work/khronoton-keyresolver-delegation/{design,review}.md`. (Mnemosyne carries the same latent
-bug and gets the same delegation via handoff.)
+bug and gets the same delegation via handoff.) (This entry was cut as 2.7.14 but never published —
+its CI caught an unhandled rejection in `listCodexPubs`: `loadSnapshot` throws synchronously on an
+uninitialized codex, and doing that inside a `Promise.all` alongside the delegate's call orphaned the
+delegate promise; the read is now sequential. 2.7.15 is that fix folded in.)
 
 ## [2.7.13] — 2026-08-03
 

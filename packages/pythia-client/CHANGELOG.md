@@ -2,9 +2,9 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
-## 2.7.14 — 2026-08-03
+## 2.7.15 — 2026-08-03
 
-Version alignment: the client jumps from `2.7.13` to `2.7.14` to align with the unified Pythia
+Version alignment: the client jumps from `2.7.13` to `2.7.15` to align with the unified Pythia
 service version line. This release is service-side only (Khronoton signing now delegates key
 derivation to Codex's own resolver instead of hand-rolling it — see `CHANGELOG.md` at the repo root)
 — no changes to this package's own source, API surface, or behavior.

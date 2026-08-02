@@ -103,12 +103,15 @@ export function createPythiaKeyResolver(codex: CodexStore): KeyResolver {
 
   return {
     async listCodexPubs(): Promise<Set<string>> {
-      const [delegated, snap] = await Promise.all([
-        delegate.listCodexPubs(),
-        Promise.resolve(loadSnapshot(codex)),
-      ]);
+      // Read the snapshot FIRST, sequentially — never inside a `Promise.all` with
+      // `delegate.listCodexPubs()`. `loadSnapshot` throws SYNCHRONOUSLY when the codex
+      // is uninitialized; doing that inside the Promise.all array aborts before a
+      // handler attaches to the already-created delegate promise, orphaning it (an
+      // unhandled rejection — a real hazard CI caught even when the assertions pass).
+      const snap = loadSnapshot(codex);
+      const delegated = await delegate.listCodexPubs(); // Codex's seed + pure pubs
       const set = new Set<string>();
-      for (const p of delegated) set.add(bareKey(p)); // Codex's seed + pure pubs
+      for (const p of delegated) set.add(bareKey(p));
       for (const acc of ouros(snap)) if (acc.publicKey && isKadenaPublicKey(acc.publicKey)) set.add(bareKey(acc.publicKey));
       // Belt-and-braces: only Kadena-format pubkeys ever leave (Apollo never leaks).
       return new Set([...set].filter(isKadenaPublicKey));
