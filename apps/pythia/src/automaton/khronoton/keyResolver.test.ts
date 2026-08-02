@@ -15,6 +15,7 @@ import {
   kadenaMnemonicToRootKeypair,
 } from "@stoachain/kadena-stoic-legacy/hd-wallet/chainweaver";
 import type { IOuroAccount, IStoaChainSeed } from "@ancientpantheon/codex/ouronet";
+import { CodexKeyMissingError } from "@ancientpantheon/codex/ouronet";
 import { ensureSodiumReady, parseMasterKey } from "../../codex/vault.js";
 import { SealedStore } from "../../codex/sealedStore.js";
 import { CodexStore } from "../codexStore.js";
@@ -160,9 +161,12 @@ describe("createPythiaKeyResolver — Kadena-only filtering", () => {
     const codex = makeCodex();
     const pair = await seedCodexWithRealPair(codex);
 
-    await expect(createPythiaKeyResolver(codex).getKeyPairByPublicKey(pair.standardPublicKey)).rejects.toThrow(
-      /not held by Pythia's operator codex/,
-    );
+    // Codex's delegate reports it not-held (CodexKeyMissingError); the Apollo account
+    // IS in `ouroAccounts` but the Kadena filter excludes it, so the ouro fallback
+    // finds nothing and the CodexKeyMissingError propagates.
+    await expect(
+      createPythiaKeyResolver(codex).getKeyPairByPublicKey(pair.standardPublicKey),
+    ).rejects.toBeInstanceOf(CodexKeyMissingError);
   });
 });
 
@@ -219,14 +223,14 @@ describe("createPythiaKeyResolver — seedType-aware seed re-derivation", () => 
     const kp = await createPythiaKeyResolver(codex).getKeyPairByPublicKey(recordedPub);
     expect(kp.publicKey).toBe(recordedPub);
     expect(kp.seedType).toBe("chainweaver");
-    // Chainweaver signs via the WASM path — the encrypted extended key + password,
-    // never a decrypted hex secret.
+    // Chainweaver signs via the WASM path — the encrypted extended key + password.
+    // (Codex's headless resolver also carries a 64-hex-truncated `privateKey`, but
+    // the real signing lane for chainweaver is `encryptedSecretKey` + `password`.)
     expect(kp.encryptedSecretKey).toBeTruthy();
     expect(kp.password).toBeTruthy();
-    expect(kp.privateKey).toBe("");
   });
 
-  it("still REFUSES to sign when a seed's recorded pubkey genuinely doesn't match its mnemonic (the safety guard survives the seedType fix)", async () => {
+  it("still REFUSES to sign when a seed's recorded pubkey genuinely doesn't match its mnemonic (Codex's wrong-key guard propagates through the delegation)", async () => {
     const codex = makeCodex();
     const mnemonic = kadenaGenChainweaverMnemonic();
     // A recorded pubkey from a DIFFERENT mnemonic — the guard must still fire.
@@ -234,8 +238,10 @@ describe("createPythiaKeyResolver — seedType-aware seed re-derivation", () => 
     const wrongPub = (await kadenaGenChainweaverKeypair("x", otherRoot, 0)).publicKey;
     await seedKadenaSeed(codex, "chainweaver", mnemonic, wrongPub);
 
+    // Codex's own wrong-key guard throws a plain Error (NOT CodexKeyMissingError), so
+    // the delegation re-throws it unchanged rather than routing to the ouro fallback.
     await expect(createPythiaKeyResolver(codex).getKeyPairByPublicKey(wrongPub)).rejects.toThrow(
-      /derived a different key at index/,
+      /derived a different public key|refusing to sign/,
     );
   });
 });

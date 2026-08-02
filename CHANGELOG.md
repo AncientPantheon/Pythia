@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.14] — 2026-08-03
+
+### Changed — Khronoton signing DELEGATES to Codex's resolver (no more hand-rolled key derivation)
+
+The proper fix behind the v2.7.13 seedType stopgap: Pythia's Khronoton `KeyResolver`
+(`keyResolver.ts`) no longer reimplements any key derivation. It now delegates entirely to Codex's
+own canonical, seedType-complete headless resolver (`createHeadlessKadenaResolver` from
+`@ancientpantheon/codex/ouronet` 0.8.0 — the Topic-1 enablement) — so koala / chainweaver /
+eckowallet seeds all resolve through the ONE implementation Codex uses to record the keys, and the
+whole class of "each consumer hand-rolls a partial resolver" bug is removed at the root. Pythia keeps
+only the Kadena-only public-key filter (Apollo accounts never enter the signer list) and a thin
+non-derivation ouro-account fallback; Codex's own wrong-key refusal guard propagates unchanged. See
+`docs/work/khronoton-keyresolver-delegation/{design,review}.md`. (Mnemosyne carries the same latent
+bug and gets the same delegation via handoff.)
+
 ## [2.7.13] — 2026-08-03
 
 ### Fixed — Khronoton can now sign with a chainweaver/eckowallet seed (the simulate signing failure)

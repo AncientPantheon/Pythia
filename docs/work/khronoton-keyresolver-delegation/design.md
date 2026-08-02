@@ -81,9 +81,10 @@ which is the whole point (no consumer touches derivation).
 1. `khronoton-codex-headless-resolver-export` — **Codex handoff (blocks the rest).** Codex exports a
    server-safe, pre-bound headless Kadena `KeyResolver` from `/ouronet`. Handoff written:
    `docs/HANDOFF-codex-headless-kadena-resolver.md`; the implementation lands in `constructors/Codex`.
-2. `khronoton-keyresolver-delegation-pythia` — Pythia replaces its bespoke `keyResolver.ts` derivation
-   with delegation to Topic 1's resolver, preserving the Kadena-only filter + signer-picker seam,
-   with the koala+chainweaver tests re-pointed to prove Codex owns derivation. Depends on Topic 1
-   shipping + being adopted (`@ancientpantheon/codex@latest` on deploy).
-3. `khronoton-keyresolver-delegation-mnemosyne` — **Mnemosyne handoff.** Mnemosyne adopts the same
-   delegation, removing its identical latent koala-only bug. Depends on Topic 1.
+2. `khronoton-keyresolver-delegation-pythia` — **DONE (v2.7.14).** Pythia's `keyResolver.ts` now
+   delegates all derivation to Topic 1's `createHeadlessKadenaResolver` (`@ancientpantheon/codex@0.8.0`),
+   preserving the Kadena-only filter + signer-picker seam; koala+chainweaver tests re-pointed to prove
+   Codex owns derivation. See `review.md`.
+3. `khronoton-keyresolver-delegation-mnemosyne` — **Mnemosyne handoff written:**
+   `docs/HANDOFF-mnemosyne-keyresolver-delegation.md`. Mnemosyne adopts the same delegation, removing
+   its identical latent koala-only bug. Ready to hand to the Mnemosyne agent.

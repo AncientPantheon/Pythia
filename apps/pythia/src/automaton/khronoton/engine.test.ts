@@ -63,6 +63,8 @@ describe("pythia key resolver (codex-backed signing seam)", () => {
   it("an empty codex holds no pubs, and an unknown key is refused (never signs the wrong key)", async () => {
     const r = createPythiaKeyResolver(codexWith(JSON.stringify(emptySnapshot("main"))));
     expect((await r.listCodexPubs()).size).toBe(0);
-    await expect(r.getKeyPairByPublicKey("deadbeefdeadbeef")).rejects.toThrow(/not held/);
+    // Delegation (v2.7.14): an unknown key is refused by Codex's own resolver
+    // ("… not found in this device's codex …") after the ouro fallback finds nothing.
+    await expect(r.getKeyPairByPublicKey("deadbeefdeadbeef")).rejects.toThrow(/not found in this device's codex/);
   });
 });

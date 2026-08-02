@@ -1,33 +1,41 @@
-import { randomBytes } from "node:crypto";
 import { smartDecrypt } from "@stoachain/stoa-core/crypto";
-import {
-  kadenaDecrypt,
-  kadenaGenKeypairFromSeed,
-  kadenaMnemonicToSeed,
-} from "@stoachain/kadena-stoic-legacy/hd-wallet";
-import {
-  kadenaGenKeypair as kadenaGenChainweaverKeypair,
-  kadenaMnemonicToRootKeypair,
-} from "@stoachain/kadena-stoic-legacy/hd-wallet/chainweaver";
 import type {
   CodexSnapshot,
   IOuroAccount,
   IPureKeypair,
   IStoaChainSeed,
 } from "@ancientpantheon/codex/ouronet";
+import { createHeadlessKadenaResolver, CodexKeyMissingError } from "@ancientpantheon/codex/ouronet";
 import type { IKadenaKeypair, KeyResolver } from "@ancientpantheon/khronoton-core/server";
 import { descriptorSourceToDisplay } from "@ancientpantheon/khronoton-core/handlers";
 import type { SignerSource } from "@ancientpantheon/khronoton-core/handlers";
 import type { CodexStore } from "../codexStore.js";
 
 /**
- * The Khronoton `KeyResolver` backed by Pythia's SEALED OPERATOR CODEX (ported from
- * Mnemosyne, handoff 05) — the seam where the automaton signs with no human in the loop.
- * Per call: read the sealed snapshot + machine password from the {@link CodexStore},
- * `smartDecrypt` exactly the entry that owns the requested public key. The snapshot is
- * re-read every call (fire-time, not hot-path) so a codex edit is picked up next fire and
- * plaintext key material never outlives the call. A derived pubkey that doesn't match the
- * requested one throws instead of signing with the wrong key.
+ * The Khronoton `KeyResolver` backed by Pythia's SEALED OPERATOR CODEX — the seam
+ * where the automaton signs with no human in the loop.
+ *
+ * DELEGATION (v2.7.14, `docs/work/khronoton-keyresolver-delegation/`): all key
+ * DERIVATION is delegated to Codex's own canonical, seedType-complete headless
+ * resolver (`createHeadlessKadenaResolver`, `@ancientpantheon/codex/ouronet`).
+ * Pythia reimplements NO derivation. This ends the class of bug where each consumer
+ * hand-rolled a partial resolver — Pythia's (copied from Mnemosyne) re-derived every
+ * HD-wallet seed with the koala path only and refused to sign a chainweaver/
+ * eckowallet operator seed (the live gas-payer failure, stopgap-fixed in v2.7.13).
+ * The snapshot + machine password are re-read FRESH per call (fire-time) inside
+ * Codex's resolver, so a codex edit is picked up next fire and plaintext key
+ * material never outlives the call.
+ *
+ * Two Pythia-side concerns remain, NEITHER of which is derivation:
+ *   1. The Kadena-only public-key filter ({@link isKadenaPublicKey}): the operator
+ *      codex is mixed-curve, so Apollo-curve accounts (whose `publicKey` is a
+ *      `<len>.<xy>` string, not 64-hex) must never enter the Kadena signer list —
+ *      Apollo signing has its own seam (`codexApolloSigner.ts`).
+ *   2. A thin OURO-account fallback: Codex's headless resolver reads only
+ *      `{ kadenaSeeds, pureKeypairs }`, so a Kadena-format `ouroAccount` (if the
+ *      codex holds one) is resolved here by a DIRECT DECRYPT of its stored secret —
+ *      no derivation, so it cannot carry the seedType bug. Reached only when Codex
+ *      reports the key genuinely not-held (a `CodexKeyMissingError`).
  */
 
 function bareKey(pub: string): string {
@@ -39,20 +47,10 @@ const HEX_SECRET = /^[0-9a-fA-F]{64}$|^[0-9a-fA-F]{128}$/;
  *  stripped). Nothing else is a valid Kadena signing key. */
 const KADENA_PUBLIC_KEY = /^[0-9a-fA-F]{64}$/;
 
-/** Every function in this file resolves Kadena/DALOS-curve signers only — this whole
- *  module is Khronoton's Kadena signing seam (Apollo signing has its own, separate seam:
- *  `codexApolloSigner.ts`). Pythia's operator Codex holds mixed-curve accounts: a
- *  Kadena/DALOS account's `publicKey` is a 64-hex ed25519 key; an APOLLO account's
- *  `publicKey` is Codex's own Apollo-local public key, a `<len>.<xy>` string (e.g.
- *  `9G.17Kd3B...`) — structurally nothing like a Kadena key. Only the former may ever be
- *  offered as a Kadena signer / signed with.
- *
- *  We discriminate on the KEY FORMAT ITSELF, not on Codex's `IOuroAccount.originCurve`
- *  metadata: a v2.7.7 fix filtered on `originCurve !== "apollo"`, but real Codex-generated
- *  Apollo accounts in the field do NOT reliably carry that field set, so the Apollo keys
- *  still leaked into the Builder's Kadena signing-key picker (confirmed live, 2026-08-02).
- *  The 64-hex shape is the actual on-chain requirement and is populated on every account
- *  by construction, so it's the robust discriminator — no dependence on optional metadata. */
+/** Discriminate a Kadena signer on the KEY FORMAT ITSELF (64-hex), not on Codex's
+ *  optional `originCurve` metadata (which real Apollo accounts don't reliably set —
+ *  confirmed live 2026-08-02) — so an Apollo `<len>.<xy>` key can never enter the
+ *  Kadena signer list regardless of metadata. */
 function isKadenaPublicKey(publicKey: string): boolean {
   return KADENA_PUBLIC_KEY.test(bareKey(publicKey));
 }
@@ -80,99 +78,70 @@ function assertHexSecret(plaintext: string, origin: string): string {
   );
 }
 
-/** Whether a seed derives through Chainweaver's BIP32-Ed25519 (WASM) scheme rather
- *  than the koala SLIP-10 path. */
-function isChainweaverSeed(seed: IStoaChainSeed): boolean {
-  return seed.seedType === "chainweaver" || seed.seedType === "eckowallet";
-}
-
-/** Re-derive a seed account's keypair at its recorded index; the derived pubkey MUST
- * equal the requested one (a mismatch throws).
- *
- * SEEDTYPE-AWARE (fixed v2.7.13): the derivation MUST match how Codex RECORDED the
- * account's public key, which Codex routes on `seedType` (its
- * `KadenaWalletBuilder.createWalletPairFromMnemonic`):
- *   - `koala` (24-word BIP39)               → SLIP-10 Ed25519, path `m'/44'/626'/idx'`
- *     via `kadenaMnemonicToSeed`+`kadenaGenKeypairFromSeed`.
- *   - `chainweaver`/`eckowallet` (12-word)  → Chainweaver BIP32-Ed25519 (WASM) via
- *     `kadenaMnemonicToRootKeypair`+`kadenaGenChainweaverKeypair`.
- * Both produce a PASSWORD-INDEPENDENT public key (verified), so re-deriving with a
- * fresh transient password reproduces exactly the pubkey Codex stored. Before this
- * fix `fromSeedAccount` always used the koala path, so a chainweaver/eckowallet seed
- * re-derived a DIFFERENT key at the same index and this function refused to sign
- * ("derived a different key at index N than the codex recorded") — the exact live
- * failure signing with the operator's "Pythia" (chainweaver) gas-payer seed. */
-async function fromSeedAccount(
-  seed: IStoaChainSeed,
-  accountIndex: number,
-  wantedPub: string,
-  codexPassword: string,
-): Promise<IKadenaKeypair> {
-  const mnemonic = await smartDecrypt(seed.secret, codexPassword);
-  const tempPassword = randomBytes(32).toString("base64"); // transient, never persisted.
-
-  let derivedPub: string;
-  let encSecret: string;
-  if (isChainweaverSeed(seed)) {
-    const root = await kadenaMnemonicToRootKeypair(tempPassword, mnemonic);
-    const kp = await kadenaGenChainweaverKeypair(tempPassword, root, accountIndex);
-    derivedPub = kp.publicKey;
-    encSecret = kp.secretKey;
-  } else {
-    const encSeed = await kadenaMnemonicToSeed(tempPassword, mnemonic);
-    [derivedPub, encSecret] = await kadenaGenKeypairFromSeed(tempPassword, encSeed, accountIndex);
-  }
-
-  if (bareKey(derivedPub) !== wantedPub) {
-    throw new Error(
-      `khronoton key resolver: seed "${seed.name ?? seed.id}" derived a different key at index ` +
-        `${accountIndex} than the codex recorded — refusing to sign.`,
-    );
-  }
-  if (isChainweaverSeed(seed)) {
-    // Chainweaver's extended key isn't a plain 32-byte Ed25519 secret — signing
-    // routes through the WASM path using `encryptedSecretKey` + `password`, never a
-    // decrypted hex (see Codex's own `KadenaWalletBuilder`/headless resolver).
-    return { publicKey: wantedPub, privateKey: "", seedType: seed.seedType, encryptedSecretKey: encSecret, password: tempPassword };
-  }
-  const raw = await kadenaDecrypt(tempPassword, encSecret);
-  return { publicKey: wantedPub, privateKey: Buffer.from(raw).toString("hex"), seedType: seed.seedType };
-}
-
-/** The sealed-codex-backed resolver the engine (tick loop + handlers) injects. */
+/** The sealed-codex-backed resolver the engine (tick loop + handlers) injects.
+ *  Delegates all derivation to Codex; adds only the Kadena-only filter and the
+ *  non-derivation ouro fallback. */
 export function createPythiaKeyResolver(codex: CodexStore): KeyResolver {
+  // Codex owns the ONE canonical, seedType-complete derivation (koala / chainweaver /
+  // eckowallet / pure), re-reading snapshot + password fresh per call via these thunks.
+  const delegate = createHeadlessKadenaResolver({
+    loadSnapshot: () => loadSnapshot(codex),
+    getPassword: () => codex.getOrCreateCodexPassword(),
+  });
+
+  /** Codex covers seeds + pures, NOT ouroAccounts — a Kadena-format ouro account is
+   *  resolved here by a direct secret decrypt (no derivation). Returns null if no such
+   *  ouro account holds the wanted key. */
+  async function ouroFallback(wanted: string): Promise<IKadenaKeypair | null> {
+    const acc = ouros(loadSnapshot(codex)).find(
+      (a) => a.publicKey && isKadenaPublicKey(a.publicKey) && bareKey(a.publicKey) === wanted,
+    );
+    if (!acc) return null;
+    const plaintext = await smartDecrypt(acc.secret, codex.getOrCreateCodexPassword());
+    return { publicKey: wanted, privateKey: assertHexSecret(plaintext, "ouro-account"), seedType: "koala" };
+  }
+
   return {
     async listCodexPubs(): Promise<Set<string>> {
-      const snap = loadSnapshot(codex);
+      const [delegated, snap] = await Promise.all([
+        delegate.listCodexPubs(),
+        Promise.resolve(loadSnapshot(codex)),
+      ]);
       const set = new Set<string>();
-      for (const kp of pures(snap)) set.add(bareKey(kp.publicKey));
+      for (const p of delegated) set.add(bareKey(p)); // Codex's seed + pure pubs
       for (const acc of ouros(snap)) if (acc.publicKey && isKadenaPublicKey(acc.publicKey)) set.add(bareKey(acc.publicKey));
-      for (const seed of seeds(snap)) for (const acc of seed.accounts ?? []) set.add(bareKey(acc.publicKey));
-      return set;
+      // Belt-and-braces: only Kadena-format pubkeys ever leave (Apollo never leaks).
+      return new Set([...set].filter(isKadenaPublicKey));
     },
 
     async getKeyPairByPublicKey(publicKey: string): Promise<IKadenaKeypair> {
       const wanted = bareKey(publicKey);
-      const snap = loadSnapshot(codex);
-      const codexPassword = codex.getOrCreateCodexPassword();
-
-      const pure = pures(snap).find((kp) => bareKey(kp.publicKey) === wanted);
-      if (pure) {
-        const plaintext = await smartDecrypt(pure.encryptedPrivateKey, codexPassword);
-        return { publicKey: wanted, privateKey: assertHexSecret(plaintext, "pure-keypair"), seedType: "koala" };
+      try {
+        const kp = await delegate.getKeyPairByPublicKey(wanted);
+        // Map Codex's `@stoachain/stoa-core/signing` IKadenaKeypair onto Khronoton's:
+        //  - `seedType` is OPTIONAL in Codex's type, REQUIRED in Khronoton's — coerce a
+        //    missing one to "koala" (the plain-hex nacl signing lane, correct for a
+        //    pure/foreign keypair with a raw secret).
+        //  - `encryptedSecretKey` is `unknown` in Codex's type (a branded @kadena
+        //    EncryptedString) and `string` in Khronoton's; at runtime it IS a string, so
+        //    the narrow cast is sound.
+        return {
+          publicKey: kp.publicKey,
+          privateKey: kp.privateKey,
+          seedType: kp.seedType ?? "koala",
+          encryptedSecretKey: kp.encryptedSecretKey as string | undefined,
+          password: kp.password,
+        };
+      } catch (err) {
+        // ONLY a genuine "not held by any seed/pure" (Codex's CodexKeyMissingError)
+        // falls through to the ouro fallback. Any other error — a real decrypt/
+        // derivation failure, or Codex's own wrong-key refusal guard — propagates
+        // unchanged (never silently masked by the fallback).
+        if (!(err instanceof CodexKeyMissingError)) throw err;
+        const ouro = await ouroFallback(wanted);
+        if (ouro) return ouro;
+        throw err;
       }
-      const ouro = ouros(snap).find(
-        (acc) => acc.publicKey && isKadenaPublicKey(acc.publicKey) && bareKey(acc.publicKey) === wanted,
-      );
-      if (ouro) {
-        const plaintext = await smartDecrypt(ouro.secret, codexPassword);
-        return { publicKey: wanted, privateKey: assertHexSecret(plaintext, "ouro-account"), seedType: "koala" };
-      }
-      for (const seed of seeds(snap)) {
-        const account = (seed.accounts ?? []).find((a) => bareKey(a.publicKey) === wanted);
-        if (account) return fromSeedAccount(seed, account.index, wanted, codexPassword);
-      }
-      throw new Error(`khronoton key resolver: public key ${wanted} is not held by Pythia's operator codex.`);
     },
   };
 }
