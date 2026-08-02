@@ -19,6 +19,9 @@ vi.mock("@ancientpantheon/khronoton-core/handlers", async (importActual) => {
     listCodexCronotons: () => {
       throw new Error("boom-list");
     },
+    // Mimics khronoton-core's own withConfirm→mapStoreError: the handler CATCHES
+    // its internal throw and RETURNS a structured 500 (the throw never escapes).
+    executeNow: async () => ({ status: 500, body: { error: "boom-returned-500" } }),
   };
 });
 
@@ -70,5 +73,15 @@ describe("Khronoton admin — handler-throw error surfacing", () => {
     });
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "boom-list" });
+  });
+
+  it("an execution handler that RETURNS a 500 (khronoton-core's withConfirm→mapStoreError shape) is re-emitted as 200 { ok:false, error } so the UI shows the real reason — the exact case a raw simulate 500 hid", async () => {
+    const res = await makeApp().request("/admin/khronoton/some-id/execute", {
+      method: "POST",
+      headers: { cookie: await ancientCookie(), "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: false, error: "boom-returned-500" });
   });
 });

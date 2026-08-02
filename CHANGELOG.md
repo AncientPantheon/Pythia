@@ -9,6 +9,19 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.12] — 2026-08-02
+
+### Fixed — the Khronoton simulate's REAL error now shows in the UI (not "network error")
+
+When a simulate fails server-side, khronoton-core's `withConfirm`→`mapStoreError` catches the throw
+and RETURNS a structured 500 (the throw never escapes the handler), which the UI's fetch adapter can
+only render as a generic "Simulation failed — network error." with the real reason invisible and
+unlogged. v2.7.9 only caught throws that ESCAPE the handler, so it never saw this shape. Pythia's
+`/admin/khronoton` dispatch now also unwraps a 5xx RETURNED by an execution route (simulate/execute/
+trigger): it logs the real error server-side (`[khronoton] handler … → 500: …`) and re-emits it as
+the 200 `{ ok:false, error }` shape the UI renders as "Simulation failed — <real error>". See
+`docs/work/khronoton-admin-error-surfacing/design.md`.
+
 ## [2.7.11] — 2026-08-02
 
 ### Fixed — HOTFIX: the Khronoton admin page white-screened with any cronoton present

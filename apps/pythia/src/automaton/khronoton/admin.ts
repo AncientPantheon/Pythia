@@ -158,30 +158,39 @@ export function registerKhronotonAdmin(app: Hono, cfg: OidcConfig, codex: CodexS
       signers,
     };
 
+    // The execution routes (simulate / execute / trigger) follow khronoton-core's
+    // own "HTTP 200 even on failure, the error rides in the body" convention
+    // (REQ-H04); the UI's fetch adapter treats ANY non-2xx from them as an opaque
+    // transport failure and renders a misleading "Simulation failed — network
+    // error." with the real reason nowhere visible. So for these routes we make
+    // sure the real error always reaches the UI in a 200 body — covering BOTH
+    // failure shapes: a handler that THROWS (caught below), and — critically —
+    // one that CATCHES its own throw and RETURNS a structured 5xx (khronoton-
+    // core's `withConfirm` → `mapStoreError` does exactly this for a simulate's
+    // internal chain/build/codex failure, so the throw never escapes the handler
+    // and the catch below never sees it). Both are logged server-side too.
+    const isExecutionRoute =
+      method === "POST" &&
+      (seg[0] === "simulate" ||
+        (seg.length === 2 && (seg[1] === "execute" || seg[1] === "trigger")));
+
     let res: Awaited<ReturnType<Handler>>;
     try {
       res = await matched.handler(handlerContext, handlerRequest);
     } catch (err) {
-      // A khronoton handler that THROWS (e.g. the chain dirty-read during a
-      // simulate can't reach Khronoton's signing node, or the operator codex
-      // doesn't hold the gas-payer key) must NOT fall through to Hono's default
-      // unstructured 500. The UI's fetch adapter treats any non-2xx as an opaque
-      // transport failure and renders a misleading "Simulation failed — network
-      // error." with the real reason nowhere visible. Log the real error
-      // server-side (findable in `docker logs`), and — for the execution routes
-      // (simulate / execute / trigger), which follow khronoton-core's own
-      // "200-on-ok:false, the failure rides in the body" convention (REQ-H04) —
-      // return the error IN THE BODY at 200 so the UI shows the actual message
-      // ("Simulation failed — <real error>") instead of the generic network one.
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[khronoton] handler ${method} /${seg.join("/")} threw:`, err);
-      const isExecutionRoute =
-        method === "POST" &&
-        (seg[0] === "simulate" ||
-          (seg.length === 2 && (seg[1] === "execute" || seg[1] === "trigger")));
       if (isExecutionRoute) return c.json({ ok: false, error: message }, 200);
       return c.json({ error: message }, 500);
     }
+
+    if (isExecutionRoute && res.status >= 500) {
+      const body = res.body as { error?: unknown } | undefined;
+      const message = typeof body?.error === "string" ? body.error : `HTTP ${res.status}`;
+      console.error(`[khronoton] handler ${method} /${seg.join("/")} → ${res.status}: ${message}`);
+      return c.json({ ok: false, error: message }, 200);
+    }
+
     // Hono's status arg is a union of literal codes; the handler's number is any HTTP status.
     return c.json(res.body, res.status as ContentfulStatusCode);
   };
