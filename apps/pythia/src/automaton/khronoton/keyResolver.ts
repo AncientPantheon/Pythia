@@ -31,18 +31,26 @@ function bareKey(pub: string): string {
 }
 const HEX_SECRET = /^[0-9a-fA-F]{64}$|^[0-9a-fA-F]{128}$/;
 
+/** A Kadena ed25519 public key is EXACTLY 32 bytes → 64 hex chars (bare, `k:`-prefix
+ *  stripped). Nothing else is a valid Kadena signing key. */
+const KADENA_PUBLIC_KEY = /^[0-9a-fA-F]{64}$/;
+
 /** Every function in this file resolves Kadena/DALOS-curve signers only — this whole
  *  module is Khronoton's Kadena signing seam (Apollo signing has its own, separate seam:
- *  `codexApolloSigner.ts`). `IOuroAccount.originCurve` is `"dalos" | "apollo" | undefined`
- *  (undefined covers legacy entries that predate the field — always Kadena, since Apollo
- *  origin tracking was added specifically to distinguish it from the pre-existing Kadena
- *  default). An Apollo-curve account's `publicKey` is Codex's own Apollo-local public key
- *  (a `<len>.<xy>` string, e.g. `9G.17Kd3B...`) — structurally nothing like a Kadena
- *  64-hex ed25519 pubkey, and was previously listed (and even attempted for signing)
- *  unfiltered here, surfacing as bogus entries in the Khronoton Builder's Kadena
- *  signing-key picker (confirmed live, 2026-08-02). */
-function isKadenaOuro(acc: IOuroAccount): boolean {
-  return acc.originCurve !== "apollo";
+ *  `codexApolloSigner.ts`). Pythia's operator Codex holds mixed-curve accounts: a
+ *  Kadena/DALOS account's `publicKey` is a 64-hex ed25519 key; an APOLLO account's
+ *  `publicKey` is Codex's own Apollo-local public key, a `<len>.<xy>` string (e.g.
+ *  `9G.17Kd3B...`) — structurally nothing like a Kadena key. Only the former may ever be
+ *  offered as a Kadena signer / signed with.
+ *
+ *  We discriminate on the KEY FORMAT ITSELF, not on Codex's `IOuroAccount.originCurve`
+ *  metadata: a v2.7.7 fix filtered on `originCurve !== "apollo"`, but real Codex-generated
+ *  Apollo accounts in the field do NOT reliably carry that field set, so the Apollo keys
+ *  still leaked into the Builder's Kadena signing-key picker (confirmed live, 2026-08-02).
+ *  The 64-hex shape is the actual on-chain requirement and is populated on every account
+ *  by construction, so it's the robust discriminator — no dependence on optional metadata. */
+function isKadenaPublicKey(publicKey: string): boolean {
+  return KADENA_PUBLIC_KEY.test(bareKey(publicKey));
 }
 
 function loadSnapshot(codex: CodexStore): CodexSnapshot {
@@ -100,7 +108,7 @@ export function createPythiaKeyResolver(codex: CodexStore): KeyResolver {
       const snap = loadSnapshot(codex);
       const set = new Set<string>();
       for (const kp of pures(snap)) set.add(bareKey(kp.publicKey));
-      for (const acc of ouros(snap)) if (acc.publicKey && isKadenaOuro(acc)) set.add(bareKey(acc.publicKey));
+      for (const acc of ouros(snap)) if (acc.publicKey && isKadenaPublicKey(acc.publicKey)) set.add(bareKey(acc.publicKey));
       for (const seed of seeds(snap)) for (const acc of seed.accounts ?? []) set.add(bareKey(acc.publicKey));
       return set;
     },
@@ -116,7 +124,7 @@ export function createPythiaKeyResolver(codex: CodexStore): KeyResolver {
         return { publicKey: wanted, privateKey: assertHexSecret(plaintext, "pure-keypair"), seedType: "koala" };
       }
       const ouro = ouros(snap).find(
-        (acc) => acc.publicKey && isKadenaOuro(acc) && bareKey(acc.publicKey) === wanted,
+        (acc) => acc.publicKey && isKadenaPublicKey(acc.publicKey) && bareKey(acc.publicKey) === wanted,
       );
       if (ouro) {
         const plaintext = await smartDecrypt(ouro.secret, codexPassword);
@@ -146,7 +154,7 @@ export function createPythiaSignerSource(codex: CodexStore): SignerSource {
       };
       for (const seed of seeds(snap)) for (const acc of seed.accounts ?? []) push(acc.publicKey, "seed");
       for (const kp of pures(snap)) push(kp.publicKey, "pure");
-      for (const acc of ouros(snap)) if (acc.publicKey && isKadenaOuro(acc)) push(acc.publicKey, "ouro");
+      for (const acc of ouros(snap)) if (acc.publicKey && isKadenaPublicKey(acc.publicKey)) push(acc.publicKey, "ouro");
       return descriptors;
     },
   };

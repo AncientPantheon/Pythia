@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.8 — 2026-08-02
+
+Version alignment: the client jumps from `2.7.7` to `2.7.8` to align with the unified Pythia
+service version line. This release is service-side only (the Khronoton Kadena signing-key picker now
+excludes Apollo-format keys by key SHAPE, fixing a case v2.7.7's metadata filter missed — see
+`CHANGELOG.md` at the repo root) — no changes to this package's own source, API surface, or behavior.
+
 ## 2.7.7 — 2026-08-02
 
 Version alignment: the client jumps from `2.7.6` to `2.7.7` to align with the unified Pythia

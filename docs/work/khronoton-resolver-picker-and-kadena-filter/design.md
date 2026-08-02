@@ -34,16 +34,26 @@ no curve concept at all) owns this — `keyResolver.ts` is Khronoton's Kadena-on
 Pythia and is the only layer that knows "this consumer only wants Kadena keys," but wasn't enforcing
 it.
 
-**Fix:** added `isKadenaOuro(acc)` (`acc.originCurve !== "apollo"` — undefined covers legacy entries
-that predate the field, always Kadena) and applied it at all three `ouros(snap)` iteration sites,
-including the actual signing path (`getKeyPairByPublicKey`), not just the picker — defense-in-depth
-so an Apollo-curve key can never be selected OR (even if one somehow were) signed with as if it were
-Kadena.
+**Fix (v2.7.7, first attempt):** added `isKadenaOuro(acc)` (`acc.originCurve !== "apollo"`) at all
+three `ouros(snap)` iteration sites, including the actual signing path (`getKeyPairByPublicKey`).
+
+**Fix (v2.7.8, corrected):** the v2.7.7 metadata-based filter did NOT hold in the field — real
+Codex-generated Apollo accounts do not reliably carry `originCurve: "apollo"` set (the operator
+re-reported the same Apollo key still leaking into the Builder's signer list after v2.7.7). Replaced
+the metadata check with a format check: `isKadenaPublicKey(pub)` = `/^[0-9a-fA-F]{64}$/` against the
+bare (`k:`-stripped) `publicKey`. A Kadena ed25519 public key is ALWAYS exactly 32 bytes → 64 hex
+chars; an Apollo account's `publicKey` is Codex's own `<len>.<xy>` format (`9G.…`), which can never
+match. The 64-hex shape is the actual on-chain requirement and is populated on every account by
+construction, so it's a robust discriminator with no dependence on optional metadata a generator may
+or may not set. Applied at the same three sites (both pickers + the signing path). A regression test
+seeds an Apollo-format account with NO `originCurve` field and asserts it is excluded — the exact
+case the metadata filter missed.
 
 ## Acceptance criteria
 
 - [x] The Builder's "Server Resolver" dropdown offers both already-registered resolvers.
-- [x] The Kadena signing-key picker excludes Apollo-curve `ouroAccounts` entries.
+- [x] The Kadena signing-key picker excludes Apollo-format `ouroAccounts` entries — by public-key
+      SHAPE (64-hex vs. `<len>.<xy>`), independent of whether Codex set `originCurve` (v2.7.8).
 - [x] `getKeyPairByPublicKey()` rejects an Apollo-curve account's public key as "not held" rather
       than attempting to decrypt/return it as a Kadena keypair.
 - [x] New test coverage: `apps/pythia/src/automaton/khronoton/keyResolver.test.ts` (previously had

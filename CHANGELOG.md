@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.8] — 2026-08-02
+
+### Fixed — Apollo keys STILL leaked into the Kadena signing-key picker (v2.7.7's metadata filter didn't hold)
+
+v2.7.7 filtered the Khronoton signing-key list on Codex's `originCurve` metadata (`!== "apollo"`),
+but real Codex-generated Apollo accounts in the field don't reliably carry that field set — so the
+same Apollo keys (`9G.…`) still showed up in the `DALOS.GAS_PAYER` picker and the Signatures tab's
+"Add Signer" list. Replaced the metadata check with a key-FORMAT check: a Kadena ed25519 public key
+is always exactly 64 hex chars; an Apollo key is the `<len>.<xy>` format and can never match. This is
+the actual on-chain requirement and is independent of any optional metadata. Applied at all three
+`keyResolver.ts` call sites (both pickers + the signing path); regression test covers an
+Apollo-format account with no `originCurve` field — the exact case the old filter missed. See
+`docs/work/khronoton-resolver-picker-and-kadena-filter/design.md`.
+
 ## [2.7.7] — 2026-08-02
 
 ### Fixed — Khronoton admin: the Server Resolver dropdown had no options; the Kadena signing-key picker listed Apollo-curve keys
