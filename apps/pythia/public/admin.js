@@ -1734,20 +1734,23 @@ function selfConnectorHalfView(half) {
   return { cls: "deploy-chip--not-linked", text: "Not linked" };
 }
 
-// Renders a countdown-to-expiry string off a millisecond delta: "23h 58m" for
-// an hour or more remaining, "42m 10s" under an hour, "expired" once the
-// delta has crossed zero (or below, e.g. if the browser clock lags a tick).
+// Renders a countdown-to-expiry string off a millisecond delta: "23h 58m 41s"
+// with an hour or more remaining, "42m 10s" under an hour, "17s" under a
+// minute, "expired" once the delta has crossed zero (or below, e.g. if the
+// browser clock lags a tick). Seconds are ALWAYS shown, even alongside hours
+// — a live-ticking "…41s…40s…39s…" is the visible, at-a-glance proof to an
+// admin that the countdown (and the whole self-connector loop behind it) is
+// genuinely live, not a stale/frozen render; "23h 58m" alone only visibly
+// changes once a minute, which reads as static.
 function formatCountdown(ms) {
   if (ms <= 0) return "expired";
   const totalSeconds = Math.floor(ms / 1000);
-  if (ms >= 60 * 60 * 1000) {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
-  }
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}m ${seconds}s`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 // Pythia's own self-connector ephemeral-secret TTL (v2.6.0's

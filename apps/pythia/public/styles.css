@@ -522,7 +522,14 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .conn-field input { padding: .5rem .6rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; }
 .conn-field input:focus { outline: none; border-color: var(--gold-dim); }
 .conn-check { display: flex; align-items: center; gap: .5rem; color: var(--ink-soft); font-size: .85rem; }
-.conn-actions { display: flex; gap: .6rem; }
+/* `align-items: flex-end` (not the flex default `stretch`): a `.conn-actions`
+   row typically pairs a `.conn-field` (a LABEL line + an input, so taller
+   than a button needs) with a plain `.btn`. Without this, the button
+   stretches to match the field's full label+input height instead of its own
+   natural size — squat and squarish rather than a normal button. Aligning to
+   the bottom edge instead lines the button up with the input itself, the
+   usual "label above, button beside the input" form shape. */
+.conn-actions { display: flex; gap: .6rem; align-items: flex-end; }
 .conn-error { color: var(--red); font-size: .85rem; margin: 0; }
 
 /* ── connectors: shown-once key panel ───────────────────────────────────── */

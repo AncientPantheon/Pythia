@@ -9,6 +9,18 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.6] — 2026-08-02
+
+### Changed — Self Connector panel: seconds-ticking countdown + a normal (not square) Link button
+
+Reported live: the countdown text ("expires in 23h 59m") only visibly changed once a minute — the
+operator's own bar for trusting the panel is genuinely live is watching the seconds tick down.
+`formatCountdown` now always includes seconds, at every magnitude ("23h 58m 41s" / "42m 10s" /
+"17s"). Also fixed: the Link button rendered squarish because `.conn-actions`'s flex row stretched
+it to match its taller label+input sibling's full height. `align-items: flex-end` fixes it at the
+shared rule (also benefits the other admin forms using the same pattern). See
+`docs/work/self-connector-countdown-and-button/design.md`.
+
 ## [2.7.5] — 2026-08-02
 
 ### Fixed — Self Connector panel: layout collision + false "Not linked" after every redeploy
