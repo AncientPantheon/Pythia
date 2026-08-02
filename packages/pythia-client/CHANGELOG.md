@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.9 — 2026-08-02
+
+Version alignment: the client jumps from `2.7.8` to `2.7.9` to align with the unified Pythia
+service version line. This release is service-side only (the Khronoton admin now surfaces a
+throwing handler's real error instead of a generic "network error" — see `CHANGELOG.md` at the repo
+root) — no changes to this package's own source, API surface, or behavior.
+
 ## 2.7.8 — 2026-08-02
 
 Version alignment: the client jumps from `2.7.7` to `2.7.8` to align with the unified Pythia

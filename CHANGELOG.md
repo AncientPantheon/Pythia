@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.9] — 2026-08-02
+
+### Fixed — Khronoton admin: a handler that throws now surfaces the REAL error, not "network error"
+
+An operator wiring up the first live Khronoton cronoton hit "Simulation failed — network error." —
+which is the Builder UI's generic label for a server-side failure, not a diagnosis. Pythia's
+`/admin/khronoton` dispatch didn't wrap the handler call in a try/catch, so any exception (e.g. the
+simulate's chain dirty-read failing, or a missing gas-payer key) fell through to an unstructured 500
+that the UI could only render as an opaque transport error, with the real reason nowhere visible.
+The dispatch now catches handler throws: logs the real error server-side (findable in `docker
+logs`), returns it in the body at HTTP 200 as `{ ok:false, error }` for the execution routes
+(simulate/execute/trigger) so the Builder shows "Simulation failed — <real error>", and a structured
+500 `{ error }` for the rest. See `docs/work/khronoton-admin-error-surfacing/design.md`.
+
 ## [2.7.8] — 2026-08-02
 
 ### Fixed — Apollo keys STILL leaked into the Kadena signing-key picker (v2.7.7's metadata filter didn't hold)
