@@ -9,6 +9,25 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.7] — 2026-08-02
+
+### Fixed — Khronoton admin: the Server Resolver dropdown had no options; the Kadena signing-key picker listed Apollo-curve keys
+
+Investigating how to configure the on-chain `A_LinkDualApiKey` activation cronoton surfaced that its
+already-registered `dual-link-activate` server resolver was genuinely un-selectable in the Builder —
+the "Server Resolver" dropdown is populated from a `serverResolverOptions` prop Pythia's own
+`KhronotonApp.tsx` never passed, so it always showed only "None (ordinary cronoton)." Both
+already-registered resolvers (`pyth-flush`, `dual-link-activate`) are now selectable.
+
+Also fixed, reported live: the `DALOS.GAS_PAYER` Kadena signing-key picker (and the signatures
+picker) listed Apollo-curve Codex accounts alongside real Kadena keys — `keyResolver.ts` iterated
+`ouroAccounts` with no filter on `originCurve`, even though Codex's own type already distinguishes
+them. Now filtered to Kadena-curve accounts only, including the actual signing path (not just the
+picker) as defense-in-depth. See
+`docs/work/khronoton-resolver-picker-and-kadena-filter/design.md`, which also documents that no
+Khronoton engine change is needed for event-style firing — the existing 30-second-tick
+server-resolver poll-for-readiness pattern already covers it.
+
 ## [2.7.6] — 2026-08-02
 
 ### Changed — Self Connector panel: seconds-ticking countdown + a normal (not square) Link button

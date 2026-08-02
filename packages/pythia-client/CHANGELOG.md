@@ -2,6 +2,14 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.7 — 2026-08-02
+
+Version alignment: the client jumps from `2.7.6` to `2.7.7` to align with the unified Pythia
+service version line. This release is service-side only (Khronoton admin: the Server Resolver
+dropdown now offers the already-registered resolvers, and the Kadena signing-key picker excludes
+Apollo-curve keys — see `CHANGELOG.md` at the repo root) — no changes to this package's own source,
+API surface, or behavior.
+
 ## 2.7.6 — 2026-08-02
 
 Version alignment: the client jumps from `2.7.5` to `2.7.6` to align with the unified Pythia

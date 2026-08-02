@@ -31,6 +31,20 @@ function bareKey(pub: string): string {
 }
 const HEX_SECRET = /^[0-9a-fA-F]{64}$|^[0-9a-fA-F]{128}$/;
 
+/** Every function in this file resolves Kadena/DALOS-curve signers only — this whole
+ *  module is Khronoton's Kadena signing seam (Apollo signing has its own, separate seam:
+ *  `codexApolloSigner.ts`). `IOuroAccount.originCurve` is `"dalos" | "apollo" | undefined`
+ *  (undefined covers legacy entries that predate the field — always Kadena, since Apollo
+ *  origin tracking was added specifically to distinguish it from the pre-existing Kadena
+ *  default). An Apollo-curve account's `publicKey` is Codex's own Apollo-local public key
+ *  (a `<len>.<xy>` string, e.g. `9G.17Kd3B...`) — structurally nothing like a Kadena
+ *  64-hex ed25519 pubkey, and was previously listed (and even attempted for signing)
+ *  unfiltered here, surfacing as bogus entries in the Khronoton Builder's Kadena
+ *  signing-key picker (confirmed live, 2026-08-02). */
+function isKadenaOuro(acc: IOuroAccount): boolean {
+  return acc.originCurve !== "apollo";
+}
+
 function loadSnapshot(codex: CodexStore): CodexSnapshot {
   const backup = codex.loadBackup();
   if (backup === null) {
@@ -86,7 +100,7 @@ export function createPythiaKeyResolver(codex: CodexStore): KeyResolver {
       const snap = loadSnapshot(codex);
       const set = new Set<string>();
       for (const kp of pures(snap)) set.add(bareKey(kp.publicKey));
-      for (const acc of ouros(snap)) if (acc.publicKey) set.add(bareKey(acc.publicKey));
+      for (const acc of ouros(snap)) if (acc.publicKey && isKadenaOuro(acc)) set.add(bareKey(acc.publicKey));
       for (const seed of seeds(snap)) for (const acc of seed.accounts ?? []) set.add(bareKey(acc.publicKey));
       return set;
     },
@@ -101,7 +115,9 @@ export function createPythiaKeyResolver(codex: CodexStore): KeyResolver {
         const plaintext = await smartDecrypt(pure.encryptedPrivateKey, codexPassword);
         return { publicKey: wanted, privateKey: assertHexSecret(plaintext, "pure-keypair"), seedType: "koala" };
       }
-      const ouro = ouros(snap).find((acc) => acc.publicKey && bareKey(acc.publicKey) === wanted);
+      const ouro = ouros(snap).find(
+        (acc) => acc.publicKey && isKadenaOuro(acc) && bareKey(acc.publicKey) === wanted,
+      );
       if (ouro) {
         const plaintext = await smartDecrypt(ouro.secret, codexPassword);
         return { publicKey: wanted, privateKey: assertHexSecret(plaintext, "ouro-account"), seedType: "koala" };
@@ -130,7 +146,7 @@ export function createPythiaSignerSource(codex: CodexStore): SignerSource {
       };
       for (const seed of seeds(snap)) for (const acc of seed.accounts ?? []) push(acc.publicKey, "seed");
       for (const kp of pures(snap)) push(kp.publicKey, "pure");
-      for (const acc of ouros(snap)) if (acc.publicKey) push(acc.publicKey, "ouro");
+      for (const acc of ouros(snap)) if (acc.publicKey && isKadenaOuro(acc)) push(acc.publicKey, "ouro");
       return descriptors;
     },
   };

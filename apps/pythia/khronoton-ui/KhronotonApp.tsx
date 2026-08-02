@@ -1,9 +1,39 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { KhronotonProvider, createFetchAdapter } from "@ancientpantheon/khronoton-core/provider";
+import type { ServerResolverOption } from "@ancientpantheon/khronoton-core/provider";
 import { Builder, CronotonList, Detail, KhronotonUiRoot } from "@ancientpantheon/khronoton-core/ui";
 import type { Access } from "@ancientpantheon/khronoton-core/ui";
 import "@ancientpantheon/khronoton-core/ui.css";
 import "./khronoton-island.css";
+
+/**
+ * The Builder's "Server Resolver" dropdown is populated from THIS list — not
+ * auto-discovered from the server-side `registerServerResolver()` registry
+ * (`apps/pythia/src/automaton/khronoton/register.ts`). Without an entry here, a
+ * resolver that's registered and working server-side is simply un-selectable in the
+ * admin UI (confirmed live, 2026-08-02 — the dropdown showed only "None (ordinary
+ * cronoton)" even though both resolvers below were already registered and firing).
+ * The literal `value` strings are hardcoded (not imported) rather than importing
+ * `DUAL_LINK_ACTIVATE_RESOLVER`/`PYTH_FLUSH_RESOLVER` from their server-side resolver
+ * modules — those modules pull in `@ancientpantheon/khronoton-core/server`'s Node-only
+ * surface, which has no place in this browser-bundled island. Keep these two strings in
+ * lockstep with `dualLinkActivateResolver.ts`'s `DUAL_LINK_ACTIVATE_RESOLVER` and
+ * `pythFlushResolver.ts`'s `PYTH_FLUSH_RESOLVER` by hand if either ever changes.
+ */
+const SERVER_RESOLVER_OPTIONS: ServerResolverOption[] = [
+  {
+    value: "pyth-flush",
+    label: "Pyth Flush (A_Flush)",
+    note: "Fills entries[] from the local Pyth ledger's day-buckets at fire time.",
+  },
+  {
+    value: "dual-link-activate",
+    label: "Dual-Link Activate (A_LinkDualApiKey)",
+    note:
+      "Fills standardApollo/smartApollo from the oldest verified-but-not-yet-active " +
+      "pair — a no-op fire when none are ready.",
+  },
+];
 
 /**
  * Pythia's live Khronoton console — the package's real screens (CronotonList ⇄
@@ -83,7 +113,11 @@ export function KhronotonApp(): ReactElement {
 
   return (
     <KhronotonUiRoot className="pyth-khronoton">
-      <KhronotonProvider adapter={adapter} onNeedConfirm={onNeedConfirm}>
+      <KhronotonProvider
+        adapter={adapter}
+        onNeedConfirm={onNeedConfirm}
+        serverResolverOptions={SERVER_RESOLVER_OPTIONS}
+      >
         {gate}
         {screen.view === "list" ? (
           <CronotonList
