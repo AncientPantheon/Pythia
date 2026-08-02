@@ -69,3 +69,9 @@
   color: #1a1204;
   background: linear-gradient(180deg, var(--gold, #e6be6a) 0%, var(--gold-dim, #b8912f) 100%);
 }
+
+/* Pythia-added Back control above the package's <Builder> (which ships no
+   cancel/back of its own) — see KhronotonApp.tsx. */
+.pyth-khr-backbar {
+  margin: 0 0 14px;
+}

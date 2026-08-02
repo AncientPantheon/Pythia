@@ -135,11 +135,33 @@ export function KhronotonApp(): ReactElement {
             onNavigateToList={() => setScreen({ view: "list" })}
           />
         ) : (
-          <Builder
-            editId={screen.editId}
-            access={access}
-            onDone={(id) => setScreen(id ? { view: "detail", id } : { view: "list" })}
-          />
+          // The package's <Builder> only ever LEAVES the screen via a successful
+          // Commit (its onDone fires with the new/edited id) — it ships no
+          // cancel/back affordance of its own, so opening it (especially to EDIT
+          // an existing cronoton) otherwise strands you with no way out but to
+          // save. Pythia adds its own Back control in the surrounding chrome: it
+          // navigates back to the edited cronoton's detail (or the list, for a
+          // brand-new one), discarding any unsaved edits. NB "Save" is the
+          // package's own Commit button, which lives on the Builder's Execute tab
+          // (the last tab) — it is not missing, just not on every tab.
+          <>
+            <div className="pyth-khr-backbar">
+              <button
+                type="button"
+                className="cxpg-btn"
+                onClick={() =>
+                  setScreen(screen.editId ? { view: "detail", id: screen.editId } : { view: "list" })
+                }
+              >
+                ← Back{screen.editId ? " (discard unsaved edits)" : ""}
+              </button>
+            </div>
+            <Builder
+              editId={screen.editId}
+              access={access}
+              onDone={(id) => setScreen(id ? { view: "detail", id } : { view: "list" })}
+            />
+          </>
         )}
       </KhronotonProvider>
     </KhronotonUiRoot>

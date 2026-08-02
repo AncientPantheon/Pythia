@@ -9,6 +9,17 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.10] — 2026-08-02
+
+### Fixed — Khronoton Builder: added a Back button (editing a cronoton no longer strands you)
+
+khronoton-core's `<Builder>` only leaves its screen via a successful Commit — it ships no cancel/back
+of its own, so opening it to edit an existing cronoton left an admin with no way out but to save.
+Pythia's `KhronotonApp` now renders a Back control above the Builder that returns to the cronoton's
+detail (or the list, for a new one), discarding unsaved edits. Note: "Save" was never missing — it's
+the package's Commit button on the Builder's Execute tab (the last tab). See
+`docs/work/khronoton-builder-back-button/design.md`.
+
 ## [2.7.9] — 2026-08-02
 
 ### Fixed — Khronoton admin: a handler that throws now surfaces the REAL error, not "network error"

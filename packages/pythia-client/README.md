@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.7.9` on public npmjs — proprietary release, all rights reserved (see
+`2.7.10` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -129,6 +129,10 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.7.10** — version alignment: jumps from `2.7.9` to `2.7.10` to align with the unified Pythia
+service version line. Service-side only (the Khronoton Builder admin UI gained a Back button) — no
+changes to this package's own source, API surface, or behavior.
 
 **v2.7.9** — version alignment: jumps from `2.7.8` to `2.7.9` to align with the unified Pythia
 service version line. Service-side only (the Khronoton admin now surfaces a throwing handler's real
