@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.4 — 2026-08-02
+
+Version alignment: the client jumps from `2.7.3` to `2.7.4` to align with the unified Pythia
+service version line. This release is service-side only (fixes a race where an in-flight
+blue-green deploy could silently undo an admin's Pyth ledger "Nuke" — see `CHANGELOG.md` at the
+repo root) — no changes to this package's own source, API surface, or behavior.
+
 ## 2.7.3 — 2026-08-01
 
 Version alignment: the client jumps from `2.7.2` to `2.7.3` to align with the unified Pythia

@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.4] — 2026-08-02
+
+### Fixed — a Nuke could be silently undone by an in-flight blue-green deploy
+
+The admin "Nuke" button (`PythLedger.nuke()`) could be silently reversed: the blue-green deploy
+script starts the incoming container and lets it boot — loading the ledger file into its own
+process memory — up to ~60s before Caddy cuts traffic over to it. A Nuke click landing in that
+window hit the still-live outgoing container correctly, but the incoming container's own stale,
+pre-nuke in-memory snapshot survived; its first `persist()` after cutover (a request, its 30s
+timer, or its shutdown flush) silently overwrote the just-nuked file with the old data, resurrecting
+it. `PythLedger` now tracks a generation counter bumped only by `nuke()`; every `persist()` first
+checks the on-disk generation and self-heals (reloads) instead of writing over a newer reset it
+doesn't know about yet. See `docs/work/pyth-ledger-nuke-race/design.md`.
+
 ## [2.7.3] — 2026-08-01
 
 ### Changed — Self Connector panel redesigned around a single consolidated ephemeral key

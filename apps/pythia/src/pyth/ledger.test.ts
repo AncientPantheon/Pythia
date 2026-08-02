@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PythLedger } from "./ledger.js";
@@ -93,6 +93,96 @@ describe("PythLedger", () => {
     l.recordRead(0.0001);
     l.recordRead(0.0001);
     expect(l.total().pondus).toBe(0); // 0.0002 → 0.000
+  });
+
+  it("loads an old-format file with no generation field as generation 0 (backward compatible with the live pre-fix ledger file)", () => {
+    const file = scratchFile();
+    writeFileSync(
+      file,
+      JSON.stringify({
+        days: {
+          "2026-07-21": {
+            petitions: 1,
+            pondus: 5,
+            transactions: 0,
+            gasReserved: 0,
+            failedTransactions: 0,
+            wastedGasReserved: 0,
+          },
+        },
+      }),
+    );
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    expect(l.total().petitions).toBe(1);
+    // A subsequent ordinary persist() (disk generation 0 == our generation 0) must
+    // still write normally, not be treated as stale.
+    l.recordRead(2);
+    l.persist();
+    const b = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    expect(b.total().petitions).toBe(2);
+  });
+});
+
+describe("PythLedger — nuke/deploy generation race", () => {
+  // Reproduces the exact production bug: a blue-green deploy's INCOMING container
+  // boots (loading the ledger into its own memory) up to ~60s before Caddy cuts
+  // traffic over to it (deploy/host/pythia-deploy.sh, health-check window). If an
+  // admin's "Nuke" click lands on the OUTGOING container in that window (Caddy is
+  // still routing to it), the incoming container's own eventual persist() — its 30s
+  // timer, a served request, or its shutdown flush — used to blindly overwrite the
+  // just-nuked file with its own stale pre-nuke snapshot, silently resurrecting
+  // "nuked" data. See docs/work/pyth-ledger-nuke-race/ (or the nuke()/persist() doc
+  // comments) for the full writeup.
+  it("a stale sibling process self-heals on its own next persist() instead of clobbering a Nuke", () => {
+    const file = scratchFile();
+
+    // The OUTGOING container: already live, has real accumulated activity, persisted.
+    const outgoing = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    outgoing.recordRead(30.221);
+    outgoing.persist();
+
+    // The INCOMING container boots WHILE `outgoing` is still serving (the health-check
+    // window) — it loads the SAME pre-nuke state into its own, separate memory.
+    const incoming = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:05:00.000Z") });
+    expect(incoming.total().petitions).toBe(1); // confirms it loaded the pre-nuke state
+
+    // The admin clicks Nuke — Caddy hasn't cut over yet, so it lands on `outgoing`.
+    outgoing.nuke();
+    expect(outgoing.total().petitions).toBe(0);
+
+    // Caddy now cuts traffic to `incoming`. Its first persist() (a request, its 30s
+    // timer, or its eventual shutdown flush) must detect the generation bump and
+    // self-heal (reload) instead of blindly re-persisting its stale snapshot.
+    incoming.persist();
+
+    // A third instance — the NEXT deploy's fresh container — must see the nuke, not
+    // `incoming`'s resurrected stale total.
+    const verify = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:10:00.000Z") });
+    expect(verify.total().petitions).toBe(0);
+    expect(verify.daily()).toHaveLength(0);
+  });
+
+  it("a stale sibling's own new activity recorded before it self-heals is lost, not merged — an accepted, documented trade-off vs. resurrecting nuked history", () => {
+    const file = scratchFile();
+    const outgoing = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    outgoing.persist();
+    const incoming = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:05:00.000Z") });
+    outgoing.nuke();
+    incoming.recordRead(99); // real traffic the stale sibling served post-cutover, pre-heal
+    incoming.persist(); // self-heals: reloads the nuked state, discarding the above
+    expect(incoming.total().petitions).toBe(0);
+  });
+
+  it("persist() writes normally (no self-heal, no data loss) when there is no staleness", () => {
+    const file = scratchFile();
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    l.recordRead(7);
+    l.persist();
+    l.recordRead(3);
+    l.persist();
+    expect(l.total().petitions).toBe(2);
+    const reloaded = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    expect(reloaded.total().petitions).toBe(2);
   });
 });
 

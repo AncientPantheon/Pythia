@@ -77,6 +77,22 @@ export interface PythLedgerOptions {
 
 interface LedgerSnapshot {
   days: Record<string, LedgerCounters>;
+  /** Monotonic counter, bumped only by {@link PythLedger.nuke}. Lets a process that
+   *  booted with a stale in-memory snapshot detect, on its own next {@link
+   *  PythLedger.persist}, that the on-disk truth has moved past what it loaded — and
+   *  reload instead of blindly clobbering it. Absent on old (pre-fix) files, treated
+   *  as `0`.
+   *
+   *  Closes a genuine production race between "Nuke" and a blue-green deploy
+   *  (`deploy/host/pythia-deploy.sh`): the INCOMING container boots — loading the
+   *  ledger into its own memory — up to ~60s *before* Caddy cuts traffic over to it
+   *  (the health-check window). If an admin's Nuke click lands on the OUTGOING
+   *  container in that window (Caddy is still routing to it), the incoming
+   *  container's own eventual `persist()` (its 30s timer, a served request, or its
+   *  shutdown flush) used to silently overwrite the just-nuked file with its own
+   *  stale pre-nuke snapshot. See `ledger.test.ts`'s "nuke/deploy generation race"
+   *  describe block for the reproduction. */
+  generation?: number;
 }
 
 const DEFAULT_FLUSH_MS = 30_000;
@@ -120,6 +136,8 @@ export class PythLedger {
   private readonly epochMs: () => number;
   private timer: ReturnType<typeof setInterval> | undefined;
   private writeWarned = false;
+  /** This process's last-known ledger generation — see {@link LedgerSnapshot.generation}. */
+  private generation = 0;
 
   constructor(options: PythLedgerOptions) {
     this.filePath = options.filePath;
@@ -277,18 +295,24 @@ export class PythLedger {
     this.persist();
   }
 
-  /** Reset the whole ledger to zero (the admin "nuke"). Persists immediately. */
+  /** Reset the whole ledger to zero (the admin "nuke"). Bumps `generation` so a
+   *  stale sibling process (see {@link LedgerSnapshot.generation}) can detect this
+   *  reset on its own next `persist()` and reload instead of clobbering it.
+   *  Persists immediately. */
   nuke(): void {
     this.days.clear();
+    this.generation += 1;
     this.persist();
   }
 
   snapshot(): LedgerSnapshot {
-    return { days: Object.fromEntries(this.days) };
+    return { days: Object.fromEntries(this.days), generation: this.generation };
   }
 
   private applySnapshot(snap: LedgerSnapshot): void {
     this.days.clear();
+    this.generation =
+      typeof snap?.generation === "number" && Number.isFinite(snap.generation) ? snap.generation : 0;
     if (snap && typeof snap === "object" && snap.days) {
       for (const [day, c] of Object.entries(snap.days)) {
         if (c && typeof c === "object") {
@@ -304,21 +328,45 @@ export class PythLedger {
     }
   }
 
-  private loadFromDisk(): void {
-    if (!existsSync(this.filePath)) return;
+  /** Reads + parses the on-disk snapshot without touching in-memory state. Returns
+   *  `null` if the file is absent, unreadable, or corrupt (warns once on the latter
+   *  two — never on a simply-missing file, the normal first-boot case). */
+  private readSnapshotFromDisk(): LedgerSnapshot | null {
+    if (!existsSync(this.filePath)) return null;
     try {
-      this.applySnapshot(
-        JSON.parse(readFileSync(this.filePath, "utf8")) as LedgerSnapshot,
-      );
+      return JSON.parse(readFileSync(this.filePath, "utf8")) as LedgerSnapshot;
     } catch {
       console.warn(
         `Pyth ledger at ${this.filePath} is unreadable/corrupt — starting empty`,
       );
+      return null;
     }
   }
 
-  /** Atomically persist the snapshot. Non-fatal: warns once on failure. */
+  private loadFromDisk(): void {
+    const snap = this.readSnapshotFromDisk();
+    if (snap) this.applySnapshot(snap);
+  }
+
+  /** Atomically persist the snapshot. Non-fatal: warns once on failure.
+   *
+   *  Self-heal check first: if the on-disk generation is AHEAD of what this process
+   *  last knew, another process has nuked the ledger since this one last synced (see
+   *  {@link LedgerSnapshot.generation}) — reload the newer on-disk truth instead of
+   *  writing this process's stale snapshot over it. Whatever this process itself
+   *  recorded since it went stale is discarded, not merged — an accepted trade-off:
+   *  losing a few seconds of one process's traffic beats silently resurrecting a
+   *  whole nuked history. */
   persist(): void {
+    const diskSnap = this.readSnapshotFromDisk();
+    const diskGeneration =
+      typeof diskSnap?.generation === "number" && Number.isFinite(diskSnap.generation)
+        ? diskSnap.generation
+        : 0;
+    if (diskGeneration > this.generation) {
+      this.applySnapshot(diskSnap as LedgerSnapshot);
+      return;
+    }
     try {
       mkdirSync(dirname(this.filePath), { recursive: true });
       const tmp = `${this.filePath}.tmp`;
