@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.11] — 2026-08-02
+
+### Fixed — HOTFIX: the Khronoton admin page white-screened with any cronoton present
+
+khronoton-core 0.6.0 (auto-adopted on deploy via `@latest`) crashes rendering the cronoton list:
+`CronotonList` reads `row.pact_code` and calls `.replace` on it, but the list SQL projection never
+returns `pact_code`, so the whole page threw "Cannot read properties of undefined (reading
+'replace')" the moment the list had ≥1 cronoton. Pythia can't patch the package component, but it
+owns the adapter — so `KhronotonApp` now wraps the adapter's `list()` to default `pact_code` to `""`
+on every row (the preview reads "(empty)" instead of crashing; forward-compatible with a fixed
+package via `?? ""`). This was NOT the v2.7.10 Back button (which is in the Builder branch, never
+rendered on the list). Real fix handed off for khronoton-core 0.6.1
+(`docs/HANDOFF-khronoton-cronotonlist-crash.md`). See
+`docs/work/khronoton-cronotonlist-crash-workaround/design.md`.
+
 ## [2.7.10] — 2026-08-02
 
 ### Fixed — Khronoton Builder: added a Back button (editing a cronoton no longer strands you)

@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.11 — 2026-08-02
+
+Version alignment: the client jumps from `2.7.10` to `2.7.11` to align with the unified Pythia
+service version line. This release is service-side only (a hotfix for a khronoton-core 0.6.0 crash
+that white-screened the Khronoton admin page — see `CHANGELOG.md` at the repo root) — no changes to
+this package's own source, API surface, or behavior.
+
 ## 2.7.10 — 2026-08-02
 
 Version alignment: the client jumps from `2.7.9` to `2.7.10` to align with the unified Pythia

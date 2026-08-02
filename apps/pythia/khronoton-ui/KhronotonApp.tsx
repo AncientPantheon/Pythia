@@ -108,7 +108,32 @@ export function KhronotonApp(): ReactElement {
     };
   }, []);
 
-  const adapter = useMemo(() => createFetchAdapter("/admin/khronoton"), []);
+  const adapter = useMemo(() => {
+    const base = createFetchAdapter("/admin/khronoton");
+    // WORKAROUND for a khronoton-core 0.6.0 crash (Pythia's deploy auto-adopts
+    // @latest): the cronoton LIST projection (`listCodexCronotons`) returns only
+    // id/name/schedule_mode/status/next_fire_at/last_fire_at/created_at/
+    // modified_at/created_by — it OMITS `pact_code` — yet the package's own
+    // <CronotonList> renders `pactPreview(row.pact_code)`, which does
+    // `pact_code.replace(/\s+/g, " ")` with no undefined guard. So the whole
+    // Khronoton admin page white-screens ("Cannot read properties of undefined
+    // (reading 'replace')") the moment the list has ≥1 cronoton. Pythia can't
+    // patch the package's component, but it OWNS this adapter — so default
+    // `pact_code` to "" on every list row (the preview then reads "(empty)"
+    // instead of crashing). Forward-compatible: a fixed package that DOES return
+    // pact_code keeps its real value via `?? `. Real fix tracked in
+    // docs/HANDOFF-khronoton-cronotonlist-crash.md (khronoton-core 0.6.1).
+    return {
+      ...base,
+      list: async (query?: Parameters<typeof base.list>[0]) => {
+        const view = await base.list(query);
+        return {
+          ...view,
+          codexCronotons: view.codexCronotons.map((r) => ({ ...r, pact_code: r.pact_code ?? "" })),
+        };
+      },
+    };
+  }, []);
   const access: Access = useMemo(() => ({ tier: "admin", email }), [email]);
 
   return (
