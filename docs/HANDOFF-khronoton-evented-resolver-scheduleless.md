@@ -125,11 +125,14 @@ Two consumer pain points with server-resolver ("system") cronotons:
 ## Ask 6 — a server-resolver ROSTER (which resolvers are consumed) + mark evented in the DETAIL view
 
 Two gaps beyond the list:
-1. **Detail view still shows the stored schedule for an evented row.** Operator-reported: an
-   externally-fireable cronoton's detail shows `Schedule: Daily at 12:00 UTC` and `Next Fire: —`. For a
-   trigger-only row, the detail's **Schedule** field must read **"Evented"** (not the stored
-   mode/config) and the **edit form must disable the schedule controls entirely** (Ask 2, but applied to
-   the detail/edit surface, not just the create form).
+1. **Detail view still shows the stored schedule for an evented row.**
+   **CONFIRMED on Pythia v2.7.22 (khronoton-core 0.7.0) — this is now the ONLY remaining evented-UI gap.**
+   The edit form correctly disables the scheduler (`eventedNames.has(serverResolver)`) AND the detail's
+   **Next Fire** correctly shows **"—"** — but on the SAME detail card the **Schedule** field still
+   renders the stored `schedule_config` (`"Daily at 12:00 UTC"`). It's a one-line inconsistency: the
+   Schedule label must apply the same trigger-only/evented check Next-Fire already uses and show
+   **"Evented"** (never the stored mode/config) for a trigger-only row. A tiny, well-scoped fix in the
+   Builder's detail view.
 2. **No resolver roster.** Add a view (fed by the Ask-2 resolvers-metadata endpoint cross-referenced
    with `findCodexCronotonIdByServerResolver`) that lists the automaton's declared server resolvers and,
    for each, whether it's **consumed** by a cronoton and which one — so "every server resolver consumed"
