@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.19] — 2026-08-03
+
+### Changed — picking an EVENT-DRIVEN server resolver turns scheduling off (enforced)
+
+Follow-up to v2.7.18's event-driven activation: the system now KNOWS `dual-link-activate` is
+event-driven and forces its cronoton scheduleless. Pythia owns the set of evented resolver names
+(`EVENTED_SERVER_RESOLVERS`, `apps/pythia/src/automaton/khronoton/eventedResolvers.ts`) and, on a
+cronoton COMMIT whose picked `serverResolver` is evented, forces `externalFireable = true` — so
+khronoton-core stores `next_fire_at = NULL` and the scheduler's `next_fire_at IS NOT NULL` due-query
+skips it. An evented-resolver cronoton can no longer be committed with a schedule (it can't auto-tick
+and double-fire alongside the event). `pyth-flush` is explicitly NOT evented — it stays schedule-driven.
+The live Builder-UI grey-out (schedule controls disabling the moment you pick an evented resolver) needs
+the bundled khronoton-core Builder to read resolver metadata — written up in
+`docs/HANDOFF-khronoton-evented-resolver-scheduleless.md`.
+
 ## [2.7.18] — 2026-08-03
 
 ### Fixed — dual-link activation is now TRULY event-driven (scheduleless)

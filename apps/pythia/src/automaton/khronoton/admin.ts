@@ -29,6 +29,7 @@ import type { OidcConfig } from "../../admin/oidcConfig.js";
 import type { CodexStore } from "../codexStore.js";
 import { getKhronotonContext } from "./context.js";
 import { createPythiaSignerSource } from "./keyResolver.js";
+import { enforceEventedScheduleless } from "./eventedResolvers.js";
 
 /**
  * The ancient-gated Khronoton admin surface — the server side of the scheduled-
@@ -126,6 +127,13 @@ export function registerKhronotonAdmin(app: Hono, cfg: OidcConfig, codex: CodexS
 
     let body: unknown;
     if (method !== "GET") body = await c.req.json().catch(() => undefined);
+
+    // EVENT-DRIVEN resolvers are scheduleless by construction: picking one (e.g.
+    // `dual-link-activate`, fired by the link event) turns scheduling OFF. Enforce
+    // it on COMMIT (POST /) — force externalFireable so the row is stored with
+    // next_fire_at = NULL and the tick's due-query skips it. The system knowing the
+    // resolver is evented is what disables the scheduler, exactly as intended.
+    if (method === "POST" && seg.length === 0) body = enforceEventedScheduleless(body);
 
     const q: Record<string, string | string[]> = {};
     for (const [k, values] of Object.entries(c.req.queries())) {
