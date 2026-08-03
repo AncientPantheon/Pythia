@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.20] — 2026-08-03
+
+### Added — enforce one-resolver-one-cronoton (a server resolver binds exactly one cronoton)
+
+A server-resolver name may bind only ONE cronoton: the fire lookup
+(`findCodexCronotonIdByServerResolver`) keys off the name and returns the most-recently-created match, so
+a second cronoton on the same resolver silently shadows the first (the wrong template fires). Pythia's
+Khronoton admin now rejects a COMMIT that reuses an already-bound server resolver (`409` — delete the
+existing one first), via `commitServerResolver` + a `findCodexCronotonIdByServerResolver` check in
+`admin.ts`. The server-resolver rules (the `serverResolver` name IS the binding tag; one resolver ↔ one
+cronoton; evented ⇒ scheduleless ⇒ "Evented" next-fire) are written down in the Pantheonic architecture
+(`organs/05-khronoton-engine-wire-in.md §6`) and `docs/work/pythia-event-driven-activation/design.md`.
+Store-level uniqueness enforcement + the "Evented" next-fire display are added to
+`docs/HANDOFF-khronoton-evented-resolver-scheduleless.md` (khronoton-core).
+
 ## [2.7.19] — 2026-08-03
 
 ### Changed — picking an EVENT-DRIVEN server resolver turns scheduling off (enforced)

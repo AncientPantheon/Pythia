@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.20 — 2026-08-03
+
+Version alignment: the client jumps from `2.7.19` to `2.7.20` to align with the unified Pythia service
+version line. Service-side only (a server resolver may now bind only one cronoton — a duplicate commit is
+rejected 409; see `CHANGELOG.md` at the repo root) — no changes to this package's own source, API
+surface, or behavior.
+
 ## 2.7.19 — 2026-08-03
 
 Version alignment: the client jumps from `2.7.18` to `2.7.19` to align with the unified Pythia service

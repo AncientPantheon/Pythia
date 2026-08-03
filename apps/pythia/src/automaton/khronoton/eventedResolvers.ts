@@ -27,6 +27,21 @@ export function isEventedResolver(name: unknown): boolean {
   return typeof name === "string" && EVENTED_SERVER_RESOLVERS.has(name);
 }
 
+/** The non-empty `serverResolver` a cronoton COMMIT body binds, or null. Used to
+ * enforce one-resolver-one-cronoton uniqueness (see `admin.ts`): a server resolver
+ * may bind exactly one cronoton, since the fire lookup keys off the name and a
+ * duplicate would silently shadow the first. */
+export function commitServerResolver(body: unknown): string | null {
+  if (body && typeof body === "object") {
+    const env = (body as { envelope?: unknown }).envelope;
+    if (env && typeof env === "object") {
+      const r = (env as { serverResolver?: unknown }).serverResolver;
+      if (typeof r === "string" && r.length > 0) return r;
+    }
+  }
+  return null;
+}
+
 /**
  * Enforce "picking an evented resolver turns scheduling off" on a cronoton COMMIT
  * body: if the body's `envelope.serverResolver` is event-driven, force

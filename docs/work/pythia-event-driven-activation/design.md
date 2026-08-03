@@ -56,6 +56,22 @@ trigger); a push from `connectorVerify` (would import the automaton core into th
 - Removing the manual admin Fire button or the tick loop (both remain; the cronoton is simply
   scheduleless, so the tick has nothing due to fire and the event is the trigger).
 
+## Server-resolver rules (operational)
+
+Rules that govern binding a cronoton to a server resolver (canonical copy in the Pantheonic
+architecture `organs/05-khronoton-engine-wire-in.md §6`):
+
+1. **The `serverResolver` name is the tag.** It's the entire binding — a cronoton fires the resolver
+   whose registered name equals its `server_resolver` field, and the event trigger locates the cronoton
+   by that name (`findCodexCronotonIdByServerResolver`). No separate ticker/subscription. The pact
+   `(read-msg "<key>")` keys must match the resolver's payload keys (`standardApollo`/`smartApollo`).
+2. **One resolver ↔ one cronoton.** A server-resolver name binds exactly one cronoton; a duplicate
+   silently shadows the first (the lookup fires the most-recent). Pythia rejects a commit reusing a
+   bound resolver (409, `admin.ts`) — delete the old one before re-creating.
+3. **Evented ⇒ scheduleless ⇒ "Evented" next-fire.** An event-driven resolver's cronoton is forced
+   trigger-only (no schedule); its "next fire" should read "Evented", not a time (the list-item flag +
+   render are a khronoton-core handoff).
+
 ## Operator note
 
 The `dual-link-activate` cronoton must exist (the template) but needs **NO schedule** — leave it

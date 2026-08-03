@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   isEventedResolver,
   enforceEventedScheduleless,
+  commitServerResolver,
   EVENTED_SERVER_RESOLVERS,
 } from "./eventedResolvers.js";
 import { DUAL_LINK_ACTIVATE_RESOLVER } from "./dualLinkActivateResolver.js";
@@ -40,6 +41,18 @@ describe("evented server resolvers", () => {
     };
     enforceEventedScheduleless(body);
     expect(body.envelope.externalFireable).toBe(false); // unchanged — stays scheduled
+  });
+
+  it("extracts the commit body's bound server resolver (for one-resolver-one-cronoton)", () => {
+    expect(
+      commitServerResolver({ envelope: { serverResolver: DUAL_LINK_ACTIVATE_RESOLVER } }),
+    ).toBe(DUAL_LINK_ACTIVATE_RESOLVER);
+    // No envelope / empty / non-string / no resolver → null (nothing to enforce).
+    expect(commitServerResolver({})).toBeNull();
+    expect(commitServerResolver(undefined)).toBeNull();
+    expect(commitServerResolver({ envelope: {} })).toBeNull();
+    expect(commitServerResolver({ envelope: { serverResolver: "" } })).toBeNull();
+    expect(commitServerResolver({ envelope: { serverResolver: 42 } })).toBeNull();
   });
 
   it("passes through a body with no envelope / no server resolver", () => {

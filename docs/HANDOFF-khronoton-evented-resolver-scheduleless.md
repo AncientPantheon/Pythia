@@ -75,6 +75,21 @@ read **"Evented"** (or "On trigger — event-driven"), not blank and not a time.
 
 (Operator-reported: an evented transaction's "next fire" should say "evented", not a time.)
 
+## Ask 4 — enforce one-resolver-one-cronoton at the store
+
+A server-resolver name must bind **exactly one** cronoton: `findCodexCronotonIdByServerResolver` returns
+the *most-recently-created* match, so a second cronoton on the same `server_resolver` silently shadows
+the first and the wrong template fires. The store already has the finder (used as a provisioner
+idempotency key) but does NOT enforce uniqueness on a manual commit — an operator can create two.
+
+- In `createCodexCronoton`, when `input.serverResolver` is set, reject (or upsert) if
+  `findCodexCronotonIdByServerResolver(input.serverResolver, { db })` already returns an id. A distinct
+  error (e.g. `CodexCronotonValidationError("server resolver already bound to <id>")`) so the UI can
+  show "delete the existing one first".
+
+Pythia enforces this consumer-side today (a commit reusing a bound resolver → 409, in `admin.ts`), but
+it belongs in the store so every consumer gets it.
+
 ## Acceptance
 
 - A cronoton committed/edited with an `evented` server resolver is stored `next_fire_at = NULL`

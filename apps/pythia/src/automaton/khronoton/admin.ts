@@ -27,9 +27,10 @@ import type {
 import { createAdminGate } from "../../admin/routes.js";
 import type { OidcConfig } from "../../admin/oidcConfig.js";
 import type { CodexStore } from "../codexStore.js";
+import { findCodexCronotonIdByServerResolver } from "@ancientpantheon/khronoton-core/server";
 import { getKhronotonContext } from "./context.js";
 import { createPythiaSignerSource } from "./keyResolver.js";
-import { enforceEventedScheduleless } from "./eventedResolvers.js";
+import { enforceEventedScheduleless, commitServerResolver } from "./eventedResolvers.js";
 
 /**
  * The ancient-gated Khronoton admin surface — the server side of the scheduled-
@@ -153,6 +154,25 @@ export function registerKhronotonAdmin(app: Hono, cfg: OidcConfig, codex: CodexS
       engine = await getKhronotonContext(codex);
     } catch {
       return c.json({ error: "khronoton engine unavailable — is PYTHIA_MASTER_KEY set?" }, 503);
+    }
+
+    // ONE resolver ↔ ONE cronoton. A server-resolver name may bind exactly one
+    // cronoton: the fire lookup (findCodexCronotonIdByServerResolver) keys off the
+    // name and returns the most-recent match, so a second cronoton on the same
+    // resolver silently shadows the first (the wrong template fires). Reject a
+    // COMMIT that reuses an already-bound resolver — delete the existing one first.
+    if (method === "POST" && seg.length === 0) {
+      const resolverName = commitServerResolver(body);
+      if (resolverName && findCodexCronotonIdByServerResolver(resolverName, { db: engine.db })) {
+        return c.json(
+          {
+            error:
+              `a cronoton is already bound to server resolver "${resolverName}" — a server resolver ` +
+              "may bind only one cronoton; delete the existing one before creating another",
+          },
+          409,
+        );
+      }
     }
 
     const handlerContext: HandlerContext = {
