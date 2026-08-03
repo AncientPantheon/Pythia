@@ -27,7 +27,11 @@ import type {
 import { createAdminGate } from "../../admin/routes.js";
 import type { OidcConfig } from "../../admin/oidcConfig.js";
 import type { CodexStore } from "../codexStore.js";
-import { findCodexCronotonIdByServerResolver } from "@ancientpantheon/khronoton-core/server";
+import {
+  findCodexCronotonIdByServerResolver,
+  getCodexCronoton as storeGetCronoton,
+  deleteCodexCronoton as storeDeleteCronoton,
+} from "@ancientpantheon/khronoton-core/server";
 import { getKhronotonContext } from "./context.js";
 import { createPythiaSignerSource } from "./keyResolver.js";
 import { enforceEventedScheduleless, commitServerResolver } from "./eventedResolvers.js";
@@ -222,6 +226,43 @@ export function registerKhronotonAdmin(app: Hono, cfg: OidcConfig, codex: CodexS
     // Hono's status arg is a union of literal codes; the handler's number is any HTTP status.
     return c.json(res.body, res.status as ContentfulStatusCode);
   };
+
+  // OVERRIDE DELETE — the escape hatch for a SYSTEM (server-resolver) cronoton, which
+  // khronoton-core's normal delete refuses ("pause, don't delete"). Needed to clean up
+  // a wrong/duplicate system cronoton (a server resolver binds only one — a leftover
+  // can't otherwise be removed). Bypasses the protection by calling the STORE delete
+  // directly. Ancient-gated + confirm-required + audited. Registered BEFORE the
+  // catch-all so it wins the route match. Deleting the automaton's sole template
+  // stops activation until it's recreated — deliberate, hence the confirm.
+  app.post(`${PREFIX}/:id/force-delete`, gate, async (c: Context) => {
+    c.header("cache-control", "no-store");
+    const id = c.req.param("id");
+    if (!id) return c.json({ error: "cronoton id is required" }, 400);
+    if (c.req.header(CONFIRMED_HEADER) !== "1") {
+      return c.json({ error: "admin_confirm_required" }, 401);
+    }
+    let engine: Awaited<ReturnType<typeof getKhronotonContext>>;
+    try {
+      engine = await getKhronotonContext(codex);
+    } catch {
+      return c.json({ error: "khronoton engine unavailable — is PYTHIA_MASTER_KEY set?" }, 503);
+    }
+    const row = storeGetCronoton(id, { db: engine.db });
+    if (!row) return c.json({ error: "not found" }, 404);
+    storeDeleteCronoton(id, { db: engine.db });
+    const session = c.get("adminSession") as { sub?: string; name?: string } | undefined;
+    await engine.onAudit?.({
+      action: "codex_cronoton.force_delete",
+      result: "ok",
+      targetKind: "codex_cronoton",
+      targetId: id,
+      detail: {
+        serverResolver: row.server_resolver ?? null,
+        actor: session?.name ?? session?.sub ?? "ancient",
+      },
+    });
+    return c.json({ ok: true, forced: true }, 200);
+  });
 
   app.all(PREFIX, gate, dispatch);
   app.all(`${PREFIX}/*`, gate, dispatch);

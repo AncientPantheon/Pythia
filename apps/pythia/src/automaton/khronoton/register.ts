@@ -6,6 +6,7 @@ import {
   DUAL_LINK_ACTIVATE_RESOLVER,
 } from "./dualLinkActivateResolver.js";
 import { wireEventDrivenActivation } from "./dualLinkActivateTrigger.js";
+import { repairEventedScheduleless, type RepairDb } from "./eventedScheduleRepair.js";
 import type { PendingActivationTracker } from "../../connectors/auth/pendingActivationTracker.js";
 import type { CodexStore } from "../codexStore.js";
 import type { PythLedger } from "../../pyth/ledger.js";
@@ -45,6 +46,10 @@ export async function startPythiaKhronotonEngine(
   wireEventDrivenActivation(codex, pendingActivation);
   try {
     const ctx = await getKhronotonContext(codex);
+    // Migrate any evented cronoton created before scheduleless enforcement (still
+    // carrying a stale next_fire_at) to scheduleless — it's server-resolver/system
+    // (delete-protected) and edit can't flip the flag, so repair it in place.
+    repairEventedScheduleless(ctx.db as unknown as RepairDb);
     g.__pythiaKhronotonLoop = startKhronotonLoop(ctx);
     console.log(`[khronoton] tick loop started (interval ${ctx.config.tickIntervalMs}ms)`);
   } catch (err) {

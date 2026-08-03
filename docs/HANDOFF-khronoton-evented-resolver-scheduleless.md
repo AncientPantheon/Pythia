@@ -97,6 +97,21 @@ idempotency key) but does NOT enforce uniqueness on a manual commit — an opera
 Pythia enforces this consumer-side today (a commit reusing a bound resolver → 409, in `admin.ts`), but
 it belongs in the store so every consumer gets it.
 
+## Ask 5 — let a system (server-resolver) cronoton be edited scheduleless + force-deleted with confirm
+
+Two consumer pain points with server-resolver ("system") cronotons:
+
+1. **Edit can't flip `externalFireable`.** `toEditPatch` (`handlers/cronoton.ts`) doesn't carry
+   `externalFireable`, so a row created scheduled can't be migrated to scheduleless via edit — Pythia
+   currently repairs its own rows with a direct `UPDATE` at boot. Add `externalFireable` to the edit
+   patch (and recompute `next_fire_at` accordingly) so it's fixable through the API.
+2. **Delete is hard-blocked for any `server_resolver` row** ("System cronoton — cannot be deleted").
+   That's right as a default, but there's no escape hatch for a wrong/duplicate system cronoton. Add a
+   **confirm-gated force delete** (e.g. `?force=1` on the delete handler, requiring the confirm bit +
+   a distinct audit) so an operator can remove one from the UI. Pythia added a stopgap
+   `POST /admin/khronoton/:id/force-delete` (calls the store delete directly) but the bundled Builder
+   has no button for it.
+
 ## Acceptance
 
 - A cronoton committed/edited with an `evented` server resolver is stored `next_fire_at = NULL`

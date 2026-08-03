@@ -9,6 +9,24 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.21] — 2026-08-03
+
+### Fixed — migrate a pre-existing evented cronoton off its stale schedule + system-cronoton override delete
+
+A `dual-link-activate` cronoton created before the scheduleless enforcement (≤ v2.7.18) still carried a
+real `next_fire_at` and showed a misleading "next fire in N hours" — and couldn't be fixed: it's a
+server-resolver ("system") row so khronoton-core refuses to delete it, and the edit handler can't flip
+`externalFireable`. Pythia now **repairs its own evented system cronotons at engine boot**
+(`repairEventedScheduleless`, `apps/pythia/src/automaton/khronoton/eventedScheduleRepair.ts`): a direct,
+idempotent, guarded `UPDATE` forces `external_fireable = 1` + `next_fire_at = NULL` for any still-scheduled
+evented row, so a redeploy clears the stale schedule (it becomes scheduleless — the tick skips it).
+
+Also added an **override delete** escape hatch for a system cronoton (`POST /admin/khronoton/:id/force-delete`,
+ancient-gated + confirm-required + audited; calls the store delete directly) — needed to clean up a
+wrong/duplicate system cronoton, which the normal delete refuses. khronoton-core-side asks (editable
+`externalFireable`, a confirm-gated force delete in the bundled Builder, the "Evented" next-fire display)
+are in `docs/HANDOFF-khronoton-evented-resolver-scheduleless.md`.
+
 ## [2.7.20] — 2026-08-03
 
 ### Added — enforce one-resolver-one-cronoton (a server resolver binds exactly one cronoton)
