@@ -59,6 +59,22 @@ resolvers are evented — there is **no resolvers-list/descriptor endpoint** tod
    This is the "so I can SEE scheduling turn off the moment I pick the evented resolver" the operator
    asked for — it can only be done in the bundled Builder, which lives in this package.
 
+## Ask 3 — surface "evented / trigger-only" in the list + show "Evented" for next-fire
+
+A scheduleless row has `next_fire_at = NULL`, but the client-facing list item
+(`CodexCronotonListItem`) exposes **only** `nextFireAt: string | null` + `scheduleMode` — there is NO
+`externalFireable`/`triggerOnly` field. So the admin list literally cannot tell an event-driven row
+apart from one whose next fire simply isn't computed, and it renders the next-fire cell blank. It should
+read **"Evented"** (or "On trigger — event-driven"), not blank and not a time.
+
+1. Add `triggerOnly: boolean` (or `externalFireable: boolean`) to `CodexCronotonListItem` and populate
+   it in the list mapper from `row.external_fireable === 1 || runtimeArgKeys.length > 0` (the same
+   `triggerOnly` the store already computes at commit).
+2. In the list/detail UI, when `triggerOnly` is true, render the **next-fire** column as **"Evented"**
+   (or "On trigger") instead of a timestamp/blank — the row fires on its event, it has no next fire.
+
+(Operator-reported: an evented transaction's "next fire" should say "evented", not a time.)
+
 ## Acceptance
 
 - A cronoton committed/edited with an `evented` server resolver is stored `next_fire_at = NULL`
@@ -66,6 +82,8 @@ resolvers are evented — there is **no resolvers-list/descriptor endpoint** tod
 - `GET …/resolvers` lists registered resolvers with their `evented` flag.
 - In the Builder, selecting an evented resolver disables the schedule controls (and auto-marks external-
   fireable); selecting a scheduled one restores them.
+- The cronoton list's next-fire column shows **"Evented"** for a trigger-only/evented row (and the list
+  item carries a `triggerOnly` flag so the UI can tell), not a blank or a timestamp.
 
 ## Reference (Pythia side, already shipped)
 
