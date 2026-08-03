@@ -71,6 +71,44 @@ describe("PendingActivationTracker", () => {
     expect(tracker.statusOf(STANDARD_E, STANDARD_F)).toBe("none");
   });
 
+  it("fires the onPairReady hook exactly once, when a pair transitions to fully proven", () => {
+    const tracker = new PendingActivationTracker();
+    const fired: number[] = [];
+    tracker.setOnPairReady(() => fired.push(1));
+    // First half → not ready → no event.
+    tracker.recordProof(STANDARD_A, SMART_A);
+    expect(fired).toHaveLength(0);
+    // Second half completes the pair → exactly one event.
+    tracker.recordProof(SMART_A, STANDARD_A);
+    expect(fired).toHaveLength(1);
+    // Re-proving an already-ready pair does NOT re-fire the event.
+    tracker.recordProof(STANDARD_A, SMART_A);
+    tracker.recordProof(SMART_A, STANDARD_A);
+    expect(fired).toHaveLength(1);
+  });
+
+  it("a throwing onPairReady hook never breaks recordProof (pair still becomes ready)", () => {
+    const tracker = new PendingActivationTracker();
+    tracker.setOnPairReady(() => {
+      throw new Error("subscriber boom");
+    });
+    tracker.recordProof(STANDARD_A, SMART_A);
+    expect(() => tracker.recordProof(SMART_A, STANDARD_A)).not.toThrow();
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("ready");
+  });
+
+  it("hasReadyPair is true only when some pair has both halves proven (unexpired)", () => {
+    let now = 1_000;
+    const tracker = new PendingActivationTracker({ clock: () => now });
+    expect(tracker.hasReadyPair()).toBe(false);
+    tracker.recordProof(STANDARD_A, SMART_A);
+    expect(tracker.hasReadyPair()).toBe(false); // only one half
+    tracker.recordProof(SMART_A, STANDARD_A);
+    expect(tracker.hasReadyPair()).toBe(true); // both halves
+    now += PENDING_ACTIVATION_TTL_MS + 1; // expired
+    expect(tracker.hasReadyPair()).toBe(false);
+  });
+
   it("the 'activated' record expires after its retention window", () => {
     let now = 1_000;
     const tracker = new PendingActivationTracker({ clock: () => now });

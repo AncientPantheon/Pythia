@@ -117,6 +117,13 @@ export class PendingActivationTracker {
   private readonly sweepIntervalMs: number;
   private readonly maxPending: number;
   private timer: ReturnType<typeof setInterval> | undefined;
+  /** Event-driven activation hook: invoked the instant a pair transitions to
+   * fully-proven (the "link event"), so a subscriber (the automaton engine) can
+   * fire `A_LinkDualApiKey` IMMEDIATELY — no schedule, no tick, no polling. Set by
+   * the composition root; undefined → the tracker just holds ready pairs (its
+   * pre-event shape). Never imports the automaton core (it only calls a callback),
+   * so the keyless request path that feeds `recordProof` stays keyless. */
+  private onPairReady: (() => void) | undefined;
 
   constructor(opts: PendingActivationTrackerOptions = {}) {
     this.clock = opts.clock ?? Date.now;
@@ -174,7 +181,32 @@ export class PendingActivationTracker {
     // to either half's caller — before it's ever offered.
     if (!wasFullyProven && entry.provenA && entry.provenB) {
       entry.expiresAt = this.clock() + PENDING_ACTIVATION_TTL_MS;
+      // THE LINK EVENT. A pair just became fully proven → fire activation NOW.
+      // Wrapped so a subscriber error can never break the proof-recording path
+      // (the pair stays ready and is retried on the next event regardless).
+      try {
+        this.onPairReady?.();
+      } catch (err) {
+        console.error("pythia connector activation: onPairReady hook threw:", err);
+      }
     }
+  }
+
+  /** Subscribe to the link event (a pair becoming fully proven). Pass `undefined`
+   * to unsubscribe. Set by the composition root to the automaton's immediate-fire. */
+  setOnPairReady(cb: (() => void) | undefined): void {
+    this.onPairReady = cb;
+  }
+
+  /** Whether ANY pair is ready to activate right now (both halves proven, unexpired)
+   * — a PURE check (no mutation, no `firstOfferedAt`), so the event-driven trigger
+   * can gate on it and never fire a blank `A_LinkDualApiKey` when nothing's queued. */
+  hasReadyPair(): boolean {
+    const now = this.clock();
+    for (const entry of this.pending.values()) {
+      if (entry.expiresAt > now && entry.provenA && entry.provenB) return true;
+    }
+    return false;
   }
 
   /** The OLDEST unexpired pair with both halves proven, WITHOUT removing it

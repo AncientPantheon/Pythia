@@ -5,6 +5,7 @@ import {
   registerDualLinkActivateResolver,
   DUAL_LINK_ACTIVATE_RESOLVER,
 } from "./dualLinkActivateResolver.js";
+import { wireEventDrivenActivation } from "./dualLinkActivateTrigger.js";
 import type { PendingActivationTracker } from "../../connectors/auth/pendingActivationTracker.js";
 import type { CodexStore } from "../codexStore.js";
 import type { PythLedger } from "../../pyth/ledger.js";
@@ -33,10 +34,15 @@ export async function startPythiaKhronotonEngine(
   // `dual-link-activate` cronoton's `standardApollo`/`smartApollo` payload fills at
   // fire time. Same idempotent, disabled-loop-safe registration as the flush resolver.
   registerDualLinkActivateResolver(pendingActivation);
+  // TRUE event-driven activation: a pair becoming fully proven fires the
+  // scheduleless `dual-link-activate` cronoton IMMEDIATELY (no schedule tick). Wired
+  // to the SAME tracker the resolver drains, so the event both resolves the payload
+  // AND triggers the fire. Skipped when the engine is disabled (kill switch below).
   if (process.env.KHRONOTON_DISABLED === "1") {
     console.log("[khronoton] disabled (KHRONOTON_DISABLED=1) — engine not started");
     return;
   }
+  wireEventDrivenActivation(codex, pendingActivation);
   try {
     const ctx = await getKhronotonContext(codex);
     g.__pythiaKhronotonLoop = startKhronotonLoop(ctx);

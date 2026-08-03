@@ -9,6 +9,25 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.18] — 2026-08-03
+
+### Fixed — dual-link activation is now TRULY event-driven (scheduleless)
+
+Activation fired only on the `dual-link-activate` cronoton's Khronoton **schedule tick**, not on the
+link event — so a verified pair sat until the schedule came due (and manual Fire is a one-off). What
+was event-driven was only the *payload* (the resolver pulls the ready pair at fire time); the *trigger*
+was left on the scheduler. Now the **link event itself** fires it: `PendingActivationTracker` gains an
+`onPairReady` hook (invoked the instant a pair becomes fully proven) + a pure `hasReadyPair()`; a new
+`dualLinkActivateTrigger` subscribes and fires `A_LinkDualApiKey` immediately, in-process, via the same
+`executeNow` path (resolve → safety-simulate → submit → settle). A single-flight drain loop drains every
+ready pair one-by-one, never fires a blank tx when the queue is empty, and stops on the first non-success
+(the pair stays ready, retried on the next event). The cronoton is now **scheduleless** — it exists only
+as the on-chain template; the event triggers it, no timer. Keyless preserved: the request path only
+records the proof and never imports the automaton core. See `docs/work/pythia-event-driven-activation/`.
+
+> Operator note: leave the `dual-link-activate` cronoton **scheduleless** (no recurring interval).
+> Verifying a pair now fires it on the spot.
+
 ## [2.7.17] — 2026-08-03
 
 Pythia's first end-to-end **automaton self-test**: verify a consumer's two Apollo halves against a
