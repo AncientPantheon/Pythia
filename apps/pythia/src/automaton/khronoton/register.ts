@@ -45,7 +45,11 @@ export async function startPythiaKhronotonEngine(
   }
   wireEventDrivenActivation(codex, pendingActivation);
   try {
-    const ctx = await getKhronotonContext(codex);
+    // Build the shared context WITH the ledger, so the chain runtime is metered —
+    // every automaton fire (here + admin Execute Now + the event fire) counts in
+    // Pythia's Pyth ledger. This is the FIRST getKhronotonContext call (engine
+    // start, before any request/event), so the cached context is metered for all.
+    const ctx = await getKhronotonContext(codex, ledger);
     // Migrate any evented cronoton created before scheduleless enforcement (still
     // carrying a stale next_fire_at) to scheduleless — it's server-resolver/system
     // (delete-protected) and edit can't flip the flag, so repair it in place.

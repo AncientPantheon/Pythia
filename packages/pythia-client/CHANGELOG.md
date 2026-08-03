@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.24 — 2026-08-04
+
+Version alignment: the client jumps from `2.7.23` to `2.7.24` to align with the unified Pythia service
+version line. Service-side only (Pythia's own automaton on-chain fires now count in her Pyth ledger —
+they previously bypassed the meter; see `CHANGELOG.md` at the repo root) — no changes to this package's
+own source, API surface, or behavior.
+
 ## 2.7.23 — 2026-08-03
 
 Version alignment: the client jumps from `2.7.22` to `2.7.23` to align with the unified Pythia service

@@ -14,7 +14,9 @@ import type { AuditEvent, Config, OnAudit, ResolveFireMode, TickCtx } from "@anc
 import { getKhronotonDb, khronotonDir } from "./db.js";
 import { createPythiaKeyResolver } from "./keyResolver.js";
 import { getChainRuntime } from "./runtime.js";
+import { meterChainRuntime } from "./meteredRuntime.js";
 import type { CodexStore } from "../codexStore.js";
+import type { PythLedger } from "../../pyth/ledger.js";
 
 /**
  * Assembly of the six Khronoton injection seams (handoff 05): db (SQLite on the data
@@ -53,16 +55,24 @@ const resolveFireMode: ResolveFireMode = () => "live";
 
 const g = globalThis as unknown as { __pythiaKhronotonCtx?: Promise<TickCtx> };
 
-/** The shared engine context — built once per process, reused by loop + handlers. */
-export function getKhronotonContext(codex: CodexStore): Promise<TickCtx> {
+/** The shared engine context — built once per process, reused by loop + handlers.
+ * `ledger` (passed by the composition root on the FIRST call, at engine start —
+ * always before any request/event fire) wraps the chain runtime so EVERY on-chain
+ * action the automaton performs is metered in Pythia's Pyth ledger (her own fires
+ * would otherwise bypass the gateway meter). The context is cached, so once the
+ * root builds it with the ledger, every later caller reuses the metered runtime. */
+export function getKhronotonContext(codex: CodexStore, ledger?: PythLedger): Promise<TickCtx> {
   if (g.__pythiaKhronotonCtx) return g.__pythiaKhronotonCtx;
-  g.__pythiaKhronotonCtx = (async (): Promise<TickCtx> => ({
-    db: getKhronotonDb(),
-    resolver: createPythiaKeyResolver(codex),
-    runtime: await getChainRuntime(),
-    onAudit,
-    resolveFireMode,
-    config: buildKhronotonConfig(),
-  }))();
+  g.__pythiaKhronotonCtx = (async (): Promise<TickCtx> => {
+    const base = await getChainRuntime();
+    return {
+      db: getKhronotonDb(),
+      resolver: createPythiaKeyResolver(codex),
+      runtime: ledger ? meterChainRuntime(base, ledger) : base,
+      onAudit,
+      resolveFireMode,
+      config: buildKhronotonConfig(),
+    };
+  })();
   return g.__pythiaKhronotonCtx;
 }

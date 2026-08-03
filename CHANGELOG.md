@@ -9,6 +9,25 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.24] — 2026-08-04
+
+### Fixed — Pythia's OWN automaton on-chain activity now counts in the Pyth ledger
+
+Pythia is the Pantheon's on-chain meter, but her OWN automaton fires (Khronoton cronotons — `A_Link`,
+`A_Flush`, …) submitted **straight to a node** through khronoton-core's chain runtime, **bypassing the
+Pyth ledger entirely** — so the automaton's transactions never appeared (petitions ticked from gateway
+reads, but TRANSACTIONS stuck at 0 even after real on-chain fires). The Khronoton chain runtime is now
+wrapped (`meterChainRuntime`, `apps/pythia/src/automaton/khronoton/meteredRuntime.ts`): every `submit`
+→ `recordSend` (a transaction, +gas reserved; a rejected/thrown submit → +failed/+wasted) and every
+`dirtyRead` → `recordRead` (a petition). It's applied once at the shared context
+(`getKhronotonContext`, wired from the composition root at engine start), so the tick loop, the
+event-driven fire, AND admin Execute Now all meter through it. So Pythia's own automaton activity — and
+anything else firing through her Khronoton — is metered like all other traffic, which is the entire
+point of Pythia as the meter.
+
+Note: this also counts the automaton's on-chain READS (safety simulates, gas calibration, and admin
+Simulate previews) as petitions — every on-chain read through Pythia counts, by design.
+
 ## [2.7.23] — 2026-08-03
 
 ### Fixed — connector panel's status line froze on "Checking status…" after activation landed
