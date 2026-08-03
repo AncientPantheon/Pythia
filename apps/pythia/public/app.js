@@ -121,6 +121,46 @@ function renderMedallions(pools, health) {
   if (ver && health && health.version) ver.textContent = `v${health.version}`;
   // …and in the header brand chip (the standardized Pantheonic Header).
   setVersion(document.getElementById("ph-version"), health && health.version);
+  // …and the automaton liveness "green check" (distinct from chain reachability).
+  renderAutomatonLive(health && health.automaton);
+}
+
+// The automaton liveness "green check": green when Pythia's autonomous machinery
+// is up AND its own API link is online (health.automaton.live), amber when it's
+// partially up (some capability down), grey while we haven't heard back. This is
+// the automaton's OWN status — the verify→autonomously-activate self-test being
+// wired is what makes Pythia a working automaton — not StoaChain node reachability.
+function renderAutomatonLive(a) {
+  const box = document.getElementById("automaton-live");
+  if (!box) return;
+  const dot = box.querySelector(".al-dot");
+  const label = box.querySelector(".al-label");
+  if (!a) {
+    // No automaton block in /healthz (pre-liveness build, or not yet polled).
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  if (a.live) {
+    if (dot) dot.dataset.color = "green";
+    if (label) label.textContent = "Automaton live ✓";
+  } else {
+    // Name the first missing capability so the operator knows WHAT is down.
+    const missing = !a.khronotonTick
+      ? "engine tick down"
+      : !a.activationPipeline
+        ? "activation pipeline down"
+        : !a.selfConnectorLinked
+          ? "self API link not active"
+          : "degraded";
+    if (dot) dot.dataset.color = "amber";
+    if (label) label.textContent = `Automaton degraded — ${missing}`;
+  }
+  box.title =
+    `Automaton liveness — engine tick: ${a.khronotonTick ? "on" : "off"}, ` +
+    `activation pipeline: ${a.activationPipeline ? "ready" : "down"}, ` +
+    `self API link: ${a.selfConnectorLinked ? "active" : "inactive"}, ` +
+    `verifiers registered: ${a.verifiersRegistered}`;
 }
 
 // ── connectors: on-chain consumer API keys (read THROUGH Pythia) ─────────────
@@ -336,6 +376,7 @@ let regState = {
   selStd: null,
   selSmart: null,
   proven: [], // apollo accounts proven this session (server truth)
+  activation: null, // autonomous activation phase for the selected pair: "pending"|"activating"|"activated"|null
 };
 let halvesReqSeq = 0;
 
@@ -484,32 +525,89 @@ function updateActionBar() {
       sel.appendChild(w);
     } else if (s && m) {
       const note = document.createElement("span");
-      if (sProven && mProven) { note.className = "link-ok"; note.textContent = " — both halves verified"; }
-      else if (sProven || mProven) { note.className = "link-warn"; note.textContent = " — one half verified; verify the other (load the Codex that holds it)"; }
+      if (sProven && mProven) {
+        // Both proven → activation is AUTONOMOUS. Reflect the live phase reported
+        // by /status: Pythia's dual-link-activate cronoton fires A_LinkDualApiKey.
+        if (regState.activation === "activated") {
+          note.className = "link-ok";
+          note.textContent = " — API link active ✓ — Pythia fired A_LinkDualApiKey";
+        } else if (regState.activation === "activating") {
+          note.className = "link-warn";
+          note.textContent = " — both halves verified ✓ — activating the API link (autonomous)…";
+        } else {
+          note.className = "link-ok";
+          note.textContent = " — both halves verified ✓ — Pythia will activate the API link";
+        }
+      } else if (sProven || mProven) {
+        note.className = "link-warn";
+        note.textContent = " — one half verified; verify the other (load the Codex that holds it)";
+      }
       sel.appendChild(note);
     }
   }
 
   const bothUnlinked = !!(s && m && isUnlinked(s.counterpart) && isUnlinked(m.counterpart));
   verifyBtn.disabled = !bothUnlinked;
+  // The "Link" affordance is now a live activation STATE, not a manual trigger —
+  // activation fires autonomously once both halves prove. It stays disabled until
+  // then, and once activated it shows the confirmed on-chain result.
+  const activated = regState.activation === "activated";
   linkBtn.disabled = !(bothUnlinked && sProven && mProven);
-  linkBtn.title = sProven && mProven
-    ? "Submit the on-chain link"
-    : "Unlocks once both halves are verified";
+  linkBtn.textContent = activated ? "API Link Active ✓" : "API Link";
+  linkBtn.title = activated
+    ? "Pythia's automaton fired A_LinkDualApiKey — the dual API link is active on-chain"
+    : sProven && mProven
+      ? "Activation is autonomous — Pythia's dual-link-activate cronoton fires A_LinkDualApiKey. Click to re-check status."
+      : "Unlocks once both halves are verified — activation is then autonomous";
 }
 
-// Pull the proven set from the server and refresh the action bar.
+// Pull the proven set (and, for the currently-selected pair, the autonomous
+// activation phase) from the server and refresh the action bar. Passing the pair
+// lets the server report whether Pythia's `dual-link-activate` cronoton has fired
+// `A_LinkDualApiKey` for it yet — "pending" → "activating" → "activated".
 async function loadProven() {
+  const s = regState.selStd && regState.selStd["apollo-account"];
+  const m = regState.selSmart && regState.selSmart["apollo-account"];
+  let url = "/api/connectors/verify/status";
+  if (s && m) {
+    url += `?standard=${encodeURIComponent(s)}&smart=${encodeURIComponent(m)}`;
+  }
   try {
-    const res = await fetch("/api/connectors/verify/status", {
-      headers: { accept: "application/json" },
-    });
+    const res = await fetch(url, { headers: { accept: "application/json" } });
     const body = await res.json();
     regState.proven = Array.isArray(body.proven) ? body.proven : [];
+    regState.activation = typeof body.activation === "string" ? body.activation : null;
   } catch {
     /* keep the last-known set */
   }
   updateActionBar();
+  maybePollActivation();
+}
+
+// Once both halves are proven, activation is AUTONOMOUS (Pythia's cronoton fires
+// A_LinkDualApiKey on its next tick) — so poll a few times to catch the
+// "activating" → "activated" transition live, then stop. Idempotent: only one
+// timer runs, and it clears itself once activated (or after a bounded number of
+// tries, so a never-confirming pair doesn't poll forever).
+let activationPollTimer = null;
+let activationPollLeft = 0;
+function maybePollActivation() {
+  const a = regState.activation;
+  if (a === "activating") {
+    if (!activationPollTimer) {
+      activationPollLeft = 20; // ~100s at 5s cadence — generous for one tick + confirm
+      activationPollTimer = setInterval(() => {
+        if (activationPollLeft-- <= 0) { stopActivationPoll(); return; }
+        loadProven();
+      }, 5000);
+    }
+  } else {
+    stopActivationPoll(); // "activated"/"pending"/null → nothing in flight to watch
+  }
+}
+function stopActivationPoll() {
+  if (activationPollTimer) { clearInterval(activationPollTimer); activationPollTimer = null; }
+  activationPollLeft = 0;
 }
 
 // Stage 1 — VERIFY ownership. Pythia is keyless, so it can't sign; this popup
@@ -750,12 +848,19 @@ function wireConnectors() {
   if (verifyBtn) verifyBtn.addEventListener("click", openVerifyPopup);
   const linkBtn = document.getElementById("link-btn");
   if (linkBtn) {
-    // Stage 2 — deferred. Only reachable once Pythia confirms ownership (the
-    // button is disabled until then). Its real action — signalling the AncientHub
-    // DALOS Automaton to submit the link tx — is wired later.
+    // Activation is AUTONOMOUS: once both halves prove ownership, Pythia's own
+    // dual-link-activate cronoton fires A_LinkDualApiKey on its next tick — no
+    // manual submit. The button (enabled only once both halves are proven) just
+    // re-checks the live activation phase reported by /status.
     linkBtn.addEventListener("click", () => {
       const status = document.getElementById("reg-status");
-      if (status) status.textContent = "Link trigger not wired yet — this will signal the AncientHub DALOS Automaton to submit the link transaction.";
+      if (status) {
+        status.textContent =
+          regState.activation === "activated"
+            ? "API link active — Pythia's automaton fired A_LinkDualApiKey."
+            : "Activation is autonomous — Pythia's dual-link-activate cronoton fires A_LinkDualApiKey once both halves are verified. Checking status…";
+      }
+      loadProven();
     });
   }
   const regRefresh = document.getElementById("reg-refresh");

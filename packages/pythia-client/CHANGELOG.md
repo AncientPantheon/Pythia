@@ -2,6 +2,14 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.17 — 2026-08-03
+
+Version alignment: the client jumps from `2.7.16` to `2.7.17` to align with the unified Pythia
+service version line. This release is service-side only (the connector verify flow now bridges into
+autonomous `A_LinkDualApiKey` activation, an automaton liveness green-check on `/healthz`, and Tier-3
+admin URL routing — see `CHANGELOG.md` at the repo root) — no changes to this package's own source,
+API surface, or behavior.
+
 ## 2.7.16 — 2026-08-03
 
 Version alignment: the client jumps from `2.7.15` to `2.7.16` to align with the unified Pythia

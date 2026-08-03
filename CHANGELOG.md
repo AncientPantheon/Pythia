@@ -9,6 +9,49 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.17] — 2026-08-03
+
+Pythia's first end-to-end **automaton self-test**: verify a consumer's two Apollo halves against a
+registered verifier, and Pythia **autonomously** activates their dual API link — plus a live liveness
+indicator, deeper URL routing, and the verifier onboarding standard.
+
+### Added — verify → autonomous activation, wired end-to-end
+
+The browser connector-verify flow now bridges into the activation pipeline: once BOTH Apollo halves of
+a pair prove ownership in a session, Pythia records the pair into its `pendingActivationTracker`, and
+the `dual-link-activate` Khronoton cronoton fires `A_LinkDualApiKey` on its next tick — no operator
+click, no key held (`A_LinkDualApiKey` is C_Link-optional/idempotent, so no prior on-chain link is
+required). `GET /api/connectors/verify/status` now reports the live per-pair activation phase
+(`pending` → `activating` → `activated`), derived from the tracker's authoritative per-pair state (a
+pair is only `activated` once its on-chain activation is CONFIRMED via `commitActivation` — never
+inferred from two independent per-account proofs, so a cross-pair the operator never verified together
+can't be mis-reported). The register UI surfaces the phase live and the old "Link trigger not wired
+yet" stub is replaced with the honest autonomous-activation state. See
+`docs/work/pythia-automaton-activation/`.
+
+### Added — automaton liveness "green check"
+
+`GET /healthz` now carries an `automaton` block: `live` (the green check — Khronoton tick running AND
+the activation pipeline wired AND Pythia's own dual API link online) plus the individual capability
+flags and the count of registered verifiers. Each flag is a truthful runtime read, computed in the
+composition root (the keyless request path never imports the automaton core). The landing (under the
+chain medallions) and the admin header show a green/amber liveness badge, distinct from StoaChain node
+reachability.
+
+### Added — Tier-3 URL routing for admin sub-tabs
+
+The admin StoaChain connector page's sub-tabs (Hub Feed / Observation Pool / Upload Pool / Routing
+Rules) are now each their own addressable URL (`#connectors/stoachain/upload`), routed from the hash
+like every other view — deep-linkable and Back-navigable, no longer flipped in memory behind a static
+URL. Landing (Tier-1/Tier-2) and admin sidebar (Tier-1) already conformed. The Pantheonic architecture
+routing standard (§3.7/§5.1) was extended to make Tier-3 addressability explicit.
+
+### Docs
+
+New Pantheonic architecture standard `identity/how-an-entity-becomes-a-pythia-verifier.md` — what an
+entity must run and register to act as a Pythia verifier (Apollo key custody + `/apollo-verify` +
+admin registration), naming Mnemosyne and OuronetUI as the first two supported verifier entities.
+
 ## [2.7.16] — 2026-08-03
 
 ### Fixed — Pyth Flush cronoton: encode entry numbers as explicit Pact values (`{int}`/`{decimal}`)

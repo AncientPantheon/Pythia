@@ -15,12 +15,16 @@ import { registerConnectorVerify } from "./connectorVerify.js";
 const STD = "₱.alpha";
 const SMART = "Π.beta";
 
-function appWith(): Hono {
+function appWith(pendingActivation?: {
+  recordProof(apolloAccount: string, counterpart: string): void;
+  statusOf?(a: string, b: string): "none" | "half" | "ready" | "activated";
+}): Hono {
   const app = new Hono();
   // A stub Upload Pool so the trust-anchor read resolves a node; the pubkey read
   // itself is mocked above, so the URL is irrelevant.
   registerConnectorVerify(app, {
     txSenders: { enabledNodes: () => [{ id: "n1", url: "http://n1" }] },
+    pendingActivation,
   });
   return app;
 }
@@ -101,6 +105,96 @@ describe("connector verify flow", () => {
       headers: { cookie: "pythia_link=attacker-chosen.badmac" },
     });
     expect(((await status.json()) as { proven: string[] }).proven).toEqual([]);
+  });
+
+  it("bridges a fully-proven pair into the activation tracker (both directions)", async () => {
+    const recordProof = vi.fn();
+    const app = appWith({ recordProof });
+    const s = await start(app, { standard: STD, smart: SMART });
+    const { nonce } = (await s.json()) as { nonce: string };
+    const cookie = cookieFrom(s);
+
+    await app.request(
+      `/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"good"],[SMART,"good"]])}`,
+      { headers: { cookie }, redirect: "manual" },
+    );
+
+    // Both halves proven → the pair is queued for autonomous A_LinkDualApiKey,
+    // recorded once per direction (each half is the other's counterpart).
+    expect(recordProof).toHaveBeenCalledWith(STD, SMART);
+    expect(recordProof).toHaveBeenCalledWith(SMART, STD);
+    expect(recordProof).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports the autonomous activation phase for the watched pair via /status", async () => {
+    // Tracker says the pair is still queued/in-flight → "activating".
+    const recordProof = vi.fn();
+    const app = appWith({ recordProof, statusOf: () => "ready" });
+    const s = await start(app, { standard: STD, smart: SMART });
+    const { nonce } = (await s.json()) as { nonce: string };
+    const cookie = cookieFrom(s);
+    await app.request(
+      `/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"good"],[SMART,"good"]])}`,
+      { headers: { cookie }, redirect: "manual" },
+    );
+    const q = `standard=${encodeURIComponent(STD)}&smart=${encodeURIComponent(SMART)}`;
+    const st = await app.request(`/api/connectors/verify/status?${q}`, { headers: { cookie } });
+    expect(((await st.json()) as { activation?: string }).activation).toBe("activating");
+  });
+
+  it("reports 'activated' when the tracker confirms the pair activated on-chain", async () => {
+    // statusOf "activated" ⇒ commitActivation fired for this exact pair → "activated".
+    const app = appWith({ recordProof: vi.fn(), statusOf: () => "activated" });
+    const s = await start(app, { standard: STD, smart: SMART });
+    const { nonce } = (await s.json()) as { nonce: string };
+    const cookie = cookieFrom(s);
+    await app.request(
+      `/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"good"],[SMART,"good"]])}`,
+      { headers: { cookie }, redirect: "manual" },
+    );
+    const q = `standard=${encodeURIComponent(STD)}&smart=${encodeURIComponent(SMART)}`;
+    const st = await app.request(`/api/connectors/verify/status?${q}`, { headers: { cookie } });
+    expect(((await st.json()) as { activation?: string }).activation).toBe("activated");
+  });
+
+  it("does NOT infer 'activated' from per-account proof — a never-recorded pair reports 'pending'", async () => {
+    // BOTH halves are proven in this session, but the tracker never recorded this
+    // pair (statusOf "none") — e.g. a cross-pair the operator never verified together.
+    // It must NOT be reported as activated (the MED review finding).
+    const app = appWith({ recordProof: vi.fn(), statusOf: () => "none" });
+    const s = await start(app, { standard: STD, smart: SMART });
+    const { nonce } = (await s.json()) as { nonce: string };
+    const cookie = cookieFrom(s);
+    await app.request(
+      `/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"good"],[SMART,"good"]])}`,
+      { headers: { cookie }, redirect: "manual" },
+    );
+    const q = `standard=${encodeURIComponent(STD)}&smart=${encodeURIComponent(SMART)}`;
+    const st = await app.request(`/api/connectors/verify/status?${q}`, { headers: { cookie } });
+    expect(((await st.json()) as { activation?: string }).activation).toBe("pending");
+  });
+
+  it("omits activation entirely when no pair is passed to /status", async () => {
+    const app = appWith({ recordProof: vi.fn(), statusOf: () => "ready" });
+    const s = await start(app, { standard: STD, smart: SMART });
+    const cookie = cookieFrom(s);
+    const st = await app.request("/api/connectors/verify/status", { headers: { cookie } });
+    expect((await st.json()) as { activation?: string }).not.toHaveProperty("activation");
+  });
+
+  it("does NOT bridge to activation when only one half proves ownership", async () => {
+    const recordProof = vi.fn();
+    const app = appWith({ recordProof });
+    const s = await start(app, { standard: STD, smart: SMART });
+    const { nonce } = (await s.json()) as { nonce: string };
+    const cookie = cookieFrom(s);
+
+    // Only Smart verifies (Standard sig is bad) → pair is incomplete, no activation.
+    await app.request(
+      `/connectors/verify/callback?challenge=${nonce}&proofs=${proofsQ([[STD,"bad"],[SMART,"good"]])}`,
+      { headers: { cookie }, redirect: "manual" },
+    );
+    expect(recordProof).not.toHaveBeenCalled();
   });
 
   it("a replayed callback (same nonce + sig) doesn't re-prove — consume is single-use", async () => {

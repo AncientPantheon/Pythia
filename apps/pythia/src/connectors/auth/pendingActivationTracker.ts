@@ -24,6 +24,17 @@ export const PENDING_ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000;
 
 const DEFAULT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
+/** How long a pair's "this activated" record is retained after `commitActivation`
+ * (a CONFIRMED on-chain success) so the browser verify flow can truthfully report
+ * "activated" — distinct from a pair that was simply never recorded. Matched to the
+ * verify session's proof lifetime (`PROVEN_TTL_MS`, 1h) so it stays reportable for
+ * as long as the operator's proof is honoured. Bounded by TTL + {@link MAX_ACTIVATED}
+ * so it can't grow without limit. It is NEVER inferred (only a real commit writes it),
+ * which is what closes the "two independent per-account proofs falsely read as an
+ * activated pair" hole (a never-recorded cross-pair reports "none", not "activated"). */
+export const ACTIVATED_RETENTION_MS = 60 * 60 * 1000;
+const MAX_ACTIVATED = 10000;
+
 /** How long a fully-proven pair may be repeatedly offered by `beginActivation()`
  * without ever being committed before it's deprioritized behind any OTHER
  * ready pair (CONFIRMED HIGH in review — head-of-line blocking: since
@@ -97,6 +108,10 @@ export interface PendingActivationTrackerOptions {
  */
 export class PendingActivationTracker {
   private readonly pending = new Map<string, PendingPair>();
+  /** pairKey → expiry (epoch ms) for pairs that were CONFIRMED-activated (a real
+   * `commitActivation`). The authoritative source of the "activated" status —
+   * never inferred. TTL'd + capped ({@link ACTIVATED_RETENTION_MS}/{@link MAX_ACTIVATED}). */
+  private readonly activated = new Map<string, number>();
   private nextOrder = 0;
   private readonly clock: () => number;
   private readonly sweepIntervalMs: number;
@@ -205,21 +220,61 @@ export class PendingActivationTracker {
     return { pair: { standard, smart }, token: chosenKey };
   }
 
-  /** Remove exactly the pair `token` was issued for. A stale/unknown token
-   *  (or one for a pair that isn't fully proven) is a no-op, not a throw. */
+  /** The activation state of a SPECIFIC pair (order-independent), for surfacing
+   *  the outcome to an operator watching the browser verify flow:
+   *   - `"activated"` — this pair was CONFIRMED-activated on-chain (a real
+   *     `commitActivation`) within the retention window. Authoritative, never
+   *     inferred from per-account proofs — so a never-recorded cross-pair reads
+   *     `"none"`, not a false `"activated"`.
+   *   - `"ready"` — both halves proven and the pair is still pending (queued for,
+   *     or mid-, activation; `commitActivation` hasn't confirmed on-chain success),
+   *   - `"half"` — recorded but only one half proven so far,
+   *   - `"none"` — not tracked and not recently activated.
+   * Read-only w.r.t. pending/offer state (only prunes its own expired activated
+   * record on read); never sets `firstOfferedAt`. */
+  statusOf(a: string, b: string): "none" | "half" | "ready" | "activated" {
+    if (a === b) return "none";
+    const key = pairKey(a, b);
+    const activatedExpiry = this.activated.get(key);
+    if (activatedExpiry !== undefined) {
+      if (activatedExpiry > this.clock()) return "activated";
+      this.activated.delete(key); // expired — fall through
+    }
+    const entry = this.pending.get(key);
+    if (!entry) return "none";
+    if (entry.expiresAt <= this.clock()) return "none";
+    return entry.provenA && entry.provenB ? "ready" : "half";
+  }
+
+  /** Remove exactly the pair `token` was issued for, and RECORD it as activated
+   *  (retained for {@link ACTIVATED_RETENTION_MS} so `statusOf` can report it). A
+   *  stale/unknown token (or one for a pair that isn't fully proven) is a no-op,
+   *  not a throw — and records nothing (only a real, fully-proven pair activates). */
   commitActivation(token: string): void {
     const entry = this.pending.get(token);
     if (!entry || !entry.provenA || !entry.provenB) return;
     this.pending.delete(token);
+    if (this.activated.size >= MAX_ACTIVATED) {
+      const oldest = this.activated.keys().next().value; // insertion-ordered
+      if (oldest) this.activated.delete(oldest);
+    }
+    this.activated.set(token, this.clock() + ACTIVATED_RETENTION_MS);
   }
 
-  /** Purge every expired entry (proven or not). Returns the number removed. */
+  /** Purge every expired entry (proven or not) AND every expired activated record.
+   *  Returns the number removed. */
   sweepExpired(): number {
     const now = this.clock();
     let removed = 0;
     for (const [key, entry] of this.pending) {
       if (entry.expiresAt <= now) {
         this.pending.delete(key);
+        removed += 1;
+      }
+    }
+    for (const [key, expiry] of this.activated) {
+      if (expiry <= now) {
+        this.activated.delete(key);
         removed += 1;
       }
     }

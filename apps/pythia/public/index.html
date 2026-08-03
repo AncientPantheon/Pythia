@@ -89,6 +89,11 @@
             <div id="live-medallions" class="medallions" aria-live="polite" title="Per-chain pool status">
               <div class="medallion"><span class="med-dot"></span><b class="med-name">StoaChain</b><span class="med-pools">checking…</span></div>
             </div>
+
+            <div id="automaton-live" class="automaton-live" aria-live="polite" title="Whether Pythia is live and working as an automaton (its autonomous engine + its own API link), distinct from chain reachability" hidden>
+              <span class="al-dot" data-color="grey"></span>
+              <span class="al-label">checking automaton…</span>
+            </div>
           </header>
 
           <!-- ── WORK-AREA — the display surface. showTab() swaps the active
@@ -184,7 +189,7 @@
             <div class="link-sel" id="link-selection">Select one unlinked half from each side.</div>
             <div class="link-actions">
               <button id="verify-btn" class="btn btn--primary" type="button" disabled>Verify ownership</button>
-              <button id="link-btn" class="btn btn--primary" type="button" disabled title="Unlocks once Pythia confirms ownership">Link ✦</button>
+              <button id="link-btn" class="btn btn--primary" type="button" disabled title="Unlocks once both halves are verified — activation is then autonomous">API Link</button>
             </div>
           </div>
           <div class="halves">

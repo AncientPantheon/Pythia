@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.7.16` on public npmjs — proprietary release, all rights reserved (see
+`2.7.17` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -129,6 +129,11 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.7.17** — version alignment: jumps from `2.7.16` to `2.7.17` to align with the unified Pythia
+service version line. Service-side only (the connector verify flow now bridges into autonomous
+`A_LinkDualApiKey` activation, an automaton liveness green-check on `/healthz`, and Tier-3 admin URL
+routing) — no changes to this package's own source, API surface, or behavior.
 
 **v2.7.16** — version alignment: jumps from `2.7.15` to `2.7.16` to align with the unified Pythia
 service version line. Service-side only (the Pyth Flush cronoton now encodes its entry numbers as

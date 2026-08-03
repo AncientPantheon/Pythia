@@ -1,6 +1,6 @@
 {
   "name": "pythia",
-  "version": "2.7.16",
+  "version": "2.7.17",
   "description": "Pythia — the all-seeing read gateway of the AncientPantheon. Workspace root for @ancientpantheon/pythia-client (consumer SDK) and the private apps/pythia gateway service.",
   "private": true,
   "type": "module",

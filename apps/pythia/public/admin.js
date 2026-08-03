@@ -21,16 +21,54 @@ function renderAuthbox() {
   renderIdentity(document.getElementById("authbox"), authState, { adminLink: false });
 }
 
-// The brand's version chip, read once from /healthz on load.
+// The brand's version chip + the automaton liveness "green check", from /healthz.
+// Polled (not once-only) so the header badge tracks the automaton going live —
+// e.g. once the operator links Pythia's self-connector or a verifier is added.
 async function loadVersion() {
   try {
     const res = await fetch("/healthz", { headers: { accept: "application/json" } });
     if (!res.ok) return;
     const body = await res.json();
     setVersion(document.getElementById("ph-version"), body.version);
+    renderAutomatonLive(body.automaton);
   } catch {
     /* leave the chip empty */
   }
+}
+
+// The automaton liveness "green check" — green when Pythia's autonomous machinery
+// is up AND its own API link is online (automaton.live), amber (naming the first
+// down capability) when partial, hidden when /healthz carries no automaton block.
+// This is the automaton's OWN status, distinct from StoaChain node reachability.
+function renderAutomatonLive(a) {
+  const box = document.getElementById("automaton-live");
+  if (!box) return;
+  const dot = box.querySelector(".al-dot");
+  const label = box.querySelector(".al-label");
+  if (!a) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  if (a.live) {
+    if (dot) dot.dataset.color = "green";
+    if (label) label.textContent = "Automaton live ✓";
+  } else {
+    const missing = !a.khronotonTick
+      ? "engine tick down"
+      : !a.activationPipeline
+        ? "activation pipeline down"
+        : !a.selfConnectorLinked
+          ? "self API link not active"
+          : "degraded";
+    if (dot) dot.dataset.color = "amber";
+    if (label) label.textContent = `Automaton degraded — ${missing}`;
+  }
+  box.title =
+    `Automaton liveness — engine tick: ${a.khronotonTick ? "on" : "off"}, ` +
+    `activation pipeline: ${a.activationPipeline ? "ready" : "down"}, ` +
+    `self API link: ${a.selfConnectorLinked ? "active" : "inactive"}, ` +
+    `verifiers registered: ${a.verifiersRegistered}`;
 }
 
 async function loadMe() {
@@ -214,10 +252,19 @@ const VIEW_LOADERS = {
   khronoton: loadKhronotonIsland,
 };
 
+// Views that carry a Tier-3 sub-tab row (a `.subtabs` group). Each sub-tab is its
+// OWN addressable URL `#<view>/<subtab>` (Pantheon convention: the URL is the source
+// of truth for the active view, at every tier). `default` is the sub-tab a bare view
+// URL (`#connectors/stoachain`) resolves to — deterministic, never last-used state.
+const VIEW_SUBTABS = {
+  "connectors/stoachain": { tabs: ["feed", "observation", "upload", "rules"], default: "feed" },
+};
+
 // Legacy (topic-2) flat hashes → their new nested homes, so old bookmarks land.
+// The pool sub-tabs now have their own Tier-3 URL, so preserve which one.
 const LEGACY_HASHES = {
-  observation: "connectors/stoachain",
-  upload: "connectors/stoachain",
+  observation: "connectors/stoachain/observation",
+  upload: "connectors/stoachain/upload",
   version: "update-deploy",
 };
 
@@ -345,6 +392,25 @@ function showPlannedNote(title) {
 // #connectors/stoachain) → that view in the pane + its top-level sidebar item
 // marked active + its blurb in the subhead, firing its load* function so data
 // shows on open. Legacy topic-2 hashes redirect first.
+// Split a raw hash name into its view (a VIEW_LOADERS key) and optional Tier-3
+// sub-tab. A bare view (`connectors/stoachain`) → { view, subtab: undefined }; a
+// view + sub-tab (`connectors/stoachain/upload`) → { view: "connectors/stoachain",
+// subtab: "upload" } when that view declares the sub-tab in VIEW_SUBTABS. Unknown
+// → { view: name }, letting the caller fall through to the not-found branch.
+function splitViewSubtab(name) {
+  if (Object.prototype.hasOwnProperty.call(VIEW_LOADERS, name)) return { view: name };
+  const slash = name.lastIndexOf("/");
+  if (slash > 0) {
+    const parent = name.slice(0, slash);
+    const last = name.slice(slash + 1);
+    const meta = VIEW_SUBTABS[parent];
+    // Parent is a sub-tabbed view → it's a Tier-3 route; an unknown sub-tab falls
+    // back to the view's default (forgiving, like a bare view URL) rather than 404.
+    if (meta) return { view: parent, subtab: meta.tabs.includes(last) ? last : undefined };
+  }
+  return { view: name };
+}
+
 function routeFromHash() {
   if (!isAncient()) return;
   const name = location.hash.replace(/^#/, "");
@@ -352,22 +418,26 @@ function routeFromHash() {
     location.hash = "#" + LEGACY_HASHES[name]; // hashchange re-fires the router
     return;
   }
-  const known = Object.prototype.hasOwnProperty.call(VIEW_LOADERS, name);
+  const { view, subtab } = splitViewSubtab(name);
+  const known = Object.prototype.hasOwnProperty.call(VIEW_LOADERS, view);
   const note = document.getElementById("admin-tile-note");
   const views = document.querySelectorAll(".admin-view");
   const navItems = document.querySelectorAll(".admin-nav-item");
 
   if (known) {
     if (note) note.hidden = true;
-    views.forEach((v) => { v.hidden = v.dataset.view !== name; });
+    views.forEach((v) => { v.hidden = v.dataset.view !== view; });
     // Nested (#connectors/stoachain) highlights its top-level (connectors) item.
-    const topLevel = name.split("/")[0];
+    const topLevel = view.split("/")[0];
     navItems.forEach((it) => {
       it.classList.toggle("admin-nav-item--active", it.dataset.navId === topLevel);
     });
-    currentBlurb = blurbForName(name);
+    currentBlurb = blurbForName(view);
     setSubhead(currentBlurb);
-    VIEW_LOADERS[name]();
+    VIEW_LOADERS[view]();
+    // Tier-3: apply the routed sub-tab (or the view's default) so a bare view URL
+    // is deterministic and `#view/subtab` deep-links straight to that panel.
+    if (VIEW_SUBTABS[view]) applySubtab(view, subtab || VIEW_SUBTABS[view].default);
   } else {
     if (note) note.hidden = true;
     views.forEach((v) => { v.hidden = true; });
@@ -375,6 +445,13 @@ function routeFromHash() {
     currentBlurb = "";
     setSubhead("");
   }
+}
+
+// Navigate by URL: set the hash (fires hashchange → routeFromHash). When the hash
+// is already the target (no event fires), route directly so the click still acts.
+function goTo(hash) {
+  if (location.hash === hash) routeFromHash();
+  else location.hash = hash;
 }
 
 // Clears the hash to return to the unselected /admin state (which fires the
@@ -387,21 +464,33 @@ function goToLanding() {
   }
 }
 
-// ── chain-page sub-tabs (Observation Pool | Upload Pool | Routing Rules) ──────
-// The classic subtab pattern, scoped to the StoaChain chain page: a clicked
-// .subtab gets .subtab--active and the [data-subpanel] whose name matches its
-// data-subtab is shown, the others hidden. Purely visual — the panels' contents
-// stay in the DOM (IDs untouched), so the pool actions keep working as before.
+// ── chain-page sub-tabs (Hub Feed | Observation Pool | Upload Pool | Routing) ──
+// Tier-3 of the URL-is-source-of-truth router: each sub-tab is its own addressable
+// URL `#connectors/stoachain/<subtab>`. A click NAVIGATES (sets the hash); the
+// router's applySubtab() does the actual show/hide — so the sub-tab is deep-linkable
+// and Back/forward-navigable, never a hidden in-memory flip behind a static URL.
 function wireChainSubtabs() {
   const page = document.querySelector('.admin-view[data-view="connectors/stoachain"]');
   if (!page) return;
-  const tabs = page.querySelectorAll(".subtab");
-  const panels = page.querySelectorAll("[data-subpanel]");
-  tabs.forEach((tab) => {
+  page.querySelectorAll(".subtab").forEach((tab) => {
     tab.addEventListener("click", () => {
-      tabs.forEach((t) => t.classList.toggle("subtab--active", t === tab));
-      panels.forEach((p) => { p.hidden = p.dataset.subpanel !== tab.dataset.subtab; });
+      goTo("#connectors/stoachain/" + tab.dataset.subtab);
     });
+  });
+}
+
+// Apply a view's active Tier-3 sub-tab: mark the clicked .subtab and show its
+// matching [data-subpanel], hide the siblings. The panels' contents stay in the DOM
+// (IDs untouched), so the pool actions keep working. Driven by the router, not by
+// the click handler — the URL is the single source of truth for which panel shows.
+function applySubtab(view, subtab) {
+  const page = document.querySelector(`.admin-view[data-view="${view}"]`);
+  if (!page) return;
+  page.querySelectorAll(".subtab").forEach((t) => {
+    t.classList.toggle("subtab--active", t.dataset.subtab === subtab);
+  });
+  page.querySelectorAll("[data-subpanel]").forEach((p) => {
+    p.hidden = p.dataset.subpanel !== subtab;
   });
 }
 
@@ -1957,6 +2046,9 @@ wireDeployButton();
 wireEarnings();
 wireSecurity();
 wireSelfConnector();
-loadVersion(); // fill the brand's version chip from /healthz
+loadVersion(); // fill the brand's version chip + automaton liveness from /healthz
+// Keep the automaton "green check" fresh so the header tracks the automaton going
+// live (self-connector linked, verifier added) without a page reload.
+setInterval(loadVersion, 20000);
 applyGate(); // render the "checking…" state before /api/me resolves
 loadMe();

@@ -32,6 +32,21 @@ export interface VerifyDeps {
    * pubkey read (not the externally-fed hub rotation). */
   txSenders?: { enabledNodes(): DialNode[] };
   fetchImpl?: FetchImpl;
+  /** The activation tracker (`pendingActivationTracker`). When BOTH halves of a
+   * challenge prove ownership in this browser flow, the pair is recorded here so
+   * Pythia's `dual-link-activate` cronoton fires `A_LinkDualApiKey` autonomously —
+   * the SAME tracker/resolver/cronoton the headless `connectorAuth` flow feeds.
+   * `A_LinkDualApiKey` is C_Link-optional/idempotent (it creates+activates or just
+   * activates), so no prior on-chain link is required. Omitted → the browser flow
+   * proves ownership but does not trigger activation (its pre-activation shape).
+   *
+   * `statusOf` (optional) lets `/status` surface the autonomous activation phase
+   * for the pair the operator is watching: `"activated"` (confirmed on-chain),
+   * `"ready"` (queued/mid-activation), `"half"`, or `"none"` (not tracked). */
+  pendingActivation?: {
+    recordProof(apolloAccount: string, counterpart: string): void;
+    statusOf?(a: string, b: string): "none" | "half" | "ready" | "activated";
+  };
 }
 
 const LINK_COOKIE = "pythia_link";
@@ -180,15 +195,52 @@ export function registerConnectorVerify(app: Hono, deps: VerifyDeps): void {
           await verifyHalf(deps, sid, apollo, nonce, sig);
         }
       }
+
+      // BRIDGE TO ACTIVATION: once BOTH halves of this pair have proven ownership
+      // (this callback or a prior one — the proven set is cumulative per session),
+      // record the pair into the activation tracker so Pythia's `dual-link-activate`
+      // cronoton fires `A_LinkDualApiKey` autonomously. The two halves are each
+      // other's counterpart (the operator picked both), so no on-chain counterpart
+      // read is needed — two order-independent `recordProof` calls (one per half)
+      // mark the pair ready, exactly as the headless flow does. Idempotent: a
+      // re-verify just re-marks an already-ready pair (and A_LinkDualApiKey itself
+      // is idempotent), so this is safe to reach more than once.
+      if (deps.pendingActivation) {
+        const proven = new Set(verifyStore.provenAccounts(sid));
+        if (proven.has(challenge.standard) && proven.has(challenge.smart)) {
+          deps.pendingActivation.recordProof(challenge.standard, challenge.smart);
+          deps.pendingActivation.recordProof(challenge.smart, challenge.standard);
+        }
+      }
     }
     // Always return to the Connectors tab; the UI reads /status to light up Link.
     return c.redirect("/#connectors", 302);
   });
 
-  // 3) The UI polls which apollo halves are proven for this session.
+  // 3) The UI polls which apollo halves are proven for this session — and, when
+  //    it passes the pair it's watching (?standard=&smart=), the AUTONOMOUS
+  //    activation phase for that PAIR (order-independent) so the operator sees the
+  //    outcome live:
+  //      - "activating" — pair recorded, both halves proven, queued/in-flight (tracker "ready"),
+  //      - "activated"  — A_LinkDualApiKey fired and `commitActivation` CONFIRMED
+  //                       on-chain success for this exact pair (tracker "activated"),
+  //      - "pending"    — this pair isn't a recorded, fully-proven, activated pair,
+  //      - undefined    — no pair passed, or no tracker wired.
+  //    Derived from the tracker's PER-PAIR state alone (never from two independent
+  //    per-account proofs) so a cross-pair the operator never verified together
+  //    can't be mis-reported as "activated".
   app.get("/api/connectors/verify/status", (c) => {
     c.header("Cache-Control", "no-store");
     const sid = currentSid(c) ?? "";
-    return c.json({ proven: sid ? verifyStore.provenAccounts(sid) : [] });
+    const proven = sid ? verifyStore.provenAccounts(sid) : [];
+    const standard = c.req.query("standard") ?? "";
+    const smart = c.req.query("smart") ?? "";
+    let activation: "pending" | "activating" | "activated" | undefined;
+    if (standard && smart && deps.pendingActivation?.statusOf) {
+      const tracked = deps.pendingActivation.statusOf(standard, smart);
+      activation =
+        tracked === "ready" ? "activating" : tracked === "activated" ? "activated" : "pending";
+    }
+    return c.json({ proven, ...(activation ? { activation } : {}) });
   });
 }

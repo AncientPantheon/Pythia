@@ -3,6 +3,7 @@ import {
   PendingActivationTracker,
   PENDING_ACTIVATION_TTL_MS,
   ACTIVATION_STUCK_GRACE_MS,
+  ACTIVATED_RETENTION_MS,
 } from "./pendingActivationTracker.js";
 
 const STANDARD_A = "₱.".padEnd(162, "a"); // arbitrary 162-char standard-shaped string
@@ -37,6 +38,59 @@ describe("PendingActivationTracker", () => {
     const ready = tracker.beginActivation();
     expect(ready).not.toBeNull();
     expect(ready?.pair).toEqual({ standard: STANDARD_A, smart: SMART_A });
+  });
+
+  it("statusOf reflects a pair's phase: none → half → ready → activated (after commit)", () => {
+    let now = 1_000;
+    const tracker = new PendingActivationTracker({ clock: () => now });
+    // Never recorded → none.
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("none");
+    // One half proven → half (order-independent query).
+    tracker.recordProof(STANDARD_A, SMART_A);
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("half");
+    expect(tracker.statusOf(SMART_A, STANDARD_A)).toBe("half");
+    // Both proven → ready.
+    tracker.recordProof(SMART_A, STANDARD_A);
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("ready");
+    // Read-only: statusOf must not have set firstOfferedAt / consumed the pair.
+    expect(tracker.beginActivation()?.pair).toEqual({ standard: STANDARD_A, smart: SMART_A });
+    // Committed (CONFIRMED on-chain) → activated, order-independent, retained.
+    const token = tracker.beginActivation()?.token as string;
+    tracker.commitActivation(token);
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("activated");
+    expect(tracker.statusOf(SMART_A, STANDARD_A)).toBe("activated");
+  });
+
+  it("the 'activated' record is authoritative, not inferred — a never-recorded pair is 'none'", () => {
+    const tracker = new PendingActivationTracker();
+    // A pair that was never recorded (e.g. a cross-pair the operator never verified
+    // together) must read 'none' — it is NEVER inferred to be activated.
+    expect(tracker.statusOf(STANDARD_E, STANDARD_F)).toBe("none");
+    // A stale/unknown commit token records nothing (no false 'activated').
+    tracker.commitActivation("bogus-token");
+    expect(tracker.statusOf(STANDARD_E, STANDARD_F)).toBe("none");
+  });
+
+  it("the 'activated' record expires after its retention window", () => {
+    let now = 1_000;
+    const tracker = new PendingActivationTracker({ clock: () => now });
+    tracker.recordProof(STANDARD_A, SMART_A);
+    tracker.recordProof(SMART_A, STANDARD_A);
+    tracker.commitActivation(tracker.beginActivation()?.token as string);
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("activated");
+    now += ACTIVATED_RETENTION_MS + 1; // past the retention window
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("none");
+  });
+
+  it("statusOf returns none for a self-referential pair and for an expired entry", () => {
+    let now = 1_000;
+    const tracker = new PendingActivationTracker({ clock: () => now });
+    expect(tracker.statusOf(STANDARD_A, STANDARD_A)).toBe("none");
+    tracker.recordProof(STANDARD_A, SMART_A);
+    tracker.recordProof(SMART_A, STANDARD_A);
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("ready");
+    now += PENDING_ACTIVATION_TTL_MS + 1; // past expiry
+    expect(tracker.statusOf(STANDARD_A, SMART_A)).toBe("none");
   });
 
   it("does not mutate state on read — a second beginActivation() without commit returns the same pair", () => {

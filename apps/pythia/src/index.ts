@@ -46,6 +46,10 @@ import type { HubAdminControls, SelfConnectorStatus, SelfConnectorHalfView } fro
 import { SelfApolloVault } from "./automaton/selfApollo.js";
 import { SelfConnectorLoop } from "./automaton/selfConnectorLoop.js";
 import type { SelfConnectorHalfStatus } from "./automaton/selfConnectorLoop.js";
+import {
+  isPythiaKhronotonLoopRunning,
+  areAutomatonResolversRegistered,
+} from "./automaton/khronoton/register.js";
 import { maskSecret } from "@ancientpantheon/pythia-client";
 import { createInProcessFetch } from "./connectors/self/inProcessFetch.js";
 import { StatsStore } from "./stats/store.js";
@@ -378,7 +382,23 @@ app.use("*", connectorGateMiddleware(ephemeralKeyStore, connectorStore));
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.
-registerHealthz(app, { pool: nodePool }); // pool-aware: reflects the nodes actually serving reads
+registerHealthz(app, {
+  pool: nodePool, // pool-aware: reflects the nodes actually serving reads
+  // The automaton liveness ("green check") flags, read truthfully at request time.
+  // Computed HERE in the composition root — the only place allowed to reach the
+  // automaton core (the keyless request-path modules must not import it).
+  capabilities: () => {
+    const loop = selfConnectorLoop.status();
+    return {
+      khronotonTick: isPythiaKhronotonLoopRunning(),
+      activationPipeline: areAutomatonResolversRegistered(),
+      // Pythia's own dual API link is online iff an ephemeral secret is active
+      // (standard-preferred, smart-fallback, null when neither half is active).
+      selfConnectorLinked: loop.secret !== null,
+      verifiersRegistered: verifierStore.enabled().length,
+    };
+  },
+});
 registerRead(app, { pool: nodePool });
 registerSend(app, { store: txSenderStore });
 registerPoll(app, { pool: nodePool });
@@ -390,7 +410,13 @@ registerPools(app, { pool: nodePool, txSenders: txSenderStore });
 // half's on-chain pubkey — preferring the operator's own Upload-Pool nodes as the
 // trust anchor, hub read pool as fallback — and verifies the browser's signature.
 // Pythia never signs. Not admin-gated: anyone links their own keys.
-registerConnectorVerify(app, { pool: nodePool, txSenders: txSenderStore });
+registerConnectorVerify(app, {
+  pool: nodePool,
+  txSenders: txSenderStore,
+  // On both halves proving ownership in the browser flow, queue the pair for
+  // autonomous activation — the SAME tracker the headless connectorAuth flow feeds.
+  pendingActivation: pendingActivationTracker,
+});
 // Headless challenge/verify round trip (connector-auth-core): mints TTL'd
 // ephemeral secrets for a consumer who proves ownership of an active on-chain
 // DualLink via signature — parallel to (not replacing) the browser Link-verify

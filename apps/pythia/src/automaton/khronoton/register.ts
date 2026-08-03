@@ -1,7 +1,10 @@
-import { startKhronotonLoop } from "@ancientpantheon/khronoton-core/server";
+import { startKhronotonLoop, getServerResolver } from "@ancientpantheon/khronoton-core/server";
 import { getKhronotonContext } from "./context.js";
-import { registerPythFlushResolver } from "./pythFlushResolver.js";
-import { registerDualLinkActivateResolver } from "./dualLinkActivateResolver.js";
+import { registerPythFlushResolver, PYTH_FLUSH_RESOLVER } from "./pythFlushResolver.js";
+import {
+  registerDualLinkActivateResolver,
+  DUAL_LINK_ACTIVATE_RESOLVER,
+} from "./dualLinkActivateResolver.js";
 import type { PendingActivationTracker } from "../../connectors/auth/pendingActivationTracker.js";
 import type { CodexStore } from "../codexStore.js";
 import type { PythLedger } from "../../pyth/ledger.js";
@@ -47,4 +50,29 @@ export async function startPythiaKhronotonEngine(
 export function stopPythiaKhronotonEngine(): void {
   g.__pythiaKhronotonLoop?.stop();
   g.__pythiaKhronotonLoop = undefined;
+}
+
+/**
+ * Whether the Khronoton tick loop is currently running — the single truthful
+ * signal (the loop handle is only set at a successful `startKhronotonLoop`, and
+ * cleared by `stopPythiaKhronotonEngine`). Used by the automaton liveness
+ * ("green check") surface. When `KHRONOTON_DISABLED=1`, or the engine failed to
+ * start, or it was stopped, the global stays/returns `undefined` → false.
+ */
+export function isPythiaKhronotonLoopRunning(): boolean {
+  return g.__pythiaKhronotonLoop !== undefined;
+}
+
+/**
+ * Whether BOTH of Pythia's autonomous server resolvers are registered — the
+ * activation pipeline (`dual-link-activate`, fires `A_LinkDualApiKey`) and the
+ * pyth-flush pipeline. These register even when the loop is disabled (before the
+ * `KHRONOTON_DISABLED` check), so this reflects "the automaton's pipelines are
+ * wired" independently of whether the tick loop happens to be running.
+ */
+export function areAutomatonResolversRegistered(): boolean {
+  return (
+    getServerResolver(DUAL_LINK_ACTIVATE_RESOLVER) !== undefined &&
+    getServerResolver(PYTH_FLUSH_RESOLVER) !== undefined
+  );
 }

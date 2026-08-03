@@ -26,7 +26,13 @@
             </span>
             <a class="ph-back ph-btn ph-btn--ghost" href="/">← Pythia</a>
           </div>
-          <div class="ph-l1-right" id="authbox" aria-live="polite"></div>
+          <div class="ph-l1-right">
+            <span id="automaton-live" class="automaton-live" aria-live="polite" title="Whether Pythia is live and working as an automaton (its autonomous engine + its own API link), distinct from chain reachability" hidden>
+              <span class="al-dot" data-color="grey"></span>
+              <span class="al-label">checking automaton…</span>
+            </span>
+            <div id="authbox" aria-live="polite"></div>
+          </div>
         </div>
       </div>
     </header>

@@ -94,6 +94,59 @@ describe("GET /healthz", () => {
   });
 });
 
+describe("GET /healthz — automaton liveness (green check)", () => {
+  const CAPS_LIVE = {
+    khronotonTick: true,
+    activationPipeline: true,
+    selfConnectorLinked: true,
+    verifiersRegistered: 2,
+  };
+
+  it("omits the automaton block entirely when no capabilities thunk is wired", async () => {
+    const app = new Hono();
+    registerHealthz(app, { resolve: async () => GREEN });
+    const body = (await (await app.request("/healthz")).json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("automaton");
+  });
+
+  it("reports live:true only when tick + pipeline + self-link are ALL up", async () => {
+    const app = new Hono();
+    registerHealthz(app, { resolve: async () => GREEN, capabilities: () => CAPS_LIVE });
+    const body = (await (await app.request("/healthz")).json()) as {
+      automaton: { live: boolean; khronotonTick: boolean; verifiersRegistered: number };
+    };
+    expect(body.automaton.live).toBe(true);
+    expect(body.automaton.khronotonTick).toBe(true);
+    expect(body.automaton.verifiersRegistered).toBe(2);
+  });
+
+  it("reports live:false when any core capability is down (self-connector not linked)", async () => {
+    const app = new Hono();
+    registerHealthz(app, {
+      resolve: async () => GREEN,
+      capabilities: () => ({ ...CAPS_LIVE, selfConnectorLinked: false }),
+    });
+    const body = (await (await app.request("/healthz")).json()) as {
+      automaton: { live: boolean; selfConnectorLinked: boolean };
+    };
+    expect(body.automaton.live).toBe(false);
+    expect(body.automaton.selfConnectorLinked).toBe(false);
+  });
+
+  it("does NOT let verifiersRegistered:0 pull liveness down — it's a readiness signal, not a gate", async () => {
+    const app = new Hono();
+    registerHealthz(app, {
+      resolve: async () => GREEN,
+      capabilities: () => ({ ...CAPS_LIVE, verifiersRegistered: 0 }),
+    });
+    const body = (await (await app.request("/healthz")).json()) as {
+      automaton: { live: boolean; verifiersRegistered: number };
+    };
+    expect(body.automaton.live).toBe(true);
+    expect(body.automaton.verifiersRegistered).toBe(0);
+  });
+});
+
 describe("GET /healthz — pool-aware", () => {
   it("checks the live read pair (not the config seeds) when a pool is wired", async () => {
     const origFetch = globalThis.fetch;
