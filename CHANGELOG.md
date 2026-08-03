@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.16] — 2026-08-03
+
+### Fixed — Pyth Flush cronoton: encode entry numbers as explicit Pact values (`{int}`/`{decimal}`)
+
+The Pyth Flush cronoton's simulate failed a Pact type check — the `entries` the `pyth-flush` resolver
+sent didn't match the on-chain `object{…PythFlushEntry}` schema. Root cause: the resolver put RAW JS
+numbers in the payload, but Kadena rejects a bare number in a command (`Type 'number' is not allowed …
+Use { decimal: … } or { int: … }`), and `pondus` (the schema's only `decimal`) can't be represented as
+a bare number at all — a whole value serializes as an integer and fails the `decimal` field. Because
+the flush fire simulates before submitting, this blocked the flush entirely. The resolver now encodes
+each entry's numbers into their Pact-value form (`{ int }` for `day` + the six integer counters,
+`{ decimal }` for `pondus`; `iz-complete` stays a bool) — the admin Pyth Flush panel's own data
+(`beginFlush`/`previewEntries`) is untouched. See `docs/work/pyth-flush-pact-value-encoding/design.md`.
+
 ## [2.7.15] — 2026-08-03
 
 ### Changed — Khronoton signing DELEGATES to Codex's resolver (no more hand-rolled key derivation)

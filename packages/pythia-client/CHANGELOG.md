@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.16 — 2026-08-03
+
+Version alignment: the client jumps from `2.7.15` to `2.7.16` to align with the unified Pythia
+service version line. This release is service-side only (the Pyth Flush cronoton now encodes its
+entry numbers as explicit Pact values so A_Flush type-checks — see `CHANGELOG.md` at the repo root) —
+no changes to this package's own source, API surface, or behavior.
+
 ## 2.7.15 — 2026-08-03
 
 Version alignment: the client jumps from `2.7.13` to `2.7.15` to align with the unified Pythia
