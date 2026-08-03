@@ -1,5 +1,12 @@
 # Handoff — khronoton-core: make an EVENTED server resolver disable scheduling (in the type + the Builder UI)
 
+> **Related — read together.** `HANDOFF-khronoton-event-driven-resolvers.md` (2026-08-02) is the
+> DETAILED spec for the core of this (Asks 1–2 below: an evented resolver → scheduler-off →
+> Builder "event-driven" indicator, with exact khronoton-core source-line references). This file is the
+> up-to-date superset: it restates that core briefly and **adds two asks proven necessary since**:
+> Ask 3 (the cronoton list must show "Evented" as next-fire) and Ask 4 (enforce one-resolver-one-cronoton
+> at the store). Implement all four; use the older file for the line-level map of Asks 1–2.
+
 **Audience:** the `@ancientpantheon/khronoton-core` maintainer.
 **Why:** A server resolver can be **event-driven** — its cronoton is fired by an in-process event, never
 by a schedule (Pythia's `dual-link-activate` fires on a *link event*: a verified dual-Apollo pair). Today
