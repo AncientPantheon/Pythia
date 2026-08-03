@@ -487,6 +487,21 @@ function isHalfProven(h) {
   return !!h && regState.proven.includes(h["apollo-account"]);
 }
 
+// Sync the register panel's status line (#reg-status) to the autonomous activation
+// phase. Called from updateActionBar on every poll, so the line tracks the same
+// phase as the top selection line and never freezes on a stale "checking…" once
+// activation lands on-chain.
+function setRegActivationStatus(phase) {
+  const status = document.getElementById("reg-status");
+  if (!status) return;
+  status.textContent =
+    phase === "activated"
+      ? "API link active — Pythia's automaton fired A_LinkDualApiKey."
+      : phase === "activating"
+        ? "Activating the API link — Pythia's dual-link-activate cronoton is firing A_LinkDualApiKey…"
+        : "Both halves verified — Pythia will activate the API link autonomously.";
+}
+
 // Two-stage flow: (1) VERIFY ownership of both selected unlinked halves — enabled
 // when two unlinked halves are picked; (2) LINK — stays locked until BOTH halves
 // are proven, then lights up (its on-chain action is deferred: it will signal the
@@ -538,6 +553,10 @@ function updateActionBar() {
           note.className = "link-ok";
           note.textContent = " — both halves verified ✓ — Pythia will activate the API link";
         }
+        // Keep the panel status line (#reg-status) in sync with the SAME live phase,
+        // updated on every poll — so it never freezes on a stale "Checking status…"
+        // after activation lands (the top line and this line must agree).
+        setRegActivationStatus(regState.activation);
       } else if (sProven || mProven) {
         note.className = "link-warn";
         note.textContent = " — one half verified; verify the other (load the Codex that holds it)";
@@ -853,13 +872,9 @@ function wireConnectors() {
     // manual submit. The button (enabled only once both halves are proven) just
     // re-checks the live activation phase reported by /status.
     linkBtn.addEventListener("click", () => {
-      const status = document.getElementById("reg-status");
-      if (status) {
-        status.textContent =
-          regState.activation === "activated"
-            ? "API link active — Pythia's automaton fired A_LinkDualApiKey."
-            : "Activation is autonomous — Pythia's dual-link-activate cronoton fires A_LinkDualApiKey once both halves are verified. Checking status…";
-      }
+      // Activation is autonomous; the button just forces a re-check. The status
+      // line is kept in sync with the live phase by updateActionBar (→
+      // setRegActivationStatus) on the poll — so it can't freeze on "checking…".
       loadProven();
     });
   }

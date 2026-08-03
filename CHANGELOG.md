@@ -9,6 +9,22 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.23] — 2026-08-03
+
+### Fixed — connector panel's status line froze on "Checking status…" after activation landed
+
+The register panel's status line (`#reg-status`) was written once on the Link-button click ("…Checking
+status…") and never re-touched, so after the autonomous activation actually landed on-chain the top
+selection line correctly flipped to "API link active ✓ — Pythia fired A_LinkDualApiKey" while the bottom
+line stayed frozen on "Checking status…" — the two disagreed. Now `#reg-status` is synced to the SAME
+live activation phase on every poll (`setRegActivationStatus`, called from `updateActionBar`), so it
+tracks `pending → activating → activated` and settles on "API link active — Pythia's automaton fired
+A_LinkDualApiKey." The Link button just forces a re-check (no stuck message). `apps/pythia/public/app.js`.
+
+_Milestone: the end-to-end verify → autonomous `A_Link` activation flow is confirmed working on-chain
+(fires succeed; the pair shows linked). The remaining Khronoton detail-page "Schedule" label for an
+evented cronoton is a bundled `@ancientpantheon/khronoton-core` Builder gap — tracked in the handoff._
+
 ## [2.7.22] — 2026-08-03
 
 ### Changed — adopt khronoton-core 0.7.0 + register `dual-link-activate` as `evented` (native scheduleless)
