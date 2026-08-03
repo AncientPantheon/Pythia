@@ -9,6 +9,26 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.22] — 2026-08-03
+
+### Changed — adopt khronoton-core 0.7.0 + register `dual-link-activate` as `evented` (native scheduleless)
+
+Pythia was pinned to `@ancientpantheon/khronoton-core@^0.4.2` while the deploy ran `@latest` (0.7.0) — so
+the running Builder was newer than the version Pythia built/tested against. Bumped the pin to `^0.7.0`
+(typecheck + full suite green: 608 pythia, 96 client) and adopted its native event-driven support:
+
+- **`dual-link-activate` is now registered with `evented: true`.** khronoton-core 0.7.0 reads that flag to
+  force the cronoton scheduleless on **commit AND edit** (`next_fire_at = NULL`), render it "Evented", and
+  drive the Builder's schedule-control disabling — the native version of Pythia's earlier consumer-side
+  stopgaps (which remain as harmless belt-and-suspenders + the boot repair for pre-0.7.0 rows).
+- **Exposed the resolver roster** `GET /admin/khronoton/resolvers` (0.7.0's `{name,kind,evented}` registry)
+  so the admin can see which server resolvers exist / are consumed.
+- 0.7.0 also natively enforces one-resolver-one-cronoton in the store ("already bound — delete it first").
+
+Remaining Khronoton-UI gaps (delete-with-warning — 0.7.0 still hard-blocks system deletes; the detail/edit
+schedule rendering; a roster VIEW; engine-UI internal routing) are tracked in
+`docs/HANDOFF-khronoton-evented-resolver-scheduleless.md` (status vs 0.7.0 noted at the top).
+
 ## [2.7.21] — 2026-08-03
 
 ### Fixed — migrate a pre-existing evented cronoton off its stale schedule + system-cronoton override delete

@@ -1,5 +1,15 @@
 # Handoff — khronoton-core: make an EVENTED server resolver disable scheduling (in the type + the Builder UI)
 
+> **STATUS (khronoton-core 0.7.0 — Pythia adopted it in v2.7.22).** Much of this is now DONE upstream:
+> Ask 1 (resolver `evented` flag + store auto-forces scheduleless on commit AND edit) ✅; Ask 2's data
+> (`GET /resolvers` roster endpoint with `{name,kind,evented}`) ✅; Ask 4 (store enforces
+> one-resolver-one-cronoton, "already bound — delete it first") ✅; Ask 3's list "Evented" ✅. Pythia now
+> registers `dual-link-activate` with `evented: true` and exposes `/resolvers`, so these are live.
+> **STILL OPEN:** delete-with-warning (Ask 5 — 0.7.0 STILL hard-blocks system deletes); confirm the
+> DETAIL view shows Schedule="Evented" + the EDIT form disables the scheduler (Ask 6 — the store data is
+> right; verify the Builder renders it); a resolver-roster VIEW in the UI (Ask 6, endpoint exists); and
+> the engine-UI internal routing (Ask 7). Focus remaining work there.
+
 > **Related — read together.** `HANDOFF-khronoton-event-driven-resolvers.md` (2026-08-02) is the
 > DETAILED spec for the core of this (Asks 1–2 below: an evented resolver → scheduler-off →
 > Builder "event-driven" indicator, with exact khronoton-core source-line references). This file is the

@@ -11,6 +11,7 @@ import {
   getCodexCronoton,
   getExecuteBatch,
   listCodexCronotons,
+  listResolvers,
   pauseCodexCronoton,
   recoverFire,
   resumeCodexCronoton,
@@ -56,6 +57,7 @@ import { enforceEventedScheduleless, commitServerResolver } from "./eventedResol
  *   GET    /                          list          PATCH  /:id          edit
  *   POST   /                          commit        PATCH  /:id/pause    pause
  *   GET    /signers                   signers       PATCH  /:id/resume   resume
+ *   GET    /resolvers                 resolver roster ({name,kind,evented}, 0.7.0+)
  *   POST   /simulate                  simulate      DELETE /:id          delete
  *   GET    /:id                       get           POST   /:id/execute  execute-now
  *   GET    /:id/fires                 fires         POST   /:id/trigger  trigger
@@ -77,6 +79,10 @@ function match(method: string, seg: string[]): RouteMatch | null {
   }
   if (seg.length === 1) {
     if (seg[0] === "signers" && method === "GET") return { handler: fetchSigners, params: {} };
+    // The server-authoritative resolver roster ({ name, kind, evented }) — the source
+    // for showing which server resolvers exist and (cross-referenced with the cronoton
+    // list) which are consumed. New in khronoton-core 0.7.0.
+    if (seg[0] === "resolvers" && method === "GET") return { handler: listResolvers, params: {} };
     if (seg[0] === "simulate" && method === "POST") return { handler: simulateCodexTx, params: {} };
     const params = { id: seg[0] };
     if (method === "GET") return { handler: getCodexCronoton, params };

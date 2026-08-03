@@ -18,6 +18,12 @@ function fakeTracker(beginActivation: () => ReturnType<PendingActivationTracker[
 }
 
 describe("dual-link-activate server resolver", () => {
+  it("declares itself EVENTED (event-driven, never scheduled) — khronoton-core forces it scheduleless", () => {
+    const r = createDualLinkActivateResolver(fakeTracker(() => null));
+    expect(r.kind).toBe("single-tx");
+    expect(r.evented).toBe(true);
+  });
+
   it("resolve() with nothing pending returns the empty/no-op payload shape and an empty plan", () => {
     const tracker = fakeTracker(() => null);
     const r = createDualLinkActivateResolver(tracker);

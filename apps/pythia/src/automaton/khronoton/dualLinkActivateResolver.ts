@@ -32,6 +32,12 @@ export const DUAL_LINK_ACTIVATE_RESOLVER = "dual-link-activate";
 export function createDualLinkActivateResolver(tracker: PendingActivationTracker): SingleTxResolver {
   return {
     kind: "single-tx",
+    // EVENT-DRIVEN: fired by the link event (a verified pair), never a schedule.
+    // khronoton-core ≥0.7.0 reads this flag to force the cronoton scheduleless on
+    // commit/edit (next_fire_at = NULL) and to render it "Evented" / disable the
+    // schedule controls in the Builder — the native version of Pythia's earlier
+    // consumer-side enforcement.
+    evented: true,
     resolve() {
       const ready = tracker.beginActivation();
       if (!ready) {
