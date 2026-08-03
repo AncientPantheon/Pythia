@@ -52,13 +52,12 @@ describe("meterChainRuntime", () => {
     expect(ledger.recordSend).toHaveBeenCalledWith(false, 1500, 1);
   });
 
-  it("counts a dirtyRead as a petition (recordRead with positive pondus)", async () => {
+  it("does NOT meter a dirtyRead — Pythia's own dirty reads are not petitions (only client-served reads count)", async () => {
     const ledger = fakeLedger();
     const client = meterChainRuntime(fakeRuntime({}), ledger).createClient("url");
     const res = await client.dirtyRead(signedTx);
-    expect((res as { result: { status: string } }).result.status).toBe("success"); // passthrough
-    expect(ledger.recordRead).toHaveBeenCalledTimes(1);
-    expect(ledger.recordRead.mock.calls[0][0]).toBeGreaterThan(0);
+    expect((res as { result: { status: string } }).result.status).toBe("success"); // still passes through
+    expect(ledger.recordRead).not.toHaveBeenCalled();
   });
 
   it("gas defaults to 0 when the tx has no parseable meta.gasLimit", async () => {

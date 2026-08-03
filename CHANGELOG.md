@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.25] — 2026-08-04
+
+### Fixed — the automaton's OWN dirty reads must NOT count as petitions (v2.7.24 over-reached)
+
+The metering rule for `petitions`/`pondus` is: count reads Pythia **serves to a client** (any client —
+her own frontend displaying chain data, OuronetUI, StoaExplorer, Mnemosyne, via the `/read` gateway),
+and **NOT** Pythia's own internal dirty reads (the automaton's pre-fire safety-simulates, gas
+calibration, etc.). v2.7.24's `meterChainRuntime` wrongly also did `dirtyRead → recordRead`, so Pythia's
+own machinery reads started inflating petitions. Reverted: `dirtyRead` now passes through **unmetered**;
+`meterChainRuntime` meters **only** `submit → recordSend` (the automaton's transactions — the correct,
+still-wanted part). So petitions again reflect only client-served reads (as before v2.7.24), and
+automaton TRANSACTIONS still count in the fleet ledger. Pantheon architecture `organs/06 §6` corrected
+to state the two-counter rule precisely (served-reads-count / own-dirty-reads-don't; all sends count).
+
 ## [2.7.24] — 2026-08-04
 
 ### Fixed — Pythia's OWN automaton on-chain activity now counts in the Pyth ledger
