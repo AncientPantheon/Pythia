@@ -112,6 +112,26 @@ Two consumer pain points with server-resolver ("system") cronotons:
    `POST /admin/khronoton/:id/force-delete` (calls the store delete directly) but the bundled Builder
    has no button for it.
 
+## Ask 6 — a server-resolver ROSTER (which resolvers are consumed) + mark evented in the DETAIL view
+
+Two gaps beyond the list:
+1. **Detail view still shows the stored schedule for an evented row.** Operator-reported: an
+   externally-fireable cronoton's detail shows `Schedule: Daily at 12:00 UTC` and `Next Fire: —`. For a
+   trigger-only row, the detail's **Schedule** field must read **"Evented"** (not the stored
+   mode/config) and the **edit form must disable the schedule controls entirely** (Ask 2, but applied to
+   the detail/edit surface, not just the create form).
+2. **No resolver roster.** Add a view (fed by the Ask-2 resolvers-metadata endpoint cross-referenced
+   with `findCodexCronotonIdByServerResolver`) that lists the automaton's declared server resolvers and,
+   for each, whether it's **consumed** by a cronoton and which one — so "every server resolver consumed"
+   (setup complete) is visible. See Pantheonic architecture `organs/05 §6.1`.
+
+## Ask 7 — the engine UI's internal pages must be URL-addressable (§3.7)
+
+The cronoton **list / detail / builder** navigate in memory behind one static `#khronoton` — clicking a
+cronoton doesn't change the URL, so it's not deep-linkable or back-navigable, violating the Pantheon
+routing rule (design §3.7). The mounted Builder/list must participate in the host's router: `#khronoton`
+(list), `#khronoton/<id>` (detail), `#khronoton/new` (builder). See `organs/05 §6.3`.
+
 ## Acceptance
 
 - A cronoton committed/edited with an `evented` server resolver is stored `next_fire_at = NULL`
