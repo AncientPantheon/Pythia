@@ -1317,20 +1317,37 @@ function pythDayToDateStr(ordinal) {
 }
 
 // Read the ON-CHAIN Pyth ledger (the "stone" — what A_Flush has written): the running
-// total + the sealed/flushed daily rows. `null` on read failure (chain slow/down) so
-// the caller can still show the local "air". Two dirty reads via Pythia's own gateway.
+// total (the STONE stat cards) + the flushed daily rows (the chart). Throws only if the
+// TOTAL read fails (chain slow/down) so the caller can fall back to air-only.
+//
+// NOTE the daily read is per-day, NOT the batch `URD_ListPythDaily(from,to)` — that Pact
+// helper maps a plain `read` over every day in the range and THROWS on the first gap
+// ("No value found … for key: N"), because a day with no activity (e.g. day 1) has no
+// row. So we read the recent chart window one day at a time and skip missing days; a gap
+// no longer discards the whole on-chain read (the bug that showed stone = 0 despite a
+// real flush).
 async function loadPythChain() {
   const totalRaw = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.UR_PythTotal)`);
   const lastDay = coercePactNum(totalRaw && totalRaw["last-day"]);
   const total = parsePythMetrics(totalRaw && totalRaw["total-metrics"]);
   let daily = [];
   if (lastDay >= 1) {
-    const rows = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.URD_ListPythDaily 1 ${lastDay})`);
-    daily = (Array.isArray(rows) ? rows : []).map((row) => ({
-      day: pythDayToDateStr(row.day),
-      sealed: row["iz-sealed"] === true,
-      metrics: parsePythMetrics(row.metrics),
-    }));
+    const from = Math.max(1, lastDay - CHART_DAYS + 1);
+    const ordinals = [];
+    for (let d = from; d <= lastDay; d++) ordinals.push(d);
+    const rows = await Promise.all(
+      ordinals.map((d) =>
+        pythiaRead(`(${PYTHIA_NS}.PYTHIA.UR_PythDay ${d})`).then(
+          (row) => ({
+            day: pythDayToDateStr(d),
+            sealed: !!(row && row["iz-sealed"] === true),
+            metrics: parsePythMetrics(row && row.metrics),
+          }),
+          () => null, // a day with no on-chain row (never flushed) — skip it
+        ),
+      ),
+    );
+    daily = rows.filter(Boolean);
   }
   return { total, daily, lastDay };
 }

@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.28] — 2026-08-04
+
+### Fixed — Activity tab showed stone = 0 despite a real flush (a gap day killed the on-chain read)
+
+The on-chain Pyth ledger IS written (`UR_PythTotal` returns `last-day:3, petitions:66, pondus:11789`),
+but the Activity tab showed all-zero stone + "nothing written on-chain yet". Root cause: `loadPythChain`
+read the daily rows with the batch helper `URD_ListPythDaily(1, last-day)`, which maps a plain `read`
+over EVERY day in the range and **throws on the first gap** — day 1 (the ledger epoch, never flushed)
+has no row, so it errored `"No value found … for key: 1"`. That throw was in the same function as the
+(successful) total read, so it discarded the total too → stone rendered 0. Now the total is read first
+and always kept, and the daily chart window is read **per-day** (`UR_PythDay d`), skipping days with no
+on-chain row — so a gap no longer wipes the stone totals. Verified against the live chain.
+`apps/pythia/public/app.js`.
+
 ## [2.7.27] — 2026-08-04
 
 ### Fixed — keyed reads (ephemeral x-pythia-key) were miscounted as anon → nothing reached the hub

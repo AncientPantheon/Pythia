@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.28 — 2026-08-04
+
+Version alignment: the client jumps from `2.7.27` to `2.7.28` to align with the unified Pythia service
+version line. Service-side only (the Activity tab's on-chain read no longer discards the ledger total
+when a gap day has no row; see `CHANGELOG.md` at the repo root) — no changes to this package's own
+source, API surface, or behavior.
+
 ## 2.7.27 — 2026-08-04
 
 Version alignment: the client jumps from `2.7.26` to `2.7.27` to align with the unified Pythia service
