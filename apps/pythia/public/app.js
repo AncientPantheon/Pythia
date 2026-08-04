@@ -1185,16 +1185,9 @@ function el(tag, className, text) {
   return node;
 }
 
-function statNumber(label, value) {
-  const card = el("div", "stat-card");
-  card.appendChild(el("span", "stat-value", String(value)));
-  card.appendChild(el("span", "stat-label", label));
-  return card;
-}
-
-// Expand the (gap-filled) daily series to exactly `n` days ending today, so the
-// chart always has a consistent axis — one narrow bar per day, today at the right,
-// even when there's only a single day of data so far.
+// Expand the (gap-filled) daily series to exactly `n` days ending on the latest
+// day present, so the chart always has a consistent axis. Each record carries the
+// day's STONE (on-chain) + AIR (local backlog) petition counts.
 function padDays(daily, n) {
   if (!daily.length) return [];
   const map = new Map(daily.map((d) => [d.day, d]));
@@ -1205,13 +1198,29 @@ function padDays(daily, n) {
     dt.setUTCDate(end.getUTCDate() - i);
     const key = dt.toISOString().slice(0, 10);
     const rec = map.get(key);
-    out.push({ day: key, requests: rec ? rec.requests : 0 });
+    out.push({ day: key, stone: rec ? rec.stone || 0 : 0, air: rec ? rec.air || 0 : 0 });
   }
   return out;
 }
 
-// A vanilla SVG bar chart of daily request counts — no chart library. Bars scale
-// to the busiest day; a few evenly-spaced dates are labelled along the axis.
+/** One SVG bar rect with a hover title. */
+function chartBar(x, y, w, h, cls, title) {
+  const rect = document.createElementNS(SVG_NS, "rect");
+  rect.setAttribute("class", cls);
+  rect.setAttribute("x", String(x));
+  rect.setAttribute("y", String(y));
+  rect.setAttribute("width", String(w));
+  rect.setAttribute("height", String(Math.max(0, h)));
+  rect.setAttribute("rx", "1.5");
+  const t = document.createElementNS(SVG_NS, "title");
+  t.textContent = title;
+  rect.appendChild(t);
+  return rect;
+}
+
+// A vanilla SVG STACKED bar chart of daily petitions — STONE (on-chain, at the
+// base) + AIR (local backlog, stacked on top). Two colours; no chart library.
+// `daily` = [{ day: "YYYY-MM-DD", stone, air }].
 function buildActivityChart(daily) {
   const days = padDays(daily, CHART_DAYS);
   const W = 640;
@@ -1219,7 +1228,7 @@ function buildActivityChart(daily) {
   const pad = { top: 6, right: 8, bottom: 14, left: 8 };
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top - pad.bottom;
-  const max = days.reduce((m, d) => Math.max(m, d.requests), 0) || 1;
+  const max = days.reduce((m, d) => Math.max(m, (d.stone || 0) + (d.air || 0)), 0) || 1;
   const slot = plotW / days.length;
   const barW = Math.max(2, Math.min(slot * 0.68, 20));
 
@@ -1227,23 +1236,23 @@ function buildActivityChart(daily) {
   svg.setAttribute("class", "activity-chart");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `Daily requests over the last ${days.length} days`);
+  svg.setAttribute("aria-label", `Daily petitions (stone on-chain + air pending) over the last ${days.length} days`);
 
   days.forEach((d, i) => {
-    const h = (d.requests / max) * plotH;
+    const stoneH = ((d.stone || 0) / max) * plotH;
+    const airH = ((d.air || 0) / max) * plotH;
     const x = pad.left + i * slot + (slot - barW) / 2;
-    const y = pad.top + (plotH - h);
-    const rect = document.createElementNS(SVG_NS, "rect");
-    rect.setAttribute("class", "activity-bar");
-    rect.setAttribute("x", String(x));
-    rect.setAttribute("y", String(y));
-    rect.setAttribute("width", String(barW));
-    rect.setAttribute("height", String(Math.max(0, h)));
-    rect.setAttribute("rx", "1.5");
-    const title = document.createElementNS(SVG_NS, "title");
-    title.textContent = `${d.day}: ${d.requests} request${d.requests === 1 ? "" : "s"}`;
-    rect.appendChild(title);
-    svg.appendChild(rect);
+    const baseY = pad.top + plotH;
+    if (stoneH > 0) {
+      svg.appendChild(
+        chartBar(x, baseY - stoneH, barW, stoneH, "activity-bar activity-bar--stone", `${d.day}: ${d.stone} on-chain (stone)`),
+      );
+    }
+    if (airH > 0) {
+      svg.appendChild(
+        chartBar(x, baseY - stoneH - airH, barW, airH, "activity-bar activity-bar--air", `${d.day}: ${d.air} pending (air)`),
+      );
+    }
   });
 
   // Label the first, middle, and last day along the x axis.
@@ -1272,54 +1281,177 @@ function fmtInt(x) {
   return (Number(x) || 0).toLocaleString("en-US");
 }
 
-// Render the StoaChain Pyth-economy ledger into the Activity body: the earning
-// pair (Petitions · Pondus) + the send service (Transactions · Gas relayed), a
-// daily-petitions chart, and the send-failure pair. Fleet-wide, keyless.
-function renderPyth(container, data) {
-  container.textContent = "";
-  const total = (data && data.total) || {};
-  const daily = Array.isArray(data && data.daily) ? data.daily : [];
+// Coerce a Pact numeric value — a plain number, `{ int: "n" }`, `{ decimal: "n" }`,
+// or a numeric string — into a JS number (chainweb /local encodes these several ways).
+function coercePactNum(v) {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  if (v && typeof v === "object") {
+    if ("int" in v) return coercePactNum(v.int);
+    if ("decimal" in v) return coercePactNum(v.decimal);
+  }
+  return 0;
+}
 
-  const empty =
-    !total.petitions && !total.transactions && !total.failedTransactions && daily.length === 0;
-  if (empty) {
+// Parse an on-chain PythMetrics blob (hyphenated keys) into the app's camelCase shape.
+function parsePythMetrics(m) {
+  m = m || {};
+  return {
+    petitions: coercePactNum(m.petitions),
+    pondus: coercePactNum(m.pondus),
+    transactions: coercePactNum(m.transactions),
+    gasReserved: coercePactNum(m["gas-reserved"]),
+    failedTransactions: coercePactNum(m["failed-transactions"]),
+    wastedGasReserved: coercePactNum(m["wasted-gas-reserved"]),
+  };
+}
+
+// The Pyth ledger's day-1 anchor (UTC midnight) — UR_PythLedgerEpochStart. Day N =
+// anchor + (N-1) days. Used to map on-chain integer day ordinals to date strings.
+const PYTH_EPOCH_MS = Date.UTC(2026, 7, 1); // 2026-08-01
+function pythDayToDateStr(ordinal) {
+  return new Date(PYTH_EPOCH_MS + (coercePactNum(ordinal) - 1) * 86400000).toISOString().slice(0, 10);
+}
+
+// Read the ON-CHAIN Pyth ledger (the "stone" — what A_Flush has written): the running
+// total + the sealed/flushed daily rows. `null` on read failure (chain slow/down) so
+// the caller can still show the local "air". Two dirty reads via Pythia's own gateway.
+async function loadPythChain() {
+  const totalRaw = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.UR_PythTotal)`);
+  const lastDay = coercePactNum(totalRaw && totalRaw["last-day"]);
+  const total = parsePythMetrics(totalRaw && totalRaw["total-metrics"]);
+  let daily = [];
+  if (lastDay >= 1) {
+    const rows = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.URD_ListPythDaily 1 ${lastDay})`);
+    daily = (Array.isArray(rows) ? rows : []).map((row) => ({
+      day: pythDayToDateStr(row.day),
+      sealed: row["iz-sealed"] === true,
+      metrics: parsePythMetrics(row.metrics),
+    }));
+  }
+  return { total, daily, lastDay };
+}
+
+/** A legend swatch + label for the stone/air key. */
+function pythLegendItem(kind, label) {
+  const item = el("span", "pyth-legend-item");
+  item.appendChild(el("span", `pyth-swatch pyth-swatch--${kind}`));
+  item.appendChild(el("span", null, label));
+  return item;
+}
+
+// A stat card showing the on-chain STONE value large + a translucent "+air" pending
+// annotation (the local, not-yet-flushed backlog). Either side may be absent.
+function stoneAirCard(label, stoneVal, airVal, fmt) {
+  const card = el("div", "stat-card");
+  const stoneN = Number(stoneVal) || 0;
+  const airN = Number(airVal) || 0;
+  card.appendChild(el("span", "stat-value", fmt(stoneN)));
+  if (airN > 0) card.appendChild(el("span", "stat-air", `+ ${fmt(airN)} in air`));
+  card.appendChild(el("span", "stat-label", label));
+  return card;
+}
+
+// Merge on-chain daily (stone) + local daily (air) by date → [{ day, stone, air }].
+function mergePythDaily(stoneDaily, airDaily) {
+  const byDay = new Map();
+  (stoneDaily || []).forEach((d) => {
+    byDay.set(d.day, { day: d.day, stone: (d.metrics && d.metrics.petitions) || 0, air: 0 });
+  });
+  (airDaily || []).forEach((d) => {
+    const e = byDay.get(d.day) || { day: d.day, stone: 0, air: 0 };
+    e.air = d.petitions || 0;
+    byDay.set(d.day, e);
+  });
+  return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1));
+}
+
+// Render the StoaChain Pyth ledger as STONE (written on-chain by A_Flush) + AIR
+// (Pythia's local backlog, awaiting the next flush). Two colours: solid gold stone,
+// translucent cyan air. Fleet-wide, keyless. `air`/`stone` are each nullable.
+function renderPyth(container, air, stone) {
+  container.textContent = "";
+  const stoneTotal = (stone && stone.total) || null;
+  const airTotal = (air && air.total) || null;
+
+  const stoneEmpty =
+    !stoneTotal ||
+    (!stoneTotal.petitions &&
+      !stoneTotal.transactions &&
+      !stoneTotal.failedTransactions &&
+      (!stone.daily || stone.daily.length === 0));
+  const airEmpty =
+    !airTotal ||
+    (!airTotal.petitions &&
+      !airTotal.transactions &&
+      !airTotal.failedTransactions &&
+      (!air.daily || air.daily.length === 0));
+  if (stoneEmpty && airEmpty) {
     container.appendChild(
-      el("p", "empty", "No activity yet — Petitions and Pondus accrue as Pythia serves keyed reads."),
+      el("p", "empty", "No activity yet — Petitions and Pondus accrue as Pythia serves keyed reads, and turn to stone on the next on-chain flush."),
     );
     return;
   }
 
+  const legend = el("div", "pyth-legend");
+  legend.appendChild(pythLegendItem("stone", "Stone — written on-chain (A_Flush)"));
+  legend.appendChild(pythLegendItem("air", "Air — local, awaiting the next flush"));
+  container.appendChild(legend);
+
   const headline = el("div", "stat-cards stat-cards--four");
-  headline.appendChild(statNumber("petitions", fmtInt(total.petitions)));
-  headline.appendChild(statNumber("pondus", fmtPondus(total.pondus)));
-  headline.appendChild(statNumber("transactions", fmtInt(total.transactions)));
-  headline.appendChild(statNumber("gas relayed", fmtInt(total.gasReserved)));
+  headline.appendChild(stoneAirCard("petitions", stoneTotal && stoneTotal.petitions, airTotal && airTotal.petitions, fmtInt));
+  headline.appendChild(stoneAirCard("pondus", stoneTotal && stoneTotal.pondus, airTotal && airTotal.pondus, fmtPondus));
+  headline.appendChild(stoneAirCard("transactions", stoneTotal && stoneTotal.transactions, airTotal && airTotal.transactions, fmtInt));
+  headline.appendChild(stoneAirCard("gas reserved", stoneTotal && stoneTotal.gasReserved, airTotal && airTotal.gasReserved, fmtInt));
   container.appendChild(headline);
 
   const chartWrap = el("div", "stats-chart");
-  chartWrap.appendChild(el("h4", "stats-sub", "Daily petitions"));
-  chartWrap.appendChild(
-    buildActivityChart(daily.map((d) => ({ day: d.day, requests: d.petitions || 0 }))),
-  );
+  chartWrap.appendChild(el("h4", "stats-sub", "Daily petitions — stone + air"));
+  chartWrap.appendChild(buildActivityChart(mergePythDaily(stone && stone.daily, air && air.daily)));
   container.appendChild(chartWrap);
 
   const outs = el("div", "stat-cards stat-cards--two");
-  outs.appendChild(statNumber("failed transactions", fmtInt(total.failedTransactions)));
-  outs.appendChild(statNumber("wasted gas reserved", fmtInt(total.wastedGasReserved)));
+  outs.appendChild(stoneAirCard("failed transactions", stoneTotal && stoneTotal.failedTransactions, airTotal && airTotal.failedTransactions, fmtInt));
+  outs.appendChild(stoneAirCard("wasted gas reserved", stoneTotal && stoneTotal.wastedGasReserved, airTotal && airTotal.wastedGasReserved, fmtInt));
   container.appendChild(outs);
+
+  const foot = el("p", "pyth-foot");
+  if (stone && stone.lastDay >= 1) {
+    foot.textContent = `Written on-chain through day ${stone.lastDay} (${pythDayToDateStr(stone.lastDay)}). Air totals turn to stone on Pythia's next A_Flush.`;
+  } else {
+    foot.textContent = "Nothing written on-chain yet — all activity is still air, awaiting Pythia's first A_Flush.";
+  }
+  container.appendChild(foot);
 }
 
+// The Activity body reads TWO sources: /pyth (the local unflushed backlog = "air")
+// and the on-chain ledger via pythiaRead (the flushed data = "stone"). Each degrades
+// independently — chain slow/down shows air only; local down shows stone only.
 async function loadPyth() {
   const container = document.getElementById("stats-body");
   if (!container) return;
+  let air = null;
+  let stone = null;
   try {
     const res = await fetch("/pyth", { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    renderPyth(container, await res.json());
+    if (res.ok) air = await res.json();
   } catch {
+    /* air stays null */
+  }
+  try {
+    stone = await loadPythChain();
+  } catch {
+    /* stone stays null — chain unavailable; air-only render */
+  }
+  if (!air && !stone) {
     container.textContent = "";
     container.appendChild(el("p", "empty", "Ledger unavailable."));
+    return;
   }
+  renderPyth(container, air, stone);
 }
 
 // ── top-level tabs (Chains / Activity / For developers / Connectors) ─────────

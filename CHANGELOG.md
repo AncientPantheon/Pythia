@@ -9,6 +9,20 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.26] — 2026-08-04
+
+### Added — the Activity tab now reads the ON-CHAIN Pyth ledger (stone) alongside the local backlog (air)
+
+Now that `A_Flush` writes the Pyth ledger on-chain, the landing's Activity tab reads it back and shows
+two states in two colours: **STONE** — data written on-chain (read via `UR_PythTotal` + `URD_ListPythDaily`
+through Pythia's own gateway), solid gold; and **AIR** — Pythia's local unflushed backlog (`/pyth`),
+translucent cyan, awaiting the next flush. The four metric cards (petitions/pondus/transactions/gas) show
+the on-chain total large with a "+ N in air" pending annotation; the daily chart stacks a gold stone bar
+(on-chain, at the base) under a cyan air bar (backlog) per day; a legend + footnote ("written on-chain
+through day N") explain the two. Each source degrades independently — chain slow/down shows air only,
+local down shows stone only. A `coercePactNum` helper handles the chainweb `/local` value shapes
+(`number` | `{int}` | `{decimal}` | string). `apps/pythia/public/{app.js,styles.css}`.
+
 ## [2.7.25] — 2026-08-04
 
 ### Fixed — the automaton's OWN dirty reads must NOT count as petitions (v2.7.24 over-reached)
