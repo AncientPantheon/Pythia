@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.27 — 2026-08-04
+
+Version alignment: the client jumps from `2.7.26` to `2.7.27` to align with the unified Pythia service
+version line. Service-side only (keyed reads with an ephemeral `x-pythia-key` are now attributed to their
+consumer at the meter — they were miscounted as anon — so keyed usage reaches the hub; see `CHANGELOG.md`
+at the repo root) — no changes to this package's own source, API surface, or behavior.
+
 ## 2.7.26 — 2026-08-04
 
 Version alignment: the client jumps from `2.7.25` to `2.7.26` to align with the unified Pythia service

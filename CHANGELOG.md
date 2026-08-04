@@ -9,6 +9,21 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.27] — 2026-08-04
+
+### Fixed — keyed reads (ephemeral x-pythia-key) were miscounted as anon → nothing reached the hub
+
+The connector protocol's `x-pythia-key` is an EPHEMERAL secret (minted on proof-of-ownership, TTL'd).
+The gate middleware resolved it (via the ephemeral store) so gated access worked — but the METER's
+`resolveConsumer` only checked the permanent `connectorStore` + env map, NEVER the ephemeral store. So
+every real keyed read (Mnemosyne's, Pythia's own self-connector's, any `DualLinkConnector`'s) resolved
+to `"direct"` (anon) at the meter, never earned, and never appeared in the hub's per-slot keyed usage —
+Fleet Petitions/Pondus stayed 0 no matter how much keyed traffic flowed. `resolveConsumer` now resolves
+the ephemeral store first (secret → the Apollo account that minted it), then permanent + env. AND a
+KEYLESS gateway read now defaults to Pythia's own live self-connector key (when active) — "everything
+not claimed by another consumer's key goes through Pythia's own key" — so Pythia's frontend display
+reads count as hers instead of falling into the anon bucket. `apps/pythia/src/index.ts`.
+
 ## [2.7.26] — 2026-08-04
 
 ### Added — the Activity tab now reads the ON-CHAIN Pyth ledger (stone) alongside the local backlog (air)
