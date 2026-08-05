@@ -54,6 +54,26 @@ export class SettingsStore {
     } catch {
       // Absent/invalid → empty; first write materialises it.
     }
+    this.migrateLegacyPlaintextSecret();
+  }
+
+  /**
+   * One-time migration, run on every load: if sealing is available (a master key
+   * is set) and a plaintext `hmacSecret` is still sitting in settings.json — e.g.
+   * from before a `PYTHIA_MASTER_KEY` was introduced — move it into the vault and
+   * strip it from the file. Without this, `effectiveSecret()` would start reading
+   * the (empty) vault the moment sealing turns on, silently disabling the hub feed
+   * even though a secret was already configured, while the old plaintext value
+   * sat on disk forever in violation of this class's own "never written to this
+   * file when sealing" guarantee. Never overwrites an already-sealed value.
+   */
+  private migrateLegacyPlaintextSecret(): void {
+    if (!this.sealing()) return;
+    const legacy = this.settings.hmacSecret?.trim();
+    if (!legacy) return;
+    if (!this.vault!.has(HUB_SECRET_NAME)) this.vault!.set(HUB_SECRET_NAME, legacy);
+    this.settings.hmacSecret = undefined;
+    this.persist();
   }
 
   /** True when the store is sealing (a vault is injected and its master key is set). */

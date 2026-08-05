@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SettingsStore } from "./settingsStore.js";
@@ -119,6 +119,40 @@ describe("SettingsStore — plaintext fallback (no master key)", () => {
     expect(wrong.hubConfig()).toBeNull(); // feed falls back to env/off, not a stale secret
     expect(wrong.hasSecret()).toBe(false);
     expect(wrong.securityStatus().mode).toBe("locked");
+  });
+});
+
+describe("SettingsStore — legacy plaintext migration (a master key introduced later)", () => {
+  it("migrates a pre-existing plaintext secret into the vault once sealing becomes available", () => {
+    // The upgrade path: a secret was set while NO master key existed (plaintext
+    // fallback)...
+    fresh().setHubConfig({ hubBaseUrl: "https://hub.test", hmacSecret: "legacyPlain" });
+    // ...then the operator adds PYTHIA_MASTER_KEY and Pythia restarts — a fresh
+    // store opened WITH a vault this time, over the SAME settings.json.
+    const migrated = sealed();
+    expect(migrated.hubConfig()).toEqual({ baseUrl: "https://hub.test", secret: "legacyPlain" });
+    // The plaintext no longer sits on disk once sealing has taken over.
+    const raw = readFileSync(join(dir, "settings.json"), "utf8");
+    expect(raw).not.toContain("legacyPlain");
+    // And it survives yet another reload, now fully through the vault.
+    expect(sealed().hubConfig()).toEqual({ baseUrl: "https://hub.test", secret: "legacyPlain" });
+  });
+
+  it("does not clobber an already-sealed secret with stale plaintext residue", () => {
+    sealed().setHubConfig({ hmacSecret: "currentSealed" });
+    // Hand-edit settings.json to simulate stale plaintext residue sitting alongside
+    // an already-sealed secret (shouldn't happen via the public API — this guards
+    // the migration against ever regressing a newer sealed value).
+    const raw = JSON.parse(readFileSync(join(dir, "settings.json"), "utf8"));
+    raw.hmacSecret = "staleLeftover";
+    writeFileSync(join(dir, "settings.json"), JSON.stringify(raw));
+    expect(sealed().hubConfig()?.secret).toBe("currentSealed");
+  });
+
+  it("does nothing when there is no legacy plaintext secret to migrate", () => {
+    const st = sealed();
+    expect(st.hasSecret()).toBe(false);
+    expect(st.hubConfig()).toBeNull();
   });
 });
 

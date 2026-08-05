@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +6,9 @@ import { Hono } from "hono";
 import { registerAdmin } from "./routes.js";
 import { signSession } from "./session.js";
 import { ConnectorStore } from "../connectors/store.js";
+import { SettingsStore } from "./settingsStore.js";
+import { SealedStore } from "../codex/sealedStore.js";
+import { ensureSodiumReady, parseMasterKey } from "../codex/vault.js";
 import type { OidcConfig } from "./oidcConfig.js";
 import type { SecurityStatus } from "./settingsStore.js";
 
@@ -96,5 +99,53 @@ describe("admin Security (sealed vault) endpoints", () => {
       headers: { cookie: `pythia_admin_session=${t}` },
     });
     expect(res.status).toBe(403);
+  });
+});
+
+describe("admin Security clear — scoped to the hub secret, not the whole shared vault", () => {
+  const KEY = Buffer.from(new Uint8Array(32).fill(5)).toString("base64");
+
+  beforeAll(async () => {
+    await ensureSodiumReady();
+  });
+
+  // Wires `security.clear` exactly the way index.ts wires it (settingsStore.setHubConfig
+  // with an empty secret) against a REAL SealedStore shared with a stand-in for another
+  // subsystem's custody (e.g. the Codex organ's signing password) — the scenario that
+  // regressed when `clear` was wired to the vault-wide `sealedVault.clear()` instead.
+  function makeRealApp() {
+    const dir = scratch();
+    const vault = new SealedStore({
+      dir: join(dir, "vault"),
+      keyProvider: () => parseMasterKey(KEY),
+    });
+    const settings = new SettingsStore({ filePath: join(dir, "settings.json"), vault });
+    settings.setHubConfig({ hmacSecret: "hubSecret1" });
+    vault.set("codexPassword", "codex-signing-secret-untouched"); // another subsystem's entry
+
+    const app = new Hono();
+    registerAdmin(
+      app,
+      { sessionSecret: SECRET } as OidcConfig,
+      new ConnectorStore({ filePath: join(dir, "conn.json") }),
+      {
+        security: {
+          status: () => settings.securityStatus(),
+          clear: () => settings.setHubConfig({ hmacSecret: "" }),
+        },
+      },
+    );
+    return { app, settings, vault };
+  }
+
+  it("clears the hub secret but leaves another entry sharing the vault intact", async () => {
+    const { app, settings, vault } = makeRealApp();
+    const res = await app.request("/admin/security/clear", {
+      method: "POST",
+      headers: { cookie: await ancientCookie() },
+    });
+    expect(res.status).toBe(200);
+    expect(settings.hasSecret()).toBe(false);
+    expect(vault.get("codexPassword")).toBe("codex-signing-secret-untouched");
   });
 });
