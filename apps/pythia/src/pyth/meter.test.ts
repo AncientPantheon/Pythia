@@ -145,8 +145,11 @@ describe("pythMeterMiddleware", () => {
 
   it("with a tracker, an accepted send's requestKeys go to the tracker (NOT counted at relay)", async () => {
     const l = ledger();
-    const tracked: Array<{ requestKey: string; gasLimit: number }> = [];
-    const tracker = { track: (e: Array<{ requestKey: string; gasLimit: number }>) => tracked.push(...e) };
+    const tracked: Array<{ requestKey: string; gasLimit: number; consumer?: string }> = [];
+    const tracker = {
+      track: (e: Array<{ requestKey: string; gasLimit: number; consumer?: string }>) =>
+        tracked.push(...e),
+    };
     const app = new Hono();
     app.use("*", pythMeterMiddleware(l, resolve, tracker));
     app.post("/stoachain/send", (c) => c.json({ requestKeys: ["RK-A", "RK-B"] }));
@@ -154,11 +157,16 @@ describe("pythMeterMiddleware", () => {
       { cmd: JSON.stringify({ meta: { gasLimit: 800 } }) },
       { cmd: JSON.stringify({ meta: { gasLimit: 200 } }) },
     ];
-    await app.request("/stoachain/send", { method: "POST", body: JSON.stringify({ cmds }) });
+    // keyed → the consumer "acme" rides on each tracked entry
+    await app.request("/stoachain/send", {
+      method: "POST",
+      headers: { "x-pythia-key": "K" },
+      body: JSON.stringify({ cmds }),
+    });
     expect(l.total().transactions).toBe(0); // the tracker owns the outcome now
     expect(tracked).toEqual([
-      { requestKey: "RK-A", gasLimit: 800 },
-      { requestKey: "RK-B", gasLimit: 200 },
+      { requestKey: "RK-A", gasLimit: 800, consumer: "acme" },
+      { requestKey: "RK-B", gasLimit: 200, consumer: "acme" },
     ]);
   });
 
@@ -174,6 +182,49 @@ describe("pythMeterMiddleware", () => {
     });
     expect(l.total().failedTransactions).toBe(1);
     expect(l.total().wastedGasReserved).toBe(500);
+  });
+
+  it("attributes a keyed accepted send (no tracker) to its consumer in byConsumer", async () => {
+    const l = ledger();
+    const app = appWith(l, (c) => c.json({ requestKeys: ["rk"] }));
+    const cmds = [{ cmd: JSON.stringify({ meta: { gasLimit: 1200 } }) }];
+    await app.request("/stoachain/send", {
+      method: "POST",
+      headers: { "x-pythia-key": "K" }, // resolve → "acme"
+      body: JSON.stringify({ cmds }),
+    });
+    expect(l.byConsumer().acme).toEqual({
+      transactions: 1,
+      failedTransactions: 0,
+      gasReserved: 1200,
+      wastedGasReserved: 0,
+    });
+  });
+
+  it("attributes an ANONYMOUS send to the 'direct' consumer", async () => {
+    const l = ledger();
+    const app = appWith(l, (c) => c.json({ requestKeys: ["rk"] }));
+    const cmds = [{ cmd: JSON.stringify({ meta: { gasLimit: 300 } }) }];
+    await app.request("/stoachain/send", { method: "POST", body: JSON.stringify({ cmds }) });
+    expect(l.byConsumer().direct.transactions).toBe(1);
+    expect(l.byConsumer().acme).toBeUndefined();
+  });
+
+  it("attributes a keyed 502 relay-rejection to its consumer as failed", async () => {
+    const l = ledger();
+    const app = appWith(l, (c) => c.json({ error: "pool" }, 502));
+    const cmds = [{ cmd: JSON.stringify({ meta: { gasLimit: 900 } }) }];
+    await app.request("/stoachain/send", {
+      method: "POST",
+      headers: { "x-pythia-key": "K" },
+      body: JSON.stringify({ cmds }),
+    });
+    expect(l.byConsumer().acme).toEqual({
+      transactions: 0,
+      failedTransactions: 1,
+      gasReserved: 0,
+      wastedGasReserved: 900,
+    });
   });
 
   it("records a hub-slot keyed read into the per-slot meter", async () => {

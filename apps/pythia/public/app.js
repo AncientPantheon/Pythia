@@ -1516,9 +1516,158 @@ function renderPyth(container, air, stone) {
   container.appendChild(foot);
 }
 
+// ── live pulse (Pythia's heartbeat) ──────────────────────────────────────────
+// The fleet ledger (/pyth) updates in real time as Pythia serves reads and relays
+// sends. While the Activity view is open we poll it every few seconds and bump the
+// displayed numbers UP as activity arrives — a live demonstration of the pulse. It
+// also shows the per-consumer transaction breakdown (byConsumer). This is a layer
+// ABOVE the stone/air on-chain view, which is unchanged.
+const PULSE_INTERVAL_MS = 4000;
+let pythPulseTimer = null;
+let pythPulseLast = {}; // last-seen fleet totals, for count-up deltas
+
+const PULSE_KEYS = [
+  { key: "petitions", label: "Petitions", fmt: fmtInt, round: true },
+  { key: "pondus", label: "Pondus", fmt: fmtPondus, round: false },
+  { key: "transactions", label: "Transactions", fmt: fmtInt, round: true },
+];
+
+function consumerLabel(name) {
+  if (name === "pythia-self") return "Pythia (self)";
+  if (name === "direct") return "Anonymous";
+  return name;
+}
+
+// Tween a number element from→to over ~0.6s (ease-out). `round` keeps integer
+// counters whole during the animation; pondus animates with decimals.
+function animatePulseNumber(node, from, to, fmt, round) {
+  if (!node) return;
+  const a = Number.isFinite(from) ? from : 0;
+  const b = Number.isFinite(to) ? to : 0;
+  if (a === b || typeof requestAnimationFrame !== "function") {
+    node.textContent = fmt(b);
+    return;
+  }
+  const dur = 600;
+  const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
+  function step(now) {
+    const p = Math.min(1, (now - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    const v = a + (b - a) * eased;
+    node.textContent = fmt(round ? Math.round(v) : v);
+    if (p < 1) requestAnimationFrame(step);
+    else node.textContent = fmt(b);
+  }
+  requestAnimationFrame(step);
+}
+
+// Brief highlight "bump" — restart the CSS animation via a forced reflow.
+function pulseBump(node) {
+  if (!node) return;
+  node.classList.remove("pulse-num--bump");
+  void node.offsetWidth;
+  node.classList.add("pulse-num--bump");
+  setTimeout(() => node.classList.remove("pulse-num--bump"), 800);
+}
+
+function renderPulseConsumers(container, byConsumer) {
+  container.textContent = "";
+  const entries = Object.entries(byConsumer || {}).sort(
+    (a, b) => (b[1].transactions || 0) - (a[1].transactions || 0),
+  );
+  if (!entries.length) {
+    container.appendChild(el("p", "pulse-empty", "No transactions attributed yet — they appear here as consumers fire."));
+    return;
+  }
+  container.appendChild(el("h4", "pulse-consumers-title", "Transactions by consumer"));
+  const list = el("div", "pulse-clist");
+  for (const [name, c] of entries) {
+    const row = el("div", "pulse-crow");
+    row.appendChild(el("span", "pulse-cname", consumerLabel(name)));
+    const n = el("span", "pulse-cnum", fmtInt(c.transactions || 0));
+    n.dataset.consumer = name;
+    row.appendChild(n);
+    if (c.failedTransactions) {
+      row.appendChild(el("span", "pulse-cfail", `${fmtInt(c.failedTransactions)} failed`));
+    }
+    list.appendChild(row);
+  }
+  container.appendChild(list);
+}
+
+// Build the always-present pulse block from a /pyth response (may be null).
+function buildPythPulse(pyth) {
+  const total = (pyth && pyth.total) || {};
+  const wrap = el("div", "pyth-pulse");
+  wrap.id = "pyth-pulse";
+  const head = el("div", "pulse-head");
+  head.appendChild(el("span", "pulse-dot"));
+  head.appendChild(el("span", "pulse-title", "Live pulse"));
+  head.appendChild(el("span", "pulse-sub", "fleet ledger · updates live"));
+  wrap.appendChild(head);
+  const tiles = el("div", "pulse-tiles");
+  for (const k of PULSE_KEYS) {
+    const tile = el("div", "pulse-tile");
+    const num = el("div", "pulse-num", k.fmt(total[k.key] || 0));
+    num.dataset.pulse = k.key;
+    tile.appendChild(num);
+    tile.appendChild(el("div", "pulse-label", k.label));
+    tiles.appendChild(tile);
+  }
+  wrap.appendChild(tiles);
+  const consumers = el("div", "pulse-consumers");
+  consumers.id = "pulse-consumers";
+  renderPulseConsumers(consumers, pyth && pyth.byConsumer);
+  wrap.appendChild(consumers);
+  return wrap;
+}
+
+// One poll: fetch /pyth and update the pulse block in place — animate a count-up +
+// bump on any counter that increased; refresh the per-consumer list.
+async function pythPulseTick() {
+  let pyth = null;
+  try {
+    const res = await fetch("/pyth", { headers: { accept: "application/json" } });
+    if (res.ok) pyth = await res.json();
+  } catch {
+    return; // transient — try again next tick, leave the display as-is
+  }
+  if (!pyth) return;
+  const block = document.getElementById("pyth-pulse");
+  if (!block) return; // not on the Activity view / not rendered yet
+  const total = pyth.total || {};
+  for (const k of PULSE_KEYS) {
+    const node = block.querySelector(`[data-pulse="${k.key}"]`);
+    const prev = (pythPulseLast && pythPulseLast[k.key]) || 0;
+    const next = total[k.key] || 0;
+    if (next > prev) {
+      animatePulseNumber(node, prev, next, k.fmt, k.round);
+      pulseBump(node);
+    } else if (node) {
+      node.textContent = k.fmt(next);
+    }
+  }
+  pythPulseLast = total;
+  const cc = document.getElementById("pulse-consumers");
+  if (cc) renderPulseConsumers(cc, pyth.byConsumer);
+}
+
+function startPythPulse() {
+  stopPythPulse();
+  if (typeof setInterval === "function") pythPulseTimer = setInterval(pythPulseTick, PULSE_INTERVAL_MS);
+}
+function stopPythPulse() {
+  if (pythPulseTimer) {
+    clearInterval(pythPulseTimer);
+    pythPulseTimer = null;
+  }
+}
+
 // The Activity body reads TWO sources: /pyth (the local unflushed backlog = "air")
 // and the on-chain ledger via pythiaRead (the flushed data = "stone"). Each degrades
-// independently — chain slow/down shows air only; local down shows stone only.
+// independently — chain slow/down shows air only; local down shows stone only. The
+// live pulse block (from /pyth) is rendered ABOVE the stone/air view and is the part
+// the poll keeps ticking.
 async function loadPyth() {
   const container = document.getElementById("stats-body");
   if (!container) return;
@@ -1535,12 +1684,18 @@ async function loadPyth() {
   } catch {
     /* stone stays null — chain unavailable; air-only render */
   }
+  container.textContent = "";
+  // Live pulse — always present so the poll can bump it in place (fleet ledger).
+  container.appendChild(buildPythPulse(air));
+  pythPulseLast = (air && air.total) || {};
+  // The on-chain stone/air view below (unchanged).
+  const onchain = el("div", "pyth-onchain");
   if (!air && !stone) {
-    container.textContent = "";
-    container.appendChild(el("p", "empty", "Ledger unavailable."));
-    return;
+    onchain.appendChild(el("p", "empty", "Ledger unavailable."));
+  } else {
+    renderPyth(onchain, air, stone);
   }
-  renderPyth(container, air, stone);
+  container.appendChild(onchain);
 }
 
 // ── top-level tabs (Chains / Activity / For developers / Connectors) ─────────
@@ -1598,8 +1753,13 @@ function showActivityChain(id) {
       ? `${chain.name} — Petitions & Pondus served (keyed reads) plus Transactions & Gas relayed. Fleet-wide, keyless.`
       : `${chain.name} is not live yet — no usage to report.`;
   }
-  if (live) loadPyth();
-  else renderActivitySoon(chain);
+  if (live) {
+    loadPyth();
+    startPythPulse(); // begin the live heartbeat while this chain's Activity is shown
+  } else {
+    stopPythPulse();
+    renderActivitySoon(chain);
+  }
 }
 
 const TIER2 = {
@@ -1673,6 +1833,9 @@ function routeFromHash() {
 }
 
 function showTab(name, wantSub) {
+  // Leaving the Activity section stops the live pulse poll (re-armed on re-entry by
+  // showActivityChain for a live chain) — no polling while it's off-screen.
+  if (name !== "activity") stopPythPulse();
   // Tier-1 section nav lives in the header (.ph-tier1); mark the active button.
   document.querySelectorAll(".ph-tier1 [data-tab]").forEach((t) => {
     t.classList.toggle("ph-btn--active", t.dataset.tab === name);

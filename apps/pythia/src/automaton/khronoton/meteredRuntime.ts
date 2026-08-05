@@ -1,6 +1,11 @@
 import type { ChainRuntime, ChainClient } from "@ancientpantheon/khronoton-core/server";
 import type { PythLedger } from "../../pyth/ledger.js";
 
+/** The consumer label Pythia's OWN automaton fires (A_Link, A_Flush, …) are
+ * attributed to in the per-consumer tally — distinct from external consumers and
+ * from anonymous (`"direct"`) traffic. */
+export const PYTHIA_SELF_CONSUMER = "pythia-self";
+
 /**
  * Extract `meta.gasLimit` from a signed Kadena command (best-effort; 0 if absent
  * or unparseable). The executor hands `submit` a signed command whose `cmd` is the
@@ -56,14 +61,14 @@ export function meterChainRuntime(base: ChainRuntime, ledger: PythLedger): Chain
           try {
             const out = await client.submit(tx);
             try {
-              ledger.recordSend(true, gas, 1);
+              ledger.recordSend(true, gas, 1, PYTHIA_SELF_CONSUMER);
             } catch {
               /* best-effort */
             }
             return out;
           } catch (err) {
             try {
-              ledger.recordSend(false, gas, 1);
+              ledger.recordSend(false, gas, 1, PYTHIA_SELF_CONSUMER);
             } catch {
               /* best-effort */
             }

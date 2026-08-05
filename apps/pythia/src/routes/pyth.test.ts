@@ -53,4 +53,34 @@ describe("GET /pyth", () => {
     expect(body.total.pondus).toBe(0);
     expect(body.daily).toEqual([]);
   });
+
+  it("exposes a per-consumer transaction breakdown (byConsumer)", async () => {
+    const l = ledger();
+    l.recordSend(true, 1000, 2, "ouronetui");
+    l.recordSend(false, 300, 1, "mnemosyne");
+    l.recordSend(true, 500); // anon-less: no consumer → not in byConsumer
+    const app = new Hono();
+    registerPyth(app, l);
+
+    const res = await app.request("/pyth");
+    const body = (await res.json()) as { byConsumer: Record<string, Record<string, number>> };
+    expect(body.byConsumer.ouronetui).toEqual({
+      transactions: 2,
+      failedTransactions: 0,
+      gasReserved: 1000,
+      wastedGasReserved: 0,
+    });
+    expect(body.byConsumer.mnemosyne.failedTransactions).toBe(1);
+    expect(Object.keys(body.byConsumer).sort()).toEqual(["mnemosyne", "ouronetui"]);
+  });
+
+  it("byConsumer is an empty object when no attributed send has been recorded", async () => {
+    const l = ledger();
+    l.recordRead(5);
+    const app = new Hono();
+    registerPyth(app, l);
+    const res = await app.request("/pyth");
+    const body = (await res.json()) as { byConsumer: Record<string, unknown> };
+    expect(body.byConsumer).toEqual({});
+  });
 });

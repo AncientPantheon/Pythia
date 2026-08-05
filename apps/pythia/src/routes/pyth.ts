@@ -13,6 +13,9 @@ export function registerPyth(app: Hono, ledger: PythLedger): void {
       {
         total: ledger.total(),
         daily: ledger.daily(),
+        // Per-consumer transaction attribution (send-side only) — who fired what.
+        // Empty until a keyed/attributed send is recorded. See pyth/ledger.ts.
+        byConsumer: ledger.byConsumer(),
         // Distinct flushable day-buckets awaiting an on-chain A_Flush. With a daily
         // flush this is normally 1–2; the admin warns when it exceeds 2 (flush stuck).
         unflushedDays: ledger.unflushedDayCount(),

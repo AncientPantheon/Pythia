@@ -24,6 +24,19 @@ export interface DailyLedgerRow extends LedgerCounters {
   day: string;
 }
 
+/** Per-consumer TRANSACTION tally — the send-side counters, attributed to the
+ * consumer whose `x-pythia-key` (or `"direct"` for anon, `"pythia-self"` for
+ * Pythia's own automaton fires) drove the send. Display/attribution only: it is
+ * a running cumulative total, NOT flushed on-chain and NOT part of the earning
+ * economy (reads earn; sends don't). Reads have their own per-slot hub
+ * attribution and are deliberately not duplicated here. */
+export interface ConsumerTx {
+  transactions: number;
+  failedTransactions: number;
+  gasReserved: number;
+  wastedGasReserved: number;
+}
+
 /**
  * On-chain calendar-day anchor (`PYTHIA|LEDGER-EPOCH-START`). Day 1 begins at this
  * instant; the day ordinal a flush entry carries is `1 + floor((t − epoch)/86400s)`.
@@ -77,6 +90,9 @@ export interface PythLedgerOptions {
 
 interface LedgerSnapshot {
   days: Record<string, LedgerCounters>;
+  /** Per-consumer cumulative transaction tally (see {@link ConsumerTx}). Absent on
+   *  old (pre-attribution) files → treated as `{}`. */
+  byConsumer?: Record<string, ConsumerTx>;
   /** Monotonic counter, bumped only by {@link PythLedger.nuke}. Lets a process that
    *  booted with a stale in-memory snapshot detect, on its own next {@link
    *  PythLedger.persist}, that the on-disk truth has moved past what it loaded — and
@@ -116,6 +132,17 @@ function zero(): LedgerCounters {
   };
 }
 
+const CONSUMER_FIELDS = [
+  "transactions",
+  "failedTransactions",
+  "gasReserved",
+  "wastedGasReserved",
+] as const;
+
+function zeroConsumer(): ConsumerTx {
+  return { transactions: 0, failedTransactions: 0, gasReserved: 0, wastedGasReserved: 0 };
+}
+
 /** Finite-and-positive guard → else 0. */
 function nonNeg(x: number): number {
   return Number.isFinite(x) && x > 0 ? x : 0;
@@ -133,6 +160,8 @@ export class PythLedger {
   private readonly filePath: string;
   private readonly clock: () => Date;
   private readonly days = new Map<string, LedgerCounters>();
+  /** Per-consumer cumulative transaction tally — see {@link ConsumerTx}. */
+  private readonly consumers = new Map<string, ConsumerTx>();
   private readonly epochMs: () => number;
   private timer: ReturnType<typeof setInterval> | undefined;
   private writeWarned = false;
@@ -176,8 +205,15 @@ export class PythLedger {
 
   /** A relayed send of `count` txs (one batch shares one relay outcome):
    * accepted → +count transactions + gasLimit reserved; rejected → +count
-   * failed-transactions + gasLimit wasted. */
-  recordSend(accepted: boolean, gasLimit: number, count = 1): void {
+   * failed-transactions + gasLimit wasted.
+   *
+   * `consumer` (optional) attributes the send to a consumer — the name resolved
+   * from its `x-pythia-key`, `"direct"` for anonymous, or `"pythia-self"` for
+   * Pythia's own automaton fires. When given, the SAME amounts are ALSO added to
+   * that consumer's running tally (see {@link byConsumer}); the aggregate/day
+   * counters are unaffected by the presence or absence of `consumer`. Display
+   * only — never flushed on-chain, never earns. */
+  recordSend(accepted: boolean, gasLimit: number, count = 1, consumer?: string): void {
     const g = nonNeg(gasLimit);
     const n = Number.isInteger(count) && count > 0 ? count : 1;
     const d = this.todayBucket();
@@ -188,6 +224,29 @@ export class PythLedger {
       d.failedTransactions += n;
       d.wastedGasReserved += g;
     }
+    if (typeof consumer === "string" && consumer.length > 0) {
+      let c = this.consumers.get(consumer);
+      if (!c) {
+        c = zeroConsumer();
+        this.consumers.set(consumer, c);
+      }
+      if (accepted) {
+        c.transactions += n;
+        c.gasReserved += g;
+      } else {
+        c.failedTransactions += n;
+        c.wastedGasReserved += g;
+      }
+    }
+  }
+
+  /** The per-consumer cumulative transaction tally as a plain object (a copy —
+   * mutating it does not touch the ledger). Empty until a keyed/attributed send
+   * is recorded. Not per-day and not flushed: a running total for display. */
+  byConsumer(): Record<string, ConsumerTx> {
+    const out: Record<string, ConsumerTx> = {};
+    for (const [name, c] of this.consumers) out[name] = { ...c };
+    return out;
   }
 
   /** The running total across all days (pondus rounded to <=3 dp). */
@@ -301,16 +360,22 @@ export class PythLedger {
    *  Persists immediately. */
   nuke(): void {
     this.days.clear();
+    this.consumers.clear();
     this.generation += 1;
     this.persist();
   }
 
   snapshot(): LedgerSnapshot {
-    return { days: Object.fromEntries(this.days), generation: this.generation };
+    return {
+      days: Object.fromEntries(this.days),
+      byConsumer: this.byConsumer(),
+      generation: this.generation,
+    };
   }
 
   private applySnapshot(snap: LedgerSnapshot): void {
     this.days.clear();
+    this.consumers.clear();
     this.generation =
       typeof snap?.generation === "number" && Number.isFinite(snap.generation) ? snap.generation : 0;
     if (snap && typeof snap === "object" && snap.days) {
@@ -323,6 +388,19 @@ export class PythLedger {
             if (typeof v === "number" && Number.isFinite(v)) row[k] = v;
           }
           this.days.set(day, row);
+        }
+      }
+    }
+    if (snap && typeof snap === "object" && snap.byConsumer) {
+      for (const [name, c] of Object.entries(snap.byConsumer)) {
+        if (name && c && typeof c === "object") {
+          const rec = c as unknown as Record<string, unknown>;
+          const row = zeroConsumer();
+          for (const k of CONSUMER_FIELDS) {
+            const v = rec[k];
+            if (typeof v === "number" && Number.isFinite(v)) row[k] = v;
+          }
+          this.consumers.set(name, row);
         }
       }
     }

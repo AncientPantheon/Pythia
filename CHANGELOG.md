@@ -9,6 +9,26 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.30] — 2026-08-05
+
+### Added — per-consumer transaction attribution + a live Activity "pulse"
+
+**Per-key transaction metering.** The send meter now resolves each relayed send's consumer (the name
+from its `x-pythia-key`, `"direct"` for anonymous, `"pythia-self"` for Pythia's own automaton fires) and
+credits a per-consumer transaction tally when the tx resolves (mine → transaction, timeout/502 → failed),
+threaded through `txTracker` so it lands at the same resolution point as the aggregate. The ledger gains a
+persisted `byConsumer` map (cumulative, display-only — not flushed on-chain, not earning; cleared only by
+Nuke), and `GET /pyth` exposes it as `byConsumer` alongside the unchanged `total`/`daily`. Reads keep
+their existing per-slot hub attribution; this is transactions-only.
+
+**Live pulse.** With the Activity view open, the page polls the real-time fleet ledger (`/pyth`) every 4s
+and bumps the displayed Petitions/Pondus/Transactions UP as activity arrives — a count-up + highlight
+animation, a visible heartbeat — plus a live per-consumer transaction breakdown. The poll starts on
+entering a live Activity chain and stops on leaving the section (no off-screen polling). The on-chain
+stone/air view and chart are unchanged; the pulse is a live layer above them. Respects
+`prefers-reduced-motion`. Backend fully covered (+17 tests, 630 total); frontend is `public/app.js` +
+`public/styles.css`.
+
 ## [2.7.29] — 2026-08-05
 
 ### Added — Connectors: copy the dual API link key straight from each on-chain link

@@ -113,3 +113,55 @@ describe("TxTracker", () => {
     expect(t.pendingCount()).toBe(1);
   });
 });
+
+describe("TxTracker — per-consumer attribution", () => {
+  it("credits a mined tx's consumer in the per-consumer tally", async () => {
+    const l = ledger();
+    const t = new TxTracker({
+      ledger: l,
+      poll: async () => new Map([["rk1", { success: true, gas: 500 }]]),
+      clock: () => 1000,
+    });
+    t.track([{ requestKey: "rk1", gasLimit: 1500, consumer: "ouronetui" }]);
+    await t.tick();
+    expect(l.byConsumer().ouronetui).toEqual({
+      transactions: 1,
+      failedTransactions: 0,
+      gasReserved: 500,
+      wastedGasReserved: 0,
+    });
+  });
+
+  it("credits a timed-out tx's consumer as a failed transaction", async () => {
+    const l = ledger();
+    let now = 1000;
+    const t = new TxTracker({
+      ledger: l,
+      poll: async () => new Map(), // never mines
+      clock: () => now,
+      maxAgeMs: 5000,
+    });
+    t.track([{ requestKey: "rk1", gasLimit: 1500, consumer: "mnemosyne" }]);
+    now = 7000; // past maxAge
+    await t.tick();
+    expect(l.byConsumer().mnemosyne).toEqual({
+      transactions: 0,
+      failedTransactions: 1,
+      gasReserved: 0,
+      wastedGasReserved: 1500,
+    });
+  });
+
+  it("a tracked tx with no consumer records the aggregate only (byConsumer empty)", async () => {
+    const l = ledger();
+    const t = new TxTracker({
+      ledger: l,
+      poll: async () => new Map([["rk1", { success: true, gas: 400 }]]),
+      clock: () => 1000,
+    });
+    t.track([{ requestKey: "rk1", gasLimit: 1500 }]);
+    await t.tick();
+    expect(l.total().transactions).toBe(1);
+    expect(l.byConsumer()).toEqual({});
+  });
+});

@@ -4,6 +4,10 @@ import type { PythLedger } from "./ledger.js";
 export interface PendingTx {
   requestKey: string;
   gasLimit: number;
+  /** The consumer the send was attributed to (name / `"direct"` / `"pythia-self"`),
+   * carried so the per-consumer tally is credited at RESOLUTION (mine/timeout), the
+   * same point the aggregate is — the request context is long gone by then. */
+  consumer?: string;
 }
 
 /** Resolve a batch of request keys to their EXECUTION outcome. A key still in
@@ -39,7 +43,7 @@ const DEFAULT_INTERVAL_MS = 15_000;
  * accepted sends itself when a tracker is wired, so there is no double count.
  */
 export class TxTracker {
-  private readonly pending = new Map<string, { gasLimit: number; at: number }>();
+  private readonly pending = new Map<string, { gasLimit: number; at: number; consumer?: string }>();
   private readonly ledger: PythLedger;
   private readonly poll: PollExecutionFn;
   private readonly clock: () => number;
@@ -61,7 +65,8 @@ export class TxTracker {
     for (const e of entries) {
       if (e && typeof e.requestKey === "string" && e.requestKey && !this.pending.has(e.requestKey)) {
         const g = Number.isFinite(e.gasLimit) && e.gasLimit > 0 ? e.gasLimit : 0;
-        this.pending.set(e.requestKey, { gasLimit: g, at: now });
+        const consumer = typeof e.consumer === "string" && e.consumer.length > 0 ? e.consumer : undefined;
+        this.pending.set(e.requestKey, { gasLimit: g, at: now, consumer });
       }
     }
   }
@@ -83,17 +88,18 @@ export class TxTracker {
       outcomes = new Map();
     }
     for (const [rk, o] of outcomes) {
-      if (!this.pending.has(rk)) continue;
+      const p = this.pending.get(rk);
+      if (!p) continue;
       // Execution-level: success → a transaction + actual gas; failure → a failed
-      // transaction + actual wasted gas.
-      this.ledger.recordSend(o.success, o.gas);
+      // transaction + actual wasted gas. Attributed to the send's consumer.
+      this.ledger.recordSend(o.success, o.gas, 1, p.consumer);
       this.pending.delete(rk);
     }
     const now = this.clock();
     for (const [rk, p] of [...this.pending]) {
       if (now - p.at >= this.maxAgeMs) {
         // Never mined in time — charge the reserved limit as wasted, count failed.
-        this.ledger.recordSend(false, p.gasLimit);
+        this.ledger.recordSend(false, p.gasLimit, 1, p.consumer);
         this.pending.delete(rk);
       }
     }

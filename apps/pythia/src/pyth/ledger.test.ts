@@ -279,3 +279,86 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
     expect(entries.map((e) => e.day)).toEqual([1]); // the day-0 bucket is not sent
   });
 });
+
+describe("PythLedger — per-consumer transaction attribution (byConsumer)", () => {
+  it("an accepted send with a consumer bumps BOTH the aggregate and the per-consumer tally", () => {
+    const l = make();
+    l.recordSend(true, 1000, 2, "ouronetui");
+    expect(l.total().transactions).toBe(2);
+    expect(l.total().gasReserved).toBe(1000);
+    expect(l.byConsumer()).toEqual({
+      ouronetui: { transactions: 2, failedTransactions: 0, gasReserved: 1000, wastedGasReserved: 0 },
+    });
+  });
+
+  it("a rejected send with a consumer bumps failed/wasted per-consumer", () => {
+    const l = make();
+    l.recordSend(false, 800, 1, "mnemosyne");
+    expect(l.total().failedTransactions).toBe(1);
+    expect(l.byConsumer().mnemosyne).toEqual({
+      transactions: 0,
+      failedTransactions: 1,
+      gasReserved: 0,
+      wastedGasReserved: 800,
+    });
+  });
+
+  it("a send with NO consumer leaves byConsumer empty (aggregate still moves)", () => {
+    const l = make();
+    l.recordSend(true, 500);
+    expect(l.total().transactions).toBe(1);
+    expect(l.byConsumer()).toEqual({});
+  });
+
+  it("accumulates across multiple sends per consumer and keeps consumers separate", () => {
+    const l = make();
+    l.recordSend(true, 100, 1, "a");
+    l.recordSend(true, 200, 1, "a");
+    l.recordSend(false, 300, 1, "a");
+    l.recordSend(true, 400, 1, "b");
+    expect(l.byConsumer().a).toEqual({
+      transactions: 2,
+      failedTransactions: 1,
+      gasReserved: 300,
+      wastedGasReserved: 300,
+    });
+    expect(l.byConsumer().b.transactions).toBe(1);
+  });
+
+  it("byConsumer() returns a copy — mutating it does not touch the ledger", () => {
+    const l = make();
+    l.recordSend(true, 100, 1, "a");
+    const snap = l.byConsumer();
+    snap.a.transactions = 999;
+    expect(l.byConsumer().a.transactions).toBe(1);
+  });
+
+  it("persists byConsumer across a reload of the same file", () => {
+    const file = scratchFile();
+    const clock = fixedClock("2026-07-05T10:00:00.000Z");
+    const l1 = new PythLedger({ filePath: file, flushMs: 0, clock });
+    l1.recordSend(true, 700, 3, "explorer");
+    l1.persist();
+    const l2 = new PythLedger({ filePath: file, flushMs: 0, clock });
+    expect(l2.byConsumer().explorer).toEqual({
+      transactions: 3,
+      failedTransactions: 0,
+      gasReserved: 700,
+      wastedGasReserved: 0,
+    });
+  });
+
+  it("nuke() clears the per-consumer tally", () => {
+    const l = make();
+    l.recordSend(true, 100, 1, "a");
+    l.nuke();
+    expect(l.byConsumer()).toEqual({});
+  });
+
+  it("loading a legacy snapshot with no byConsumer key yields an empty map (no throw)", () => {
+    const file = scratchFile();
+    writeFileSync(file, JSON.stringify({ days: {}, generation: 0 }), "utf8");
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-05T10:00:00.000Z") });
+    expect(l.byConsumer()).toEqual({});
+  });
+});

@@ -1,5 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { meterChainRuntime } from "./meteredRuntime.js";
+import { PythLedger } from "../../pyth/ledger.js";
+
+const tmpDirs: string[] = [];
+afterEach(() => {
+  for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
 
 // Minimal fake ChainRuntime whose client records/echoes, so we can assert the
 // wrapper meters submit/dirtyRead into the ledger without a real chain.
@@ -37,7 +46,7 @@ describe("meterChainRuntime", () => {
     const client = meterChainRuntime(fakeRuntime({}), ledger).createClient("url");
     const out = await client.submit(signedTx);
     expect(out).toEqual({ requestKey: "rk-1" }); // return value passes through
-    expect(ledger.recordSend).toHaveBeenCalledWith(true, 1500, 1);
+    expect(ledger.recordSend).toHaveBeenCalledWith(true, 1500, 1, "pythia-self");
   });
 
   it("counts a REJECTED/thrown submit as a failed transaction and rethrows", async () => {
@@ -49,7 +58,7 @@ describe("meterChainRuntime", () => {
     });
     const client = meterChainRuntime(runtime, ledger).createClient("url");
     await expect(client.submit(signedTx)).rejects.toThrow("node rejected");
-    expect(ledger.recordSend).toHaveBeenCalledWith(false, 1500, 1);
+    expect(ledger.recordSend).toHaveBeenCalledWith(false, 1500, 1, "pythia-self");
   });
 
   it("does NOT meter a dirtyRead — Pythia's own dirty reads are not petitions (only client-served reads count)", async () => {
@@ -64,7 +73,7 @@ describe("meterChainRuntime", () => {
     const ledger = fakeLedger();
     const client = meterChainRuntime(fakeRuntime({}), ledger).createClient("url");
     await client.submit({ cmd: "not-json" });
-    expect(ledger.recordSend).toHaveBeenCalledWith(true, 0, 1);
+    expect(ledger.recordSend).toHaveBeenCalledWith(true, 0, 1, "pythia-self");
   });
 
   it("metering is best-effort — a throwing ledger never breaks the submit result", async () => {
@@ -76,5 +85,28 @@ describe("meterChainRuntime", () => {
     } as unknown as Parameters<typeof meterChainRuntime>[1];
     const client = meterChainRuntime(fakeRuntime({}), ledger).createClient("url");
     await expect(client.submit(signedTx)).resolves.toEqual({ requestKey: "rk-1" });
+  });
+
+  it("attributes Pythia's own fires to the 'pythia-self' consumer in a real ledger", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "pyth-metered-"));
+    tmpDirs.push(dir);
+    const l = new PythLedger({ filePath: join(dir, "l.json"), flushMs: 0 });
+    const client = meterChainRuntime(fakeRuntime({}), l).createClient("url");
+    await client.submit(signedTx);
+    expect(l.byConsumer()["pythia-self"]).toEqual({
+      transactions: 1,
+      failedTransactions: 0,
+      gasReserved: 1500,
+      wastedGasReserved: 0,
+    });
+
+    const runtime = fakeRuntime({
+      submit: async () => {
+        throw new Error("node rejected");
+      },
+    });
+    const failing = meterChainRuntime(runtime, l).createClient("url");
+    await expect(failing.submit(signedTx)).rejects.toThrow("node rejected");
+    expect(l.byConsumer()["pythia-self"].failedTransactions).toBe(1);
   });
 });

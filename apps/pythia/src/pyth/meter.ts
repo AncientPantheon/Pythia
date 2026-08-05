@@ -51,9 +51,10 @@ export function requestKeysFromSendResponse(bodyText: string): string[] {
   }
 }
 
-/** The tracker the meter hands accepted-send requestKeys to (see pyth/txTracker.ts). */
+/** The tracker the meter hands accepted-send requestKeys to (see pyth/txTracker.ts).
+ * `consumer` rides along so the per-consumer tally is credited when the tx resolves. */
 export interface TxTrackerLike {
-  track(entries: Array<{ requestKey: string; gasLimit: number }>): void;
+  track(entries: Array<{ requestKey: string; gasLimit: number; consumer?: string }>): void;
 }
 
 /** The per-slot windowed meter + the slot→operator lookup (see stats/slotUsage.ts,
@@ -136,6 +137,11 @@ export function pythMeterMiddleware(
       if (gasLimits.length === 0) return;
       const sum = gasLimits.reduce((a, b) => a + b, 0);
 
+      // Attribute the send to its consumer (name / "direct" for anon) — the same
+      // resolution reads use. Carried to the tracker so the per-consumer tally is
+      // credited at resolution, and passed to the fallback counts directly.
+      const consumer = resolveConsumer(c.req.header(CONSUMER_HEADER));
+
       if (status >= 200 && status < 300) {
         // ACCEPTED. With a tracker wired, hand each requestKey to it for the
         // execution-level outcome (counted once it mines) instead of counting
@@ -143,17 +149,21 @@ export function pythMeterMiddleware(
         // the response), fall back to the relay-level optimistic count.
         if (tracker) {
           const rks = requestKeysFromSendResponse(await c.res.clone().text());
-          const entries = rks.map((requestKey, i) => ({ requestKey, gasLimit: gasLimits[i] ?? 0 }));
+          const entries = rks.map((requestKey, i) => ({
+            requestKey,
+            gasLimit: gasLimits[i] ?? 0,
+            consumer,
+          }));
           if (entries.length > 0) {
             tracker.track(entries);
             return;
           }
         }
-        ledger.recordSend(true, sum, gasLimits.length);
+        ledger.recordSend(true, sum, gasLimits.length, consumer);
         return;
       }
       // 502 — relay-rejected (never entered the mempool): failed + wasted at relay.
-      ledger.recordSend(false, sum, gasLimits.length);
+      ledger.recordSend(false, sum, gasLimits.length, consumer);
     } catch {
       /* metering is best-effort — never let it touch the response */
     }

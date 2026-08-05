@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.30 — 2026-08-05
+
+Version alignment: the client jumps from `2.7.29` to `2.7.30` to align with the unified Pythia service
+version line. Service-side only (per-consumer transaction attribution in the Pyth ledger + `/pyth`
+`byConsumer`, and a live Activity "pulse"; see `CHANGELOG.md` at the repo root) — no changes to this
+package's own source, API surface, or behavior.
+
 ## 2.7.29 — 2026-08-05
 
 Version alignment: the client jumps from `2.7.28` to `2.7.29` to align with the unified Pythia service
