@@ -9,6 +9,18 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.29] — 2026-08-05
+
+### Added — Connectors: copy the dual API link key straight from each on-chain link
+
+Each row in the Connectors → full API keys list now has a small copy button at its start that puts the
+row's **dual API link key** — the composite table key `standard-apollo || "|" || smart-apollo`, the exact
+string an operator pastes into a consumer (Explorer, OuronetUI, Pythia herself) — on the clipboard, with
+a brief ✓ confirmation. No more opening the consumer and hand-searching for the key. Reconstructed
+client-side from the row's two halves (identical to `splitDualLinkKey`'s 162 + `|` + 162 = 325-char
+form); a row with an unlinked/missing half shows no button. Frontend-only (`public/app.js` +
+`public/styles.css`); the gateway, meter, and package surface are untouched.
+
 ## [2.7.28] — 2026-08-04
 
 ### Fixed — Activity tab showed stone = 0 despite a real flush (a gap day killed the on-chain read)

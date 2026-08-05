@@ -922,7 +922,11 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .dl-list { display: flex; flex-direction: column; gap: .4rem; }
 .dl-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.02); }
 .dl-row--off { opacity: .6; }
-.dl-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.dl-copy { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.03); color: var(--ink-mute); cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+.dl-copy:hover { color: var(--ink); border-color: var(--ink-soft); background: rgba(255,255,255,.06); }
+.dl-copy:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.dl-copy--done { color: var(--green); border-color: var(--green); }
+.dl-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; flex: 1 1 auto; }
 .dl-arrow { color: var(--ink-mute); }
 .dl-meta { display: flex; align-items: center; gap: 10px; flex: none; }
 .dl-badge { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; border-radius: 6px; padding: 1px .4rem; border: 1px solid; }

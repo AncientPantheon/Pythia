@@ -323,10 +323,81 @@ function renderDualLinks() {
   if (pager) renderPager(pager, dlState.page, pageCount, (p) => { dlState.page = p; renderDualLinks(); });
 }
 
+// The composite "dual API link key" (the DualLink table key) is exactly
+// `standard-apollo || BAR || smart-apollo` — the same string an operator pastes
+// into a consumer (Explorer/OuronetUI/Pythia herself). Reconstructed from the
+// row's two halves; null if either half is missing/unlinked (nothing to copy).
+function dualLinkKeyOf(r) {
+  const std = r && r["standard-apollo"];
+  const smart = r && r["smart-apollo"];
+  if (typeof std !== "string" || typeof smart !== "string") return null;
+  if (isUnlinked(std) || isUnlinked(smart)) return null;
+  return `${std}${BAR}${smart}`;
+}
+
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+const CHECK_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>';
+
+// Best-effort clipboard write: prefer the async Clipboard API (present on the
+// https origin), fall back to a hidden-textarea execCommand for older contexts.
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through to legacy */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// A compact copy button that puts the row's dual API link key on the clipboard,
+// with a brief ✓ confirmation. Placed at the START of a connector row so the
+// operator can grab the key without opening/searching the consumer.
+function copyKeyButton(key) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "dl-copy";
+  btn.title = "Copy dual API link key";
+  btn.setAttribute("aria-label", "Copy dual API link key");
+  btn.innerHTML = COPY_ICON;
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const ok = await copyToClipboard(key);
+    if (!ok) return;
+    btn.classList.add("dl-copy--done");
+    btn.innerHTML = CHECK_ICON;
+    btn.title = "Copied";
+    setTimeout(() => {
+      btn.classList.remove("dl-copy--done");
+      btn.innerHTML = COPY_ICON;
+      btn.title = "Copy dual API link key";
+    }, 1400);
+  });
+  return btn;
+}
+
 function dualLinkRow(r) {
   const active = r["iz-active"] === true;
   const row = document.createElement("div");
   row.className = "dl-row" + (active ? "" : " dl-row--off");
+
+  const key = dualLinkKeyOf(r);
+  const copyBtn = key ? copyKeyButton(key) : null;
 
   const main = document.createElement("div");
   main.className = "dl-main";
@@ -363,6 +434,7 @@ function dualLinkRow(r) {
     meta.appendChild(t);
   }
 
+  if (copyBtn) row.prepend(copyBtn);
   row.append(main, meta);
   return row;
 }
