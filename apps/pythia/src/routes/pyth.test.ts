@@ -68,7 +68,7 @@ describe("GET /pyth", () => {
       transactions: 2,
       failedTransactions: 0,
       gasReserved: 1000,
-      wastedGasReserved: 0,
+      wastedGasReserved: 0, petitions: 0, pondus: 0
     });
     expect(body.byConsumer.mnemosyne.failedTransactions).toBe(1);
     expect(Object.keys(body.byConsumer).sort()).toEqual(["mnemosyne", "ouronetui"]);

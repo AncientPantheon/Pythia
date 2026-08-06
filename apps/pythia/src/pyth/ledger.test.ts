@@ -287,7 +287,7 @@ describe("PythLedger — per-consumer transaction attribution (byConsumer)", () 
     expect(l.total().transactions).toBe(2);
     expect(l.total().gasReserved).toBe(1000);
     expect(l.byConsumer()).toEqual({
-      ouronetui: { transactions: 2, failedTransactions: 0, gasReserved: 1000, wastedGasReserved: 0 },
+      ouronetui: { transactions: 2, failedTransactions: 0, gasReserved: 1000, wastedGasReserved: 0, petitions: 0, pondus: 0 },
     });
   });
 
@@ -299,7 +299,7 @@ describe("PythLedger — per-consumer transaction attribution (byConsumer)", () 
       transactions: 0,
       failedTransactions: 1,
       gasReserved: 0,
-      wastedGasReserved: 800,
+      wastedGasReserved: 800, petitions: 0, pondus: 0
     });
   });
 
@@ -320,7 +320,7 @@ describe("PythLedger — per-consumer transaction attribution (byConsumer)", () 
       transactions: 2,
       failedTransactions: 1,
       gasReserved: 300,
-      wastedGasReserved: 300,
+      wastedGasReserved: 300, petitions: 0, pondus: 0
     });
     expect(l.byConsumer().b.transactions).toBe(1);
   });
@@ -344,7 +344,7 @@ describe("PythLedger — per-consumer transaction attribution (byConsumer)", () 
       transactions: 3,
       failedTransactions: 0,
       gasReserved: 700,
-      wastedGasReserved: 0,
+      wastedGasReserved: 0, petitions: 0, pondus: 0
     });
   });
 
@@ -360,5 +360,76 @@ describe("PythLedger — per-consumer transaction attribution (byConsumer)", () 
     writeFileSync(file, JSON.stringify({ days: {}, generation: 0 }), "utf8");
     const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-05T10:00:00.000Z") });
     expect(l.byConsumer()).toEqual({});
+  });
+});
+
+describe("PythLedger — per-consumer READ attribution (byConsumer petitions/pondus)", () => {
+  it("a read with a consumer bumps BOTH the aggregate and the per-consumer petitions/pondus", () => {
+    const l = make();
+    l.recordRead(12.5, "ouronetui");
+    expect(l.total().petitions).toBe(1);
+    expect(l.total().pondus).toBe(12.5);
+    expect(l.byConsumer().ouronetui).toEqual({
+      transactions: 0,
+      failedTransactions: 0,
+      gasReserved: 0,
+      wastedGasReserved: 0,
+      petitions: 1,
+      pondus: 12.5,
+    });
+  });
+
+  it("a read with NO consumer leaves byConsumer empty (aggregate still moves)", () => {
+    const l = make();
+    l.recordRead(10);
+    expect(l.total().petitions).toBe(1);
+    expect(l.byConsumer()).toEqual({});
+  });
+
+  it("accumulates reads AND sends for the same consumer across all six fields", () => {
+    const l = make();
+    l.recordRead(10, "dalos");
+    l.recordRead(5.5, "dalos");
+    l.recordSend(true, 800, 1, "dalos");
+    l.recordSend(false, 300, 1, "dalos");
+    expect(l.byConsumer().dalos).toEqual({
+      transactions: 1,
+      failedTransactions: 1,
+      gasReserved: 800,
+      wastedGasReserved: 300,
+      petitions: 2,
+      pondus: 15.5,
+    });
+  });
+
+  it("persists per-consumer reads across a reload", () => {
+    const file = scratchFile();
+    const clock = fixedClock("2026-07-05T10:00:00.000Z");
+    const a = new PythLedger({ filePath: file, flushMs: 0, clock });
+    a.recordRead(7, "explorer");
+    a.persist();
+    const b = new PythLedger({ filePath: file, flushMs: 0, clock });
+    expect(b.byConsumer().explorer.petitions).toBe(1);
+    expect(b.byConsumer().explorer.pondus).toBe(7);
+  });
+
+  it("hydrates a byConsumer entry missing the new petitions/pondus fields as 0 (legacy)", () => {
+    const file = scratchFile();
+    writeFileSync(
+      file,
+      JSON.stringify({
+        days: {},
+        byConsumer: { legacy: { transactions: 3, failedTransactions: 0, gasReserved: 90, wastedGasReserved: 0 } },
+      }),
+    );
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-05T10:00:00.000Z") });
+    expect(l.byConsumer().legacy).toEqual({
+      transactions: 3,
+      failedTransactions: 0,
+      gasReserved: 90,
+      wastedGasReserved: 0,
+      petitions: 0,
+      pondus: 0,
+    });
   });
 });

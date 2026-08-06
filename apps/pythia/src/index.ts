@@ -10,6 +10,8 @@ import { registerPoll } from "./routes/poll.js";
 import { registerConnectors } from "./routes/connectors.js";
 import { registerStats } from "./routes/stats.js";
 import { registerPyth } from "./routes/pyth.js";
+import { registerPythReport } from "./routes/pythReport.js";
+import { loadReporters } from "./pyth/reporters.js";
 import { registerPools } from "./routes/pools.js";
 import { registerConnectorVerify, trustAnchorPair } from "./routes/connectorVerify.js";
 import { registerConnectorAuth } from "./routes/connectorAuth.js";
@@ -105,6 +107,9 @@ export const pythLedger = new PythLedger({
   epochMs: () => pythEpoch.epochMs(),
 });
 const envConsumerMap = loadConsumerMap(process.env.PYTHIA_API_KEYS);
+// Consumer names permitted to POST /pyth/report (metering-report ingress). Empty
+// by default — the ingress is closed until an operator names authorized reporters.
+const pythReporters = loadReporters(process.env.PYTHIA_REPORTERS);
 
 // Runtime connector registry (admin-managed, persisted on the volume). Its keys
 // are the primary attribution source; the legacy `PYTHIA_API_KEYS` env map is a
@@ -419,6 +424,12 @@ registerPoll(app, { pool: nodePool });
 registerConnectors(app, { store: connectorStore });
 registerStats(app, statsStore);
 registerPyth(app, pythLedger);
+// Metering-report ingress — an AUTHORIZED reporter (an entity with its own direct
+// node access, e.g. the AncientHub/Dalos) records batched txs+reads it performed
+// without relaying through the gateway. Gated to `PYTHIA_REPORTERS`; fleet-ledger
+// only. `/pyth/report` is not an operational path, so the gateway meter never
+// double-counts it. See routes/pythReport.ts + pyth/reporters.ts.
+registerPythReport(app, { ledger: pythLedger, resolveConsumer, reporters: pythReporters });
 registerPools(app, { pool: nodePool, txSenders: txSenderStore });
 // Connector-linking ownership verification (keyless Apollo-half proof). Reads the
 // half's on-chain pubkey — preferring the operator's own Upload-Pool nodes as the

@@ -2,6 +2,14 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.31 — 2026-08-06
+
+**New export:** `pondus()` + `CLASS_BASE` — the pure per-request pondus weight formula
+(`classBase + sqrt(gasUsed)/2 + responseBytes/4096`, with `CLASS_BASE.read = 10` / `CLASS_BASE.poll = 5`).
+This is the ONE source of truth for read weight, shared so any entity computing off its own direct node
+access (e.g. the AncientHub) weighs reads identically to Pythia's meter — locally, no round trip. Additive;
+no other API surface change.
+
 ## 2.7.30 — 2026-08-05
 
 Version alignment: the client jumps from `2.7.29` to `2.7.30` to align with the unified Pythia service

@@ -1535,6 +1535,8 @@ const PULSE_KEYS = [
 function consumerLabel(name) {
   if (name === "pythia-self") return "Pythia (self)";
   if (name === "direct") return "Anonymous";
+  // Keyed consumers resolve to their (long) Apollo account — ellipsize for display.
+  if (typeof name === "string" && name.length > 22) return shortApollo(name);
   return name;
 }
 
@@ -1570,26 +1572,40 @@ function pulseBump(node) {
   setTimeout(() => node.classList.remove("pulse-num--bump"), 800);
 }
 
+// One compact metric cell (value + unit) for a consumer row.
+function pulseMetric(value, unit, fmt) {
+  const cell = el("span", "pulse-cmetric");
+  cell.appendChild(el("span", "pulse-cval", fmt(value || 0)));
+  cell.appendChild(el("span", "pulse-cunit", unit));
+  return cell;
+}
+
 function renderPulseConsumers(container, byConsumer) {
   container.textContent = "";
   const entries = Object.entries(byConsumer || {}).sort(
-    (a, b) => (b[1].transactions || 0) - (a[1].transactions || 0),
+    // Most active first — reads + transactions combined.
+    (a, b) =>
+      (b[1].petitions || 0) + (b[1].transactions || 0) - ((a[1].petitions || 0) + (a[1].transactions || 0)),
   );
   if (!entries.length) {
-    container.appendChild(el("p", "pulse-empty", "No transactions attributed yet — they appear here as consumers fire."));
+    container.appendChild(
+      el("p", "pulse-empty", "No activity attributed yet — petitions, pondus and transactions appear here per key as consumers read and fire."),
+    );
     return;
   }
-  container.appendChild(el("h4", "pulse-consumers-title", "Transactions by consumer"));
+  container.appendChild(el("h4", "pulse-consumers-title", "Activity by consumer (per API key)"));
   const list = el("div", "pulse-clist");
   for (const [name, c] of entries) {
     const row = el("div", "pulse-crow");
-    row.appendChild(el("span", "pulse-cname", consumerLabel(name)));
-    const n = el("span", "pulse-cnum", fmtInt(c.transactions || 0));
-    n.dataset.consumer = name;
-    row.appendChild(n);
-    if (c.failedTransactions) {
-      row.appendChild(el("span", "pulse-cfail", `${fmtInt(c.failedTransactions)} failed`));
-    }
+    const nm = el("span", "pulse-cname", consumerLabel(name));
+    nm.title = name; // full identifier on hover
+    row.appendChild(nm);
+    const metrics = el("span", "pulse-cmetrics");
+    metrics.appendChild(pulseMetric(c.petitions, "petitions", fmtInt));
+    metrics.appendChild(pulseMetric(c.pondus, "pondus", fmtPondus));
+    metrics.appendChild(pulseMetric(c.transactions, "tx", fmtInt));
+    if (c.failedTransactions) metrics.appendChild(el("span", "pulse-cfail", `${fmtInt(c.failedTransactions)} failed`));
+    row.appendChild(metrics);
     list.appendChild(row);
   }
   container.appendChild(list);

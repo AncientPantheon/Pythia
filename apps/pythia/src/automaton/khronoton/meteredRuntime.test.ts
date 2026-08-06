@@ -97,7 +97,7 @@ describe("meterChainRuntime", () => {
       transactions: 1,
       failedTransactions: 0,
       gasReserved: 1500,
-      wastedGasReserved: 0,
+      wastedGasReserved: 0, petitions: 0, pondus: 0
     });
 
     const runtime = fakeRuntime({

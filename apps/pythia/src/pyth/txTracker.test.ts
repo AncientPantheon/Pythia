@@ -128,7 +128,7 @@ describe("TxTracker — per-consumer attribution", () => {
       transactions: 1,
       failedTransactions: 0,
       gasReserved: 500,
-      wastedGasReserved: 0,
+      wastedGasReserved: 0, petitions: 0, pondus: 0
     });
   });
 
@@ -148,7 +148,7 @@ describe("TxTracker — per-consumer attribution", () => {
       transactions: 0,
       failedTransactions: 1,
       gasReserved: 0,
-      wastedGasReserved: 1500,
+      wastedGasReserved: 1500, petitions: 0, pondus: 0
     });
   });
 

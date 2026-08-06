@@ -101,7 +101,8 @@ export function pythMeterMiddleware(
 
       if (endpoint === "read" || endpoint === "poll") {
         if (status >= 400) return; // not served
-        const keyed = resolveConsumer(c.req.header(CONSUMER_HEADER)) !== "direct";
+        const consumer = resolveConsumer(c.req.header(CONSUMER_HEADER));
+        const keyed = consumer !== "direct";
 
         // Compute pondus for EVERY served read/poll and record it in Pythia's OWN
         // fleet ledger — anonymous (non-Pythia-keyed) reads count toward her
@@ -112,7 +113,9 @@ export function pythMeterMiddleware(
         const classBase = endpoint === "read" ? CLASS_BASE.read : CLASS_BASE.poll;
         const gasUsed = endpoint === "read" ? gasFromLocalResponse(bodyText) : 0;
         const pondusVal = pondus({ classBase, gasUsed, responseBytes });
-        ledger.recordRead(pondusVal); // fleet ledger — ALL served reads/polls
+        // Fleet ledger — ALL served reads/polls, aggregate + per-consumer (the
+        // consumer name, or "direct" for anon). This is the per-key petitions/pondus.
+        ledger.recordRead(pondusVal, consumer);
 
         // Per-slot usage (the money path): hub-slot READS only (§4.3 excludes
         // polls), keyed AND anon recorded, but only KEYED pondus earns.

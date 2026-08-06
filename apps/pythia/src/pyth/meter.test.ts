@@ -89,6 +89,24 @@ describe("pythMeterMiddleware", () => {
     expect(t.pondus).toBeGreaterThan(10); // ...and Pondus (classBase 10 + gas + bytes)
   });
 
+  it("attributes a keyed read's petition + pondus to its consumer in byConsumer", async () => {
+    const l = ledger();
+    const app = appWith(l, (c) => c.json({ gas: 500000, result: { status: "success", data: 1 } }));
+    await app.request("/stoachain/read", { method: "POST", headers: { "x-pythia-key": "K" }, body: "{}" });
+    const c = l.byConsumer().acme; // resolve("K") → "acme"
+    expect(c.petitions).toBe(1);
+    expect(c.pondus).toBeGreaterThan(363);
+    expect(c.transactions).toBe(0);
+  });
+
+  it("attributes an anonymous read to the 'direct' consumer", async () => {
+    const l = ledger();
+    const app = appWith(l, (c) => c.json({ gas: 100, result: {} }));
+    await app.request("/stoachain/read", { method: "POST", body: "{}" });
+    expect(l.byConsumer().direct.petitions).toBe(1);
+    expect(l.byConsumer().acme).toBeUndefined();
+  });
+
   it("meters a keyed poll with classBase 5 and no gas", async () => {
     const l = ledger();
     const app = appWith(l, (c) => c.json({ requestKey: { result: { status: "success" } } }));
@@ -197,7 +215,7 @@ describe("pythMeterMiddleware", () => {
       transactions: 1,
       failedTransactions: 0,
       gasReserved: 1200,
-      wastedGasReserved: 0,
+      wastedGasReserved: 0, petitions: 0, pondus: 0
     });
   });
 
@@ -223,7 +241,7 @@ describe("pythMeterMiddleware", () => {
       transactions: 0,
       failedTransactions: 1,
       gasReserved: 0,
-      wastedGasReserved: 900,
+      wastedGasReserved: 900, petitions: 0, pondus: 0
     });
   });
 

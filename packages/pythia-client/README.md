@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.7.30` on public npmjs — proprietary release, all rights reserved (see
+`2.7.31` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -129,6 +129,11 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+**v2.7.31** — **new export:** `pondus()` + `CLASS_BASE` — the pure per-request pondus weight formula
+(`classBase + sqrt(gasUsed)/2 + responseBytes/4096`). Lets any entity with its own direct node access
+(e.g. the AncientHub) compute read weights identically to Pythia's meter, locally, for PythXP
+attribution — no round trip. Additive; no other API change.
 
 **v2.7.30** — version alignment: jumps from `2.7.29` to `2.7.30` to align with the unified Pythia
 service version line. Service-side only (per-consumer transaction attribution in the Pyth ledger +

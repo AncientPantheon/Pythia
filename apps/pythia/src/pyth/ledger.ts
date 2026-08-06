@@ -35,6 +35,10 @@ export interface ConsumerTx {
   failedTransactions: number;
   gasReserved: number;
   wastedGasReserved: number;
+  /** Per-consumer READ attribution — petitions served + summed pondus weight,
+   * attributed to the consumer whose key drove the read (gateway or reported). */
+  petitions: number;
+  pondus: number;
 }
 
 /**
@@ -137,10 +141,19 @@ const CONSUMER_FIELDS = [
   "failedTransactions",
   "gasReserved",
   "wastedGasReserved",
+  "petitions",
+  "pondus",
 ] as const;
 
 function zeroConsumer(): ConsumerTx {
-  return { transactions: 0, failedTransactions: 0, gasReserved: 0, wastedGasReserved: 0 };
+  return {
+    transactions: 0,
+    failedTransactions: 0,
+    gasReserved: 0,
+    wastedGasReserved: 0,
+    petitions: 0,
+    pondus: 0,
+  };
 }
 
 /** Finite-and-positive guard → else 0. */
@@ -196,11 +209,25 @@ export class PythLedger {
     return d;
   }
 
-  /** A keyed read (or poll) served: +1 petition, + its pondus weight. */
-  recordRead(pondusValue: number): void {
+  /** A read (or poll) served: +1 petition, + its pondus weight, in the aggregate
+   * per-day ledger. `consumer` (optional) attributes the SAME petition + pondus to
+   * that consumer's tally (see {@link byConsumer}) — the name from its key,
+   * `"direct"` for anonymous, or `"dalos"`/etc. for a reported read. The aggregate
+   * is unaffected by whether `consumer` is present. */
+  recordRead(pondusValue: number, consumer?: string): void {
+    const w = nonNeg(pondusValue);
     const d = this.todayBucket();
     d.petitions += 1;
-    d.pondus += nonNeg(pondusValue);
+    d.pondus += w;
+    if (typeof consumer === "string" && consumer.length > 0) {
+      let c = this.consumers.get(consumer);
+      if (!c) {
+        c = zeroConsumer();
+        this.consumers.set(consumer, c);
+      }
+      c.petitions += 1;
+      c.pondus += w;
+    }
   }
 
   /** A relayed send of `count` txs (one batch shares one relay outcome):

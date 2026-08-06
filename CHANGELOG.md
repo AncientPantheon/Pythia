@@ -9,6 +9,31 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.31] — 2026-08-06
+
+### Added — Hub report-metering prerequisites: per-key petitions/pondus + a metering-report ingress
+
+Everything Pythia needs for the AncientHub (Dalos Automaton) to migrate without round trips, per
+`websites/Pantheon/docs/pantheonic-architecture/HANDOFF-ancienthub-automaton-migration.md`:
+
+- **Shared `pondus()`.** The pure per-request weight formula (`pondus()` + `CLASS_BASE`) moved into
+  `@ancientpantheon/pythia-client` (a real new export — this client bump is legitimate), re-exported from
+  `apps/pythia`. An entity with its own direct node access imports it to weigh reads identically for local
+  PythXP attribution — no round trip to Pythia.
+- **Per-consumer READ attribution (was missing).** The ledger's `byConsumer` gained `petitions` + `pondus`
+  and `recordRead(pondus, consumer?)`; the gateway meter attributes every keyed read (anon → `"direct"`).
+  This is the long-requested **per-API-key petitions/pondus** surface — it now shows on `/pyth` and the
+  live Activity pulse for every consumer, alongside transactions.
+- **`POST /pyth/report` metering-report ingress.** An authorization-gated (env `PYTHIA_REPORTERS`
+  allow-list; closed by default), keyed endpoint accepting a batched report of transactions AND reads an
+  entity performed against its own nodes. Pythia recomputes read pondus from the raw gas/bytes (a reporter
+  can't inflate weight), validates/bounds the whole batch (all-or-nothing), and records into the
+  **fleet ledger only** (`byConsumer[reporter]`) — never the per-slot usage report (so PythXP never
+  round-trips back). Not an operational path → the gateway meter never double-counts it.
+- Live pulse now renders per-consumer petitions/pondus/transactions (long Apollo-account names
+  ellipsized). Backend +17 tests (647 total); frontend `public/app.js` + `styles.css`. Design + plan under
+  `docs/work/pythia-hub-report-metering/`. `organs/06 §6b` documents the three-path metering model.
+
 ## [2.7.30] — 2026-08-05
 
 ### Added — per-consumer transaction attribution + a live Activity "pulse"

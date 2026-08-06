@@ -48,3 +48,5 @@ export type {
 } from "./dualLinkConnector.js";
 
 export { maskSecret } from "./maskSecret.js";
+
+export { pondus, CLASS_BASE } from "./pondus.js";
