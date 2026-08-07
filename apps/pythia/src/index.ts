@@ -12,6 +12,8 @@ import { registerStats } from "./routes/stats.js";
 import { registerPyth } from "./routes/pyth.js";
 import { registerPythReport } from "./routes/pythReport.js";
 import { loadReporters } from "./pyth/reporters.js";
+import { makeResolveConsumer } from "./stats/consumerResolver.js";
+import { PYTHIA_SELF_CONSUMER } from "./automaton/khronoton/meteredRuntime.js";
 import { registerPools } from "./routes/pools.js";
 import { registerConnectorVerify, trustAnchorPair } from "./routes/connectorVerify.js";
 import { registerConnectorAuth } from "./routes/connectorAuth.js";
@@ -118,31 +120,18 @@ export const connectorStore = new ConnectorStore({
   filePath: process.env.CONNECTORS_FILE || "./pythia-connectors.json",
 });
 
-// Resolve an `x-pythia-key` to a consumer name for usage attribution (the `keyed`
-// vs `direct` distinction the hub-earning path keys off). Resolution order:
-//   1. the EPHEMERAL secret — the connector protocol's ACTUAL live x-pythia-key
-//      (TTL'd, minted on proof-of-ownership) → the Apollo account that minted it.
-//      This is how a real consumer (Mnemosyne, Pythia's own self-connector, any
-//      DualLinkConnector) is attributed. The gate middleware resolves the SAME
-//      store — the meter MUST too, or every real keyed read is miscounted as anon
-//      and nothing ever earns / reaches the hub (the bug this fixes).
-//   2. a permanent admin-registered connector (`pk_live_`), then the env map.
-//   3. NO key → Pythia's OWN read. A keyless gateway read is Pythia serving herself
-//      (her frontend reading chain data to display it), so it defaults to her live
-//      self-connector key when one is active — "everything not claimed by another
-//      consumer's key goes through Pythia's own key". A consumer's own key overrides.
-function resolveConsumer(key?: string): string {
-  const effective = key || selfConnectorLoop.status().secret || undefined;
-  if (effective) {
-    const eph = ephemeralKeyStore.resolve(effective);
-    if (eph) return eph.apolloAccount;
-    const fromStore = connectorStore.nameForKey(effective);
-    if (fromStore) return fromStore;
-    const fromEnv = envConsumerMap.get(effective);
-    if (fromEnv) return fromEnv;
-  }
-  return "direct";
-}
+// Resolve an `x-pythia-key` to a consumer identity for usage attribution — see
+// `stats/consumerResolver.ts` for the precedence + rationale. Pythia's OWN key
+// (keyless reads + her fires) unifies under `PYTHIA_SELF_CONSUMER`. The closures
+// reference the module stores lazily (evaluated per request, after boot), so this
+// const can sit before those `export const`s are initialized.
+const resolveConsumer = makeResolveConsumer({
+  selfSecret: () => selfConnectorLoop.status().secret,
+  resolveEphemeral: (secret) => ephemeralKeyStore.resolve(secret),
+  nameForKey: (key) => connectorStore.nameForKey(key),
+  envConsumer: (key) => envConsumerMap.get(key),
+  selfLabel: PYTHIA_SELF_CONSUMER,
+});
 
 // The canonical Pantheonic vault (`automaton/02`, libsodium — the same scheme as the
 // hub + Mnemosyne). Bearer creds Pythia must USE (the hub HMAC secret; soon the Codex

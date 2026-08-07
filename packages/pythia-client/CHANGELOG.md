@@ -2,6 +2,13 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 2.7.32 — 2026-08-07
+
+Version alignment: the client jumps from `2.7.31` to `2.7.32` to align with the unified Pythia service
+version line. Service-side only (Pythia's own frontend reads now attribute to the unified "pythia-self"
+identity in the ledger; see `CHANGELOG.md` at the repo root) — no changes to this package's own source,
+API surface, or behavior.
+
 ## 2.7.31 — 2026-08-06
 
 **New export:** `pondus()` + `CLASS_BASE` — the pure per-request pondus weight formula

@@ -9,6 +9,22 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.32] — 2026-08-07
+
+### Fixed — "Pythia (self)" showed 0 petitions despite constant frontend reads
+
+Her own activity was split across two identities: her automaton FIRES were labelled `"pythia-self"` (by
+`meterChainRuntime`), but her keyless frontend READS resolved — via `resolveConsumer`'s self-connector
+default — to her raw self-connector **Apollo account**, landing under a separate `₱.` row. So the
+"Pythia (self)" pulse row carried only her transactions (0 petitions), while her reads hid inside an
+account row that looked like just another consumer. Fixed by unifying: `resolveConsumer` now returns
+`PYTHIA_SELF_CONSUMER` ("pythia-self") whenever the effective key IS Pythia's own self-connector secret
+(keyless reads, or a caller presenting her self key), so her reads and fires share one "Pythia (self)"
+identity. Earning is unchanged (still keyed). Also extracted the resolver into a pure, unit-tested
+`stats/consumerResolver.ts` (it had regressed before — v2.7.27) with 7 precedence tests. +7 tests (654).
+Note: historical reads already recorded under her Apollo account stay there (cumulative) until a ledger
+nuke; new reads accrue to "Pythia (self)".
+
 ## [2.7.31] — 2026-08-06
 
 ### Added — Hub report-metering prerequisites: per-key petitions/pondus + a metering-report ingress
