@@ -1,6 +1,6 @@
 {
   "name": "@ancientpantheon/pythia",
-  "version": "2.7.33",
+  "version": "3.0.0",
   "description": "Pythia gateway service — the private Hono runtime that serves the pooled, failover-safe read API. Deployed, never published.",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
   "dependencies": {
     "@ancientpantheon/codex": "^0.8.0",
     "@ancientpantheon/khronoton-core": "^0.7.0",
-    "@ancientpantheon/pythia-client": "^2.3.0",
+    "@ancientpantheon/pythia-client": "*",
     "@hono/node-server": "^2.0.0",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.8.0",

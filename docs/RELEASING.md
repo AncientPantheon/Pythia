@@ -1,114 +1,94 @@
 # Releasing Pythia
 
-Pythia follows [Semantic Versioning](https://semver.org). Unlike a single-artifact
-project, Pythia ships **two artifacts from one version**:
+Pythia follows [Semantic Versioning](https://semver.org). It ships **two artifacts on
+TWO INDEPENDENT version lines** (changed in v3.0.0 — previously they were locked together):
 
-- `@ancientpantheon/pythia-client` — the npm SDK consumers `npm install`.
-- `ghcr.io/ancientpantheon/pythia` — the container image the gateway service runs from.
+- **SERVICE** — `ghcr.io/ancientpantheon/pythia` (the gateway/website container image).
+  Its version is the git tag `vX.Y.Z`.
+- **CLIENT** — `@ancientpantheon/pythia-client` (the npm SDK consumers `npm install`).
+  Its version is **independent** and moves **only when the client's own source changes**.
 
-One version, one tag, two publish lanes. This doc is the procedure for cutting a
-release without letting the two drift.
+> **The rule (v3.0.0+):** the client version STAYS PUT across service releases. A change
+> to the website/gateway bumps the SERVICE only; the client is not touched or republished.
+> The client version bumps **only** when `packages/pythia-client/src/**` actually changes.
+> The two lines were baselined together at `3.0.0` and diverge from there.
 
-## The rule: one version, mirrored into four files, documented in two changelogs
+## The two version lines
 
-Root `package.json`'s `version` is the **single source of truth**. It is mirrored,
-byte-for-byte identical, into:
+**SERVICE line** — mirrored, byte-for-byte, into four places, all equal to the tag:
 
-1. `package.json` (root) — the source of truth itself.
-2. `packages/pythia-client/package.json` — the published npm package version.
-3. `apps/pythia/package.json` — the service package version.
-4. `apps/pythia/src/version.ts` (`PYTHIA_VERSION`) — read by the running service and
-   surfaced at `GET /healthz` and the landing-page footer, so which build is live is
-   verifiable at a glance after a deploy.
+1. `package.json` (root) — the service source of truth.
+2. `apps/pythia/package.json` — the service package version.
+3. `apps/pythia/src/version.ts` (`PYTHIA_VERSION`) — surfaced at `GET /healthz` + the
+   landing footer, so the live build is verifiable at a glance.
+4. The top `## [x.y.z]` entry in the root [`CHANGELOG.md`](../CHANGELOG.md) (bracket format).
 
-This is enforced: `apps/pythia/src/versionConsistency.test.ts` fails the suite if any
-of those four disagree with each other, or with the newest `## [x.y.z]` entry in the
-root `CHANGELOG.md` (see below). So a version bump that misses a file, or ships without
-its changelog entry, cannot merge — `npm test` (which runs across all workspaces, this
-test included) catches it before CI does.
+**CLIENT line** — independent, self-consistent across three places:
 
-**Every time you bump the version, add matching documentation in the same commit:**
+1. `packages/pythia-client/package.json` — the published npm version.
+2. The top `## x.y.z` entry in [`packages/pythia-client/CHANGELOG.md`](../packages/pythia-client/CHANGELOG.md)
+   (no-bracket format).
+3. The `` `x.y.z` on public npmjs `` status line **and** a `**vx.y.z**` history paragraph
+   in `packages/pythia-client/README.md`.
 
-- A `## [x.y.z] — YYYY-MM-DD` entry at the **top** of the root
-  [`CHANGELOG.md`](../CHANGELOG.md) (bracket format) — the repo/service changelog,
-  describing what changed for an operator (group by area, not commit-by-commit).
-- A `## x.y.z — YYYY-MM-DD` entry at the **top** of
-  [`packages/pythia-client/CHANGELOG.md`](../packages/pythia-client/CHANGELOG.md)
-  (no-bracket format) — the client's own change history, describing what changed for
-  a consumer of the SDK.
-- A bump to `packages/pythia-client/README.md`: the `## Status` block must lead with
-  a line containing `` `x.y.z` on public npmjs ``, and the version-history section must
-  gain a `**vx.y.z**` paragraph. `publish.yml`'s parity gate greps for both.
+Both are enforced by `apps/pythia/src/versionConsistency.test.ts`: it checks the SERVICE
+quartet all agree, and (separately) that the CLIENT trio is internally consistent — but it
+**does NOT require the client to equal the service**. So the two may legitimately diverge.
 
-Two changelogs exist because they serve different audiences: the root one documents
-the repo/service (including the container image), the client one documents only the
-published SDK's API surface. They share a version number but not a format — the root
-uses `## [x.y.z]` (brackets, Mnemosyne-style), the client uses `## x.y.z` (no
-brackets, its pre-existing convention).
+## One tag, two workflows — but the client publishes only when it changed
 
-## One tag, two workflows
+Pushing a `vX.Y.Z` git tag (the SERVICE version) fires both:
 
-Pushing a single `vX.Y.Z` git tag fires **both**:
+- **`.github/workflows/publish.yml`** — reads the client's OWN version from its
+  `package.json` and publishes `@ancientpantheon/pythia-client@<client-version>`
+  **idempotently**: if that version is already on npm (i.e. the client didn't change this
+  release), it **skips**. So a service-only release does not republish the client. The tag
+  is checked against the SERVICE version (root `package.json`); the client doc-parity greps
+  check the CLIENT version.
+- **`.github/workflows/image.yml`** — builds/pushes `ghcr.io/ancientpantheon/pythia:X.Y.Z`
+  + `:latest` (the SERVICE), gated on `tag == service version`.
 
-- **`.github/workflows/publish.yml`** — publishes `@ancientpantheon/pythia-client@X.Y.Z`
-  to npmjs.org (idempotent, `--provenance`, plus a GitHub Release). Its version gate
-  checks the tag against the **unified** root `package.json` version (not the client's
-  own, historically — that drifted). It also runs the full typecheck/build/test suite
-  first, which includes `versionConsistency.test.ts`, so the four version files are
-  re-verified to agree before anything is published.
-- **`.github/workflows/image.yml`** — builds and pushes
-  `ghcr.io/ancientpantheon/pythia:X.Y.Z` and `:latest` to GitHub Container Registry,
-  using `docker/metadata-action`'s `type=semver` tag derived from the pushed tag.
+Both run the full `typecheck + build + test` (incl. `versionConsistency.test.ts`) first.
 
-Both workflows trigger on `push: tags: ["v*"]` independently — there is no dependency
-between them, and either can fail without blocking the other. They are gated on the
-same unified version because the tag is the same tag.
+## Procedure — a SERVICE-only release (the common case)
 
-## Procedure
+1. Land the website/gateway work (with tests) on `main`.
+2. Bump the SERVICE trio to the new `X.Y.Z`: `package.json` (root),
+   `apps/pythia/package.json`, `apps/pythia/src/version.ts`. **Leave
+   `packages/pythia-client/*` untouched.**
+3. Add a `## [X.Y.Z] — YYYY-MM-DD` entry at the top of the root `CHANGELOG.md`.
+4. `npm run build && npm test` — green (the gate confirms the service quartet agrees and
+   the client is still internally consistent at its unchanged version).
+5. Commit: `release: vX.Y.Z — <summary>`. Tag `vX.Y.Z`, push the tag.
+6. Confirm: `image.yml` pushes the new image; `publish.yml` runs and **skips** the client
+   publish ("client unchanged"). npm's `pythia-client` version does not move.
 
-1. Land the feature/fix work (with its tests) on `main`.
-2. Bump `version` in lockstep in all **four** version-bearing files:
-   - `package.json` (root)
-   - `packages/pythia-client/package.json`
-   - `apps/pythia/package.json`
-   - `apps/pythia/src/version.ts` (`PYTHIA_VERSION`)
-3. Add the documentation for the bump, all in the same commit as the version bump:
-   - A `## [x.y.z] — YYYY-MM-DD` entry at the top of root `CHANGELOG.md`.
-   - A `## x.y.z — YYYY-MM-DD` entry at the top of
-     `packages/pythia-client/CHANGELOG.md`.
-   - The `## Status` line and version-history paragraph bump in
-     `packages/pythia-client/README.md`.
-4. Run the local check sequence and confirm both are green:
-   - `npm run build`
-   - `npm test` (runs across all workspaces, including
-     `versionConsistency.test.ts` — this is the same gate `publish.yml` re-runs in CI)
-5. Commit the version bump + both changelogs + the README together, e.g.
-   `release: vX.Y.Z — <one-line summary>`.
-6. Tag the commit `vX.Y.Z` and push the tag. This single push fires both
-   `publish.yml` (npm) and `image.yml` (ghcr) from the same commit.
-7. Confirm both workflow runs succeed: `@ancientpantheon/pythia-client@X.Y.Z` on
-   npmjs.org, and `ghcr.io/ancientpantheon/pythia:X.Y.Z` + `:latest` on GHCR.
+## Procedure — a release that ALSO changes the client
+
+Only when you actually modified `packages/pythia-client/src/**`:
+
+1. Do the SERVICE steps above, AND
+2. Bump the CLIENT line to its own new version (its own SemVer, independent of the service):
+   `packages/pythia-client/package.json`, a `## <ver> — YYYY-MM-DD` entry atop its
+   `CHANGELOG.md`, and the `` `<ver>` on public npmjs `` status line + a `**v<ver>**`
+   history paragraph in its `README.md`.
+3. `npm run build && npm test` green, commit, tag the SERVICE version, push.
+4. `publish.yml` sees the new client version is not yet on npm → **publishes it**.
+
+> The client's version need not match the service's. Give the client whatever SemVer its
+> change warrants (patch/minor/major by its OWN API impact), independent of the tag.
 
 ## Prerequisites
 
-- **Org Actions permission (one-time, owner action):** the `AncientPantheon` org
-  must allow Actions **"Read and write"** permissions
-  (Settings → Actions → General → Workflow permissions). Without this, the ghcr
-  push in `image.yml` is denied even though the workflow already declares
-  `permissions: packages: write` — the org-level setting overrides the
-  workflow-level grant.
-- `NPM_PUBLISHER` secret must be set for `publish.yml`'s npm auth token.
-  `image.yml` needs no secret — it uses the automatic `GITHUB_TOKEN`, nothing to
-  rotate or expire.
+- **Org Actions permission (one-time, owner):** `AncientPantheon` org must allow Actions
+  **"Read and write"** (Settings → Actions → General). Without it the ghcr push is denied.
+- `NPM_PUBLISHER` secret must be set for `publish.yml`'s npm auth. `image.yml` uses the
+  automatic `GITHUB_TOKEN`.
 
 ## Notes
 
-- Do NOT hand-edit the version in only one of the four files — a bump is not
-  complete until all four agree, and `versionConsistency.test.ts` will fail the
-  suite (and thus `npm test` in CI) until they do.
-- ghcr packages published by Actions default to **private**. That's fine for now —
-  the VPS builds its own image from source; ghcr exists for rollback. Making the
-  package public is a separate, later decision (not required for a release).
-- If a change has no user-visible effect (pure refactor, comment, test-only), fold
-  it into the next real version's changelog entry rather than minting a version
-  for it.
+- Do NOT bump the client "to keep it aligned" with the service — that's the exact
+  inflation v3.0.0 removed. Bump it ONLY for a real client-source change.
+- Consumers of the SDK should pin `^3.0.0` — the client baselined at 3.0.0 and moves on
+  its own cadence thereafter.
+- ghcr packages default to private; fine (the VPS builds from source; ghcr is for rollback).

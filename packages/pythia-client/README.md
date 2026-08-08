@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`2.7.33` on public npmjs — proprietary release, all rights reserved (see
+`3.0.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -129,6 +129,13 @@ npm install @ancientpantheon/pythia-client
 ```
 
 ## Version history
+
+> **From v3.0.0 this package versions INDEPENDENTLY of the Pythia service.** It bumps only when its own
+> source changes — a service/website release no longer drags it forward. Pin `^3.0.0`.
+
+**v3.0.0** — independent-versioning baseline. The client and the Pythia service split into two version
+lines (they were locked together through 2.7.x). No source/API/behavior change in this package — this is
+the clean starting point from which the client moves on its own cadence.
 
 **v2.7.33** — version alignment: jumps from `2.7.32` to `2.7.33` to align with the unified Pythia
 service version line. Service-side only (keyless reads now attribute to the unified "pythia-self"

@@ -2,6 +2,14 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 3.0.0 — 2026-08-08
+
+Independent-versioning baseline. From this release the client versions on its OWN line, separate from the
+Pythia service — it bumps only when its own source changes (a service/website release no longer drags it
+forward, as the 2.7.x "version alignment" entries below did). No source, API, or behavior change in this
+package; this is purely the clean starting point. Consumers: pin `^3.0.0`. See `docs/RELEASING.md` at the
+repo root for the two-line rule.
+
 ## 2.7.33 — 2026-08-08
 
 Version alignment: the client jumps from `2.7.32` to `2.7.33` to align with the unified Pythia service

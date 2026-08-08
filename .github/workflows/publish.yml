@@ -75,64 +75,70 @@ jobs:
       # If the tag doesn't match, the tag is wrong — fail before npm sees a
       # byte.
       # ------------------------------------------------------------------
-      - name: Verify tag matches pythia-client version
+      - name: Verify tag matches the SERVICE version + read the CLIENT version
         id: version
         run: |
+          # The tag `vX.Y.Z` is the SERVICE version (root package.json). The CLIENT
+          # (@ancientpantheon/pythia-client) has its OWN independent version — it only
+          # moves when the client's source changes, so it may LAG the tag. We publish
+          # the client at ITS OWN version (idempotent below), not the tag.
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          UNIFIED_VERSION=$(node -p "require('./package.json').version")
-          echo "Tag version:     $TAG_VERSION"
-          echo "Unified version: $UNIFIED_VERSION"
-          # Defence-in-depth: the version must be clean semver before it is
-          # written to GITHUB_OUTPUT and consumed by later steps — so a crafted
-          # version string can never break out of a downstream shell command.
-          if ! printf '%s' "$UNIFIED_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Unified version '$UNIFIED_VERSION' is not clean semver (x.y.z)."
-            exit 1
-          fi
-          if [ "$TAG_VERSION" != "$UNIFIED_VERSION" ]; then
-            echo "::error::Tag $TAG_VERSION does not match the unified version $UNIFIED_VERSION."
-            echo "::error::Bump package.json (and its mirrors: packages/pythia-client/package.json, apps/pythia/package.json, apps/pythia/src/version.ts) to $TAG_VERSION before tagging."
+          SERVICE_VERSION=$(node -p "require('./package.json').version")
+          CLIENT_VERSION=$(node -p "require('./packages/pythia-client/package.json').version")
+          echo "Tag / service version: $TAG_VERSION"
+          echo "Client version:        $CLIENT_VERSION"
+          # Defence-in-depth: both must be clean semver before reaching GITHUB_OUTPUT /
+          # a downstream shell command.
+          for v in "$SERVICE_VERSION" "$CLIENT_VERSION"; do
+            if ! printf '%s' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::Version '$v' is not clean semver (x.y.z)."
+              exit 1
+            fi
+          done
+          if [ "$TAG_VERSION" != "$SERVICE_VERSION" ]; then
+            echo "::error::Tag $TAG_VERSION does not match the SERVICE version $SERVICE_VERSION."
+            echo "::error::Bump the service trio (package.json, apps/pythia/package.json, apps/pythia/src/version.ts) + root CHANGELOG to $TAG_VERSION before tagging."
             exit 1
           fi
           echo "TAG_VERSION=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "CLIENT_VERSION=$CLIENT_VERSION" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------
       # README + CHANGELOG version-parity gate (three greps).
       # ------------------------------------------------------------------
-      - name: Verify README + CHANGELOG mention the publish version
+      - name: Verify the CLIENT's README + CHANGELOG mention the CLIENT version
         env:
-          # Pass the version through env rather than splicing ${{ }} into the
-          # script body, so it is never substituted into the shell text.
-          TAG_VERSION: ${{ steps.version.outputs.TAG_VERSION }}
+          # The client's OWN version (may lag the tag). Pass via env, never spliced.
+          CLIENT_VERSION: ${{ steps.version.outputs.CLIENT_VERSION }}
         run: |
           PKG_DIR="packages/pythia-client"
           # Escape the dots so each literal '.' matches a period, not any char.
-          TAG_VERSION_RE="${TAG_VERSION//./\\.}"
+          CLIENT_VERSION_RE="${CLIENT_VERSION//./\\.}"
 
-          # README: ## Status block must reference the version.
-          if ! grep -qE "\`${TAG_VERSION_RE}\`[[:space:]]+on public npmjs" "${PKG_DIR}/README.md"; then
-            echo "::error::${PKG_DIR}/README.md ## Status block does not lead with version ${TAG_VERSION}"
-            echo "::error::Expected: a line containing \`${TAG_VERSION}\` on public npmjs"
+          # README: ## Status block must reference the client version.
+          if ! grep -qE "\`${CLIENT_VERSION_RE}\`[[:space:]]+on public npmjs" "${PKG_DIR}/README.md"; then
+            echo "::error::${PKG_DIR}/README.md ## Status block does not lead with client version ${CLIENT_VERSION}"
+            echo "::error::Expected: a line containing \`${CLIENT_VERSION}\` on public npmjs"
             exit 1
           fi
-          echo "✓ ${PKG_DIR}/README.md ## Status block references ${TAG_VERSION}"
+          echo "✓ ${PKG_DIR}/README.md ## Status block references ${CLIENT_VERSION}"
 
-          # README: version history must contain a **vX.Y.Z** entry.
-          if ! grep -qE "^\*\*v${TAG_VERSION_RE}\*\*[[:space:]]" "${PKG_DIR}/README.md"; then
-            echo "::error::${PKG_DIR}/README.md version history is missing a **v${TAG_VERSION}** paragraph"
+          # README: version history must contain a **vX.Y.Z** entry for the client version.
+          if ! grep -qE "^\*\*v${CLIENT_VERSION_RE}\*\*[[:space:]]" "${PKG_DIR}/README.md"; then
+            echo "::error::${PKG_DIR}/README.md version history is missing a **v${CLIENT_VERSION}** paragraph"
             exit 1
           fi
-          echo "✓ ${PKG_DIR}/README.md version history contains **v${TAG_VERSION}** entry"
+          echo "✓ ${PKG_DIR}/README.md version history contains **v${CLIENT_VERSION}** entry"
 
-          # CHANGELOG: first ## heading must be the version.
+          # CHANGELOG: first ## heading must be the client version.
           FIRST_HEADING=$(grep -m1 '^## ' "${PKG_DIR}/CHANGELOG.md")
-          if ! echo "$FIRST_HEADING" | grep -qE "^## ${TAG_VERSION_RE}[[:space:]]"; then
-            echo "::error::${PKG_DIR}/CHANGELOG.md's first ## heading does not match version ${TAG_VERSION}"
+          if ! echo "$FIRST_HEADING" | grep -qE "^## ${CLIENT_VERSION_RE}[[:space:]]"; then
+            echo "::error::${PKG_DIR}/CHANGELOG.md's first ## heading does not match client version ${CLIENT_VERSION}"
             echo "::error::First heading found: ${FIRST_HEADING}"
             exit 1
           fi
           echo "✓ ${PKG_DIR}/CHANGELOG.md leads with: ${FIRST_HEADING}"
-          echo "All documentation gates passed at v${TAG_VERSION}."
+          echo "All client documentation gates passed at v${CLIENT_VERSION}."
 
       - name: Verify npm auth
         run: |
@@ -140,15 +146,19 @@ jobs:
           npm whoami || echo "::warning::whoami failed — publish may too"
 
       # ------------------------------------------------------------------
-      # Idempotent publish — skip if the version already exists on npm.
+      # Idempotent publish at the CLIENT's OWN version — skip if already on npm.
+      # A service-only release leaves the client version unchanged, so it is
+      # already published and this SKIPS (no needless republish). A real client
+      # change bumps the client version → this publishes it.
       # ------------------------------------------------------------------
-      - name: Publish @ancientpantheon/pythia-client to npmjs.org
+      - name: Publish @ancientpantheon/pythia-client to npmjs.org (only if its version is new)
         env:
-          TAG_VERSION: ${{ steps.version.outputs.TAG_VERSION }}
+          CLIENT_VERSION: ${{ steps.version.outputs.CLIENT_VERSION }}
         run: |
-          if npm view @ancientpantheon/pythia-client@"${TAG_VERSION}" version >/dev/null 2>&1; then
-            echo "@ancientpantheon/pythia-client@${TAG_VERSION} already on npm — skipping (idempotent)."
+          if npm view @ancientpantheon/pythia-client@"${CLIENT_VERSION}" version >/dev/null 2>&1; then
+            echo "@ancientpantheon/pythia-client@${CLIENT_VERSION} already on npm — client unchanged, skipping (idempotent)."
           else
+            echo "Publishing @ancientpantheon/pythia-client@${CLIENT_VERSION} (client version is new)."
             npm publish --workspace=@ancientpantheon/pythia-client --access public --provenance
           fi
 

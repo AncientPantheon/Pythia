@@ -9,6 +9,27 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.0] — 2026-08-08
+
+### Changed (BREAKING, versioning) — the client version is now INDEPENDENT of the service
+
+The SERVICE (this gateway/website image) and the CLIENT (`@ancientpantheon/pythia-client`) are now two
+**independent** version lines, baselined together at `3.0.0` and diverging from here. Previously every
+service release bumped and **republished the client in lockstep**, even when its source was unchanged —
+of the ~15 recent releases only one (v2.7.31, the `pondus()` export) was a real client change; the rest
+were identical republishes. From now on: **a service-only release bumps the SERVICE only; the client
+version stays put and is not republished. The client bumps ONLY when its own source changes.**
+
+Mechanics: `versionConsistency.test.ts` now enforces the service quartet (root + app + `version.ts` +
+root CHANGELOG) internally and the client trio (its package.json + CHANGELOG + README) internally, but
+**no longer requires client == service**. `publish.yml` reads the client's OWN version, checks the
+client's docs against it, and publishes idempotently — so it **skips** the client publish on a
+service-only release and only publishes when the client version actually moved. `image.yml` is unchanged
+(tag == service). Full rule + procedure in `docs/RELEASING.md`. No runtime/behavior change to the
+service or the client — this is purely how the two are versioned and released.
+
+> Consumers of the SDK: pin `^3.0.0`. The client rests at `3.0.0` and moves on its own cadence.
+
 ## [2.7.33] — 2026-08-08
 
 ### Fixed — "Pythia (self)" STILL showed 0 petitions (v2.7.32 was incomplete)
