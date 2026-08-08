@@ -14,29 +14,37 @@ function make(overrides: Partial<ConsumerResolverDeps> = {}) {
 }
 
 describe("makeResolveConsumer", () => {
-  it("resolves an ephemeral key to its Apollo account", () => {
+  it("resolves an ephemeral key to its Apollo account, keyed", () => {
     const r = make({ resolveEphemeral: (s) => (s === "EPH" ? { apolloAccount: "₱.acme" } : null) });
-    expect(r("EPH")).toBe("₱.acme");
+    expect(r("EPH")).toEqual({ consumer: "₱.acme", keyed: true });
   });
 
-  it("falls back to the permanent-connector name, then the env map", () => {
-    expect(make({ nameForKey: (k) => (k === "pk_live_x" ? "acme" : null) })("pk_live_x")).toBe("acme");
-    expect(make({ envConsumer: (k) => (k === "envkey" ? "oracle" : undefined) })("envkey")).toBe("oracle");
-  });
-
-  it("a KEYLESS read with an active self-connector → the unified 'pythia-self' label (the fix)", () => {
-    // Regression: previously this resolved to the self-connector's Apollo account,
-    // splitting Pythia's reads away from her fires so "Pythia (self)" showed 0 petitions.
-    const r = make({
-      selfSecret: () => "SELF",
-      resolveEphemeral: (s) => (s === "SELF" ? { apolloAccount: "₱.pythiaSelf" } : null),
+  it("falls back to the permanent-connector name, then the env map (both keyed)", () => {
+    expect(make({ nameForKey: (k) => (k === "pk_live_x" ? "acme" : null) })("pk_live_x")).toEqual({
+      consumer: "acme",
+      keyed: true,
     });
-    expect(r()).toBe("pythia-self"); // NOT "₱.pythiaSelf"
+    expect(make({ envConsumer: (k) => (k === "envkey" ? "oracle" : undefined) })("envkey")).toEqual({
+      consumer: "oracle",
+      keyed: true,
+    });
   });
 
-  it("a caller explicitly presenting Pythia's self secret also resolves to 'pythia-self'", () => {
+  it("a KEYLESS read is ALWAYS Pythia's own → 'pythia-self' (the fix), regardless of self-connector state", () => {
+    // Was the bug: with the self-connector inactive, keyless reads resolved to
+    // "direct"/Anonymous, so "Pythia (self)" showed 0 petitions despite her reading.
+    expect(make({ selfSecret: () => null })()).toEqual({ consumer: "pythia-self", keyed: false });
+    expect(make({ selfSecret: () => undefined })()).toEqual({ consumer: "pythia-self", keyed: false });
+  });
+
+  it("a KEYLESS read EARNS (keyed) only when Pythia has an active self-connector", () => {
+    // label is always pythia-self; keyed follows self-connector activity (economics preserved).
+    expect(make({ selfSecret: () => "SELF" })()).toEqual({ consumer: "pythia-self", keyed: true });
+  });
+
+  it("a caller explicitly presenting Pythia's self secret → 'pythia-self', keyed", () => {
     const r = make({ selfSecret: () => "SELF", resolveEphemeral: () => ({ apolloAccount: "x" }) });
-    expect(r("SELF")).toBe("pythia-self");
+    expect(r("SELF")).toEqual({ consumer: "pythia-self", keyed: true });
   });
 
   it("a real consumer's own key is NOT shadowed by the self label", () => {
@@ -44,15 +52,10 @@ describe("makeResolveConsumer", () => {
       selfSecret: () => "SELF",
       resolveEphemeral: (s) => (s === "OTHER" ? { apolloAccount: "₱.other" } : null),
     });
-    expect(r("OTHER")).toBe("₱.other");
+    expect(r("OTHER")).toEqual({ consumer: "₱.other", keyed: true });
   });
 
-  it("keyless with NO active self-connector → 'direct'", () => {
-    expect(make({ selfSecret: () => null })()).toBe("direct");
-    expect(make({ selfSecret: () => undefined })()).toBe("direct");
-  });
-
-  it("an unknown key resolves to 'direct'", () => {
-    expect(make()("nope")).toBe("direct");
+  it("a key that resolves to NOTHING (unknown/expired) → 'direct', NOT keyed", () => {
+    expect(make()("nope")).toEqual({ consumer: "direct", keyed: false });
   });
 });

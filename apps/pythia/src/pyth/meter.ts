@@ -1,7 +1,8 @@
 import type { Context, Next } from "hono";
 import { CLASS_BASE, pondus } from "./pondus.js";
 import type { PythLedger } from "./ledger.js";
-import { OPERATIONAL_PATH, CONSUMER_HEADER, type ConsumerResolver } from "../stats/middleware.js";
+import { OPERATIONAL_PATH, CONSUMER_HEADER } from "../stats/middleware.js";
+import type { ReadConsumerResolver } from "../stats/consumerResolver.js";
 
 /** Only the three operational verbs are metered — `/{chain}/{read|send|poll}`. */
 const OPERATIONAL = OPERATIONAL_PATH;
@@ -82,7 +83,7 @@ export interface SlotMeter {
  */
 export function pythMeterMiddleware(
   ledger: PythLedger,
-  resolveConsumer: ConsumerResolver,
+  resolveConsumer: ReadConsumerResolver,
   tracker?: TxTrackerLike,
   slot?: SlotMeter,
 ) {
@@ -101,8 +102,7 @@ export function pythMeterMiddleware(
 
       if (endpoint === "read" || endpoint === "poll") {
         if (status >= 400) return; // not served
-        const consumer = resolveConsumer(c.req.header(CONSUMER_HEADER));
-        const keyed = consumer !== "direct";
+        const { consumer, keyed } = resolveConsumer(c.req.header(CONSUMER_HEADER));
 
         // Compute pondus for EVERY served read/poll and record it in Pythia's OWN
         // fleet ledger — anonymous (non-Pythia-keyed) reads count toward her
@@ -143,7 +143,7 @@ export function pythMeterMiddleware(
       // Attribute the send to its consumer (name / "direct" for anon) — the same
       // resolution reads use. Carried to the tracker so the per-consumer tally is
       // credited at resolution, and passed to the fallback counts directly.
-      const consumer = resolveConsumer(c.req.header(CONSUMER_HEADER));
+      const { consumer } = resolveConsumer(c.req.header(CONSUMER_HEADER));
 
       if (status >= 200 && status < 300) {
         // ACCEPTED. With a tracker wired, hand each requestKey to it for the

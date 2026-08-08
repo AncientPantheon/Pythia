@@ -25,8 +25,11 @@ afterEach(() => {
   for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-// Consumer resolver: any key → a named consumer; none → the anonymous "direct".
-const resolve = (k?: string) => (k ? "acme" : "direct");
+// Consumer resolver (read form → {consumer, keyed}): any key → a keyed named
+// consumer; none → the non-earning "direct" (the meter records the label + gates
+// earning on `keyed`; the REAL keyless→"pythia-self" mapping is tested in
+// stats/consumerResolver.test.ts).
+const resolve = (k?: string) => (k ? { consumer: "acme", keyed: true } : { consumer: "direct", keyed: false });
 
 function appWith(l: PythLedger, handler: (c: Context) => Response | Promise<Response>) {
   const app = new Hono();

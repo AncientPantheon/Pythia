@@ -9,6 +9,25 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [2.7.33] — 2026-08-08
+
+### Fixed — "Pythia (self)" STILL showed 0 petitions (v2.7.32 was incomplete)
+
+v2.7.32 only mapped keyless reads → "pythia-self" *when her self-connector secret was active*. On the
+live deployment it isn't, so her frontend reads kept resolving to **"direct"** (the "Anonymous" row) and
+"Pythia (self)" stayed at 0 petitions. Root cause confirmed against live `/pyth`: a `direct` row held her
+reads while `pythia-self` had only her fires. Fix: a **keyless read on Pythia's gateway is ALWAYS Pythia
+serving herself → `"pythia-self"`**, independent of the self-connector — so her reads and fires unify
+under one row. **Economics preserved:** the resolver now returns `{ consumer, keyed }` — a keyless read
+still only EARNS (keyed) when her self-connector is active; otherwise it's labelled "pythia-self" but
+counts as observation-only (exactly the prior earning behavior). Unknown/expired keys → "direct"
+(non-earning). Refactored `stats/consumerResolver.ts` to return the pair and the meter to consume it;
++1 resolver test, 654 total.
+
+> Note: only the **label** changed for keyless-while-self-inactive (was "direct", now "pythia-self").
+> If you want Pythia's own reads to also EARN, activate her self-connector. Historical reads already
+> under "direct"/her Apollo account stay there (cumulative) until a ledger nuke.
+
 ## [2.7.32] — 2026-08-07
 
 ### Fixed — "Pythia (self)" showed 0 petitions despite constant frontend reads

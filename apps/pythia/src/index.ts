@@ -125,13 +125,16 @@ export const connectorStore = new ConnectorStore({
 // (keyless reads + her fires) unifies under `PYTHIA_SELF_CONSUMER`. The closures
 // reference the module stores lazily (evaluated per request, after boot), so this
 // const can sit before those `export const`s are initialized.
-const resolveConsumer = makeResolveConsumer({
+const resolveConsumerFull = makeResolveConsumer({
   selfSecret: () => selfConnectorLoop.status().secret,
   resolveEphemeral: (secret) => ephemeralKeyStore.resolve(secret),
   nameForKey: (key) => connectorStore.nameForKey(key),
   envConsumer: (key) => envConsumerMap.get(key),
   selfLabel: PYTHIA_SELF_CONSUMER,
 });
+// The meter needs both the consumer AND the keyed/earning flag; stats + the report
+// gate only need the consumer NAME.
+const resolveConsumer = (key?: string): string => resolveConsumerFull(key).consumer;
 
 // The canonical Pantheonic vault (`automaton/02`, libsodium — the same scheme as the
 // hub + Mnemosyne). Bearer creds Pythia must USE (the hub HMAC secret; soon the Codex
@@ -374,7 +377,7 @@ app.use("*", statsMiddleware(statsStore, resolveConsumer));
 // reads only response gas/bytes + the caller's gasLimit; it never signs.
 app.use(
   "*",
-  pythMeterMiddleware(pythLedger, resolveConsumer, txTracker, {
+  pythMeterMiddleware(pythLedger, resolveConsumerFull, txTracker, {
     usage: slotUsage,
     operatorForSlot: (id) => nodePool.operatorForSlot(id),
   }),

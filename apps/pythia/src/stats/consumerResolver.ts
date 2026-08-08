@@ -1,26 +1,31 @@
 /**
  * Resolve an `x-pythia-key` (or its absence) to a CONSUMER identity for usage
- * attribution — the name/account that shows in `byConsumer`, `/stats`, and the
- * per-slot keyed/anon split. Extracted from `index.ts` so the precedence is unit-
- * testable (it has regressed before — see the v2.7.27 keyed-read miscount).
+ * attribution. Returns BOTH the display `consumer` (what shows in `byConsumer` /
+ * `/stats` / the pulse) AND whether the read is `keyed` (earns at the hub) — the
+ * two are DIFFERENT and must not be conflated. Extracted from `index.ts` so the
+ * precedence is unit-testable (it has regressed twice — v2.7.27, v2.7.32).
  *
  * Precedence:
- *   1. If the effective key IS Pythia's OWN self-connector secret → `selfLabel`
- *      (`"pythia-self"`). This UNIFIES all of Pythia's own activity under one
- *      identity: her keyless frontend reads AND her automaton fires (which
- *      `meterChainRuntime` already labels `"pythia-self"`). Without this, her reads
- *      resolve to her raw self-connector Apollo account and split away from her
- *      fires, so the "Pythia (self)" row shows 0 petitions even though she reads
- *      constantly.
- *   2. An ephemeral bearer secret → its Apollo account (a real DualLinkConnector
- *      consumer: Mnemosyne, OuronetUI, …).
- *   3. A permanent admin-registered connector name, then the env key→name map.
- *   4. Nothing → `"direct"` (anonymous). A keyless read with NO active self
- *      connector also lands here.
- *
- * `key` absent means "Pythia's own read": it defaults to her live self-connector
- * secret (step 1). A consumer's own key always overrides.
+ *   1. **No key → Pythia's OWN read.** A keyless read on Pythia's gateway is Pythia
+ *      serving herself (her frontend reading chain data to display it, or anyone via
+ *      her gateway without a consumer key). It ALWAYS attributes to `selfLabel`
+ *      (`"pythia-self"`) — unifying her reads with her fires (which `meterChainRuntime`
+ *      already labels `"pythia-self"`). It `keyed`-EARNS only when she has an active
+ *      keyed self-connector (`selfSecret` present); otherwise it's her own read but
+ *      counts as observation-only (not earning) — preserving the prior economics.
+ *   2. A caller presenting Pythia's OWN self secret → `selfLabel`, keyed.
+ *   3. An ephemeral bearer secret → its Apollo account (a real DualLinkConnector
+ *      consumer: Mnemosyne, OuronetUI, …), keyed.
+ *   4. A permanent admin-registered connector name, then the env key→name map — keyed.
+ *   5. A key that resolves to NOTHING (unknown/expired) → `"direct"`, NOT keyed.
  */
+export interface ResolvedConsumer {
+  consumer: string;
+  keyed: boolean;
+}
+
+export type ReadConsumerResolver = (key?: string) => ResolvedConsumer;
+
 export interface ConsumerResolverDeps {
   /** Pythia's current self-connector secret (null/undefined when none is active). */
   selfSecret: () => string | null | undefined;
@@ -34,21 +39,21 @@ export interface ConsumerResolverDeps {
   selfLabel: string;
 }
 
-export function makeResolveConsumer(deps: ConsumerResolverDeps): (key?: string) => string {
-  return (key?: string): string => {
+export function makeResolveConsumer(deps: ConsumerResolverDeps): ReadConsumerResolver {
+  return (key?: string): ResolvedConsumer => {
     const selfSecret = deps.selfSecret() || undefined;
-    const effective = key || selfSecret;
-    if (effective) {
-      // Pythia's OWN key (keyless read, or a caller presenting her self secret) →
-      // one unified identity, matching her fires.
-      if (selfSecret !== undefined && effective === selfSecret) return deps.selfLabel;
-      const eph = deps.resolveEphemeral(effective);
-      if (eph) return eph.apolloAccount;
-      const fromStore = deps.nameForKey(effective);
-      if (fromStore) return fromStore;
-      const fromEnv = deps.envConsumer(effective);
-      if (fromEnv) return fromEnv;
-    }
-    return "direct";
+    // Keyless → Pythia's own read. Always her identity; earns only with an active
+    // keyed self-connector.
+    if (!key) return { consumer: deps.selfLabel, keyed: selfSecret !== undefined };
+    // A caller presenting Pythia's own self secret is Pythia herself, keyed.
+    if (selfSecret !== undefined && key === selfSecret) return { consumer: deps.selfLabel, keyed: true };
+    const eph = deps.resolveEphemeral(key);
+    if (eph) return { consumer: eph.apolloAccount, keyed: true };
+    const fromStore = deps.nameForKey(key);
+    if (fromStore) return { consumer: fromStore, keyed: true };
+    const fromEnv = deps.envConsumer(key);
+    if (fromEnv) return { consumer: fromEnv, keyed: true };
+    // A key was presented but matched nothing (unknown/expired) → anonymous, non-earning.
+    return { consumer: "direct", keyed: false };
   };
 }
