@@ -18,7 +18,7 @@ surface behind a small typed `PythiaClient` over a configurable base URL:
 
 ## Status
 
-`3.0.0` on public npmjs — proprietary release, all rights reserved (see
+`3.1.0` on public npmjs — proprietary release, all rights reserved (see
 [LICENSE](./LICENSE)). Ships the
 `PythiaClient` class wrapping the keyless gateway endpoints (`read`, `send`,
 `poll`, `health`) over a configurable base URL with an injectable `fetchImpl`,
@@ -132,6 +132,12 @@ npm install @ancientpantheon/pythia-client
 
 > **From v3.0.0 this package versions INDEPENDENTLY of the Pythia service.** It bumps only when its own
 > source changes — a service/website release no longer drags it forward. Pin `^3.0.0`.
+
+**v3.1.0** — **401 self-heal.** New `PythiaConnector.invalidate()` / `DualLinkConnector.invalidate()` +
+`connector.asKeySource()` (a `RefreshablePythiaKey`). Pass `pythiaKey: connector.asKeySource()` and the
+client re-mints + retries once on a gated `401 { error: "invalid or expired connector key" }` (orphaned
+key, e.g. after a gateway restart). Backward compatible; string/function `pythiaKey` still work without
+self-heal.
 
 **v3.0.0** — independent-versioning baseline. The client and the Pythia service split into two version
 lines (they were locked together through 2.7.x). No source/API/behavior change in this package — this is

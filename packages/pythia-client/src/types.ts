@@ -25,16 +25,33 @@ export interface HealthSnapshot {
   sources: SourceHealth[];
 }
 
+/**
+ * A REFRESHABLE `x-pythia-key` source — a `get()` (like a supplier function) PLUS
+ * an `invalidate()` that drops the current secret so the next `get()` re-mints.
+ * Passing one of these enables `PythiaClient`'s SELF-HEAL: on a gated `401
+ * { error: "invalid or expired connector key" }` (e.g. after a gateway restart
+ * orphaned the ephemeral key), the client calls `invalidate()`, re-mints, and
+ * retries the request once. `PythiaConnector.asKeySource()` /
+ * `DualLinkConnector.asKeySource()` return this shape.
+ */
+export interface RefreshablePythiaKey {
+  get(): string | undefined | Promise<string | undefined>;
+  invalidate(): Promise<void>;
+}
+
 /** Constructor options for {@link PythiaClient}. `fetchImpl` defaults to the
  * runtime global `fetch`; inject it for tests or a custom transport. */
 export interface PythiaClientOptions {
   baseUrl: string;
   fetchImpl?: typeof fetch;
-  /** Optional `x-pythia-key` gated-access header — a static string, or a
-   * supplier resolved fresh per request (e.g. `PythiaConnector.keyProvider()`
-   * — see `connector.ts`). See `Transport.resolvePythiaKey` for the exact
-   * resolution/omission semantics. */
-  pythiaKey?: string | (() => string | undefined | Promise<string | undefined>);
+  /** Optional `x-pythia-key` gated-access header — a static string, a supplier
+   * function resolved fresh per request (e.g. `PythiaConnector.keyProvider()`),
+   * or a {@link RefreshablePythiaKey} to also get 401 self-heal (recommended —
+   * `connector.asKeySource()`). See `Transport.resolvePythiaKey`. */
+  pythiaKey?:
+    | string
+    | (() => string | undefined | Promise<string | undefined>)
+    | RefreshablePythiaKey;
 }
 
 /** Input to `client.read` — a generic dirty read. The caller supplies the Pact

@@ -2,6 +2,18 @@
 
 All notable changes to `@ancientpantheon/pythia-client` are documented here.
 
+## 3.1.0 — 2026-08-08
+
+**New: automatic 401 self-heal for orphaned gated keys.** Adds `PythiaConnector.invalidate()` and
+`DualLinkConnector.invalidate()` (drop the cached secret so the next `ensureSecret()` re-mints), and
+`connector.asKeySource()` → a `RefreshablePythiaKey` (`{ get(): Promise<string|undefined>;
+invalidate(): Promise<void> }`). Pass it as `PythiaClient`'s `pythiaKey` and the client, on a gated
+`401 { error: "invalid or expired connector key" }`, invalidates → re-mints → **retries the request
+once** (bounded — a second 401 surfaces; concurrent 401s collapse to one re-mint). Fixes consumers being
+stuck on a dead key (e.g. after a gateway restart) until TTL. Fully backward compatible — a plain string
+or `keyProvider()` `pythiaKey` still works exactly as before (just without self-heal). First independent
+client release since the 3.0.0 versioning split.
+
 ## 3.0.0 — 2026-08-08
 
 Independent-versioning baseline. From this release the client versions on its OWN line, separate from the

@@ -9,6 +9,24 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.3] — 2026-08-08
+
+### Added — client 401 self-heal (ships `pythia-client` 3.1.0)
+
+The shared client now recovers automatically from an orphaned gated key. `PythiaConnector.invalidate()` /
+`DualLinkConnector.invalidate()` drop the cached secret; `connector.asKeySource()` returns a
+`RefreshablePythiaKey` (`{ get, invalidate }`). Wire `new PythiaClient({ pythiaKey: connector.asKeySource() })`
+and, on a gated `401 { error: "invalid or expired connector key" }`, the client invalidates → re-mints →
+**retries once** (bounded; concurrent 401s collapse to one re-mint via the connector's existing refresh
+dedup). Backward compatible — a string / `keyProvider()` `pythiaKey` still works (no self-heal). This is
+the **client self-heal (3a)** from the OuronetUI incident handoff, complementing 3.0.1's server-side
+persistence: persistence covers restarts transparently, self-heal covers everything else (lost volume,
+TTL edge, revocation) — the two are redundant by design.
+
+**This is a CLIENT-line change:** `@ancientpantheon/pythia-client` bumps to **3.1.0** (new capability,
+backward-compatible) and publishes; the SERVICE bumps to **3.0.3** as the release vehicle (its image now
+bundles the self-healing client). Consumers opt in with `pythiaKey: connector.asKeySource()`.
+
 ## [3.0.2] — 2026-08-08
 
 ### Fixed (CRITICAL) — gateway read a nonexistent on-chain function → fleet-wide activation dead

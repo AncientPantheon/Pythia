@@ -522,3 +522,48 @@ describe("PythiaConnector.keyProvider", () => {
     );
   });
 });
+
+describe("PythiaConnector.invalidate + asKeySource (401 self-heal)", () => {
+  it("invalidate() drops the cached secret so the next ensureSecret() re-mints", async () => {
+    const active = () => jsonResponse({ secret: "pk_live_x", expiresAt: Date.now() + 3_600_000 });
+    const { fetchImpl, calls } = routedFetch({
+      "/connectors/auth/challenge": () => jsonResponse(CHALLENGE_OK),
+      "/connectors/auth/verify": active,
+    });
+    const connector = new PythiaConnector({ baseUrl: BASE, apolloAccount: ACCOUNT, signer: stubSigner(), fetchImpl: fetchImpl as never });
+
+    await connector.ensureSecret(); // mint (2 calls)
+    await connector.ensureSecret(); // cached — no new calls
+    expect(calls).toHaveLength(2);
+
+    await connector.invalidate();
+    await connector.ensureSecret(); // must re-mint (2 more calls)
+    expect(calls).toHaveLength(4);
+  });
+
+  it("asKeySource().get() returns the live secret; invalidate() forces a re-mint on next get()", async () => {
+    const { fetchImpl, calls } = routedFetch({
+      "/connectors/auth/challenge": () => jsonResponse(CHALLENGE_OK),
+      "/connectors/auth/verify": () => jsonResponse({ secret: "pk_live_x", expiresAt: Date.now() + 3_600_000 }),
+    });
+    const connector = new PythiaConnector({ baseUrl: BASE, apolloAccount: ACCOUNT, signer: stubSigner(), fetchImpl: fetchImpl as never });
+    const src = connector.asKeySource();
+
+    expect(await src.get()).toBe("pk_live_x");
+    expect(calls).toHaveLength(2);
+    await src.get(); // cached
+    expect(calls).toHaveLength(2);
+    await src.invalidate();
+    expect(await src.get()).toBe("pk_live_x"); // re-minted
+    expect(calls).toHaveLength(4);
+  });
+
+  it("asKeySource().get() returns undefined when the connector is pending (202)", async () => {
+    const { fetchImpl } = routedFetch({
+      "/connectors/auth/challenge": () => jsonResponse(CHALLENGE_OK),
+      "/connectors/auth/verify": () => jsonResponse({ error: "not active yet" }, 202),
+    });
+    const connector = new PythiaConnector({ baseUrl: BASE, apolloAccount: ACCOUNT, signer: stubSigner(), fetchImpl: fetchImpl as never });
+    expect(await connector.asKeySource().get()).toBeUndefined();
+  });
+})

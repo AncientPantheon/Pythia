@@ -7,6 +7,7 @@ import {
   PythiaConnectorUnavailableError,
 } from "./connectorErrors.js";
 import { InMemorySecretStorage, type SecretStorage } from "./secretStorage.js";
+import type { RefreshablePythiaKey } from "./types.js";
 
 /** A cached secret within this margin of `expiresAt` is treated as needing
  * refresh, not just already-expired, so a consumer's in-flight request
@@ -120,6 +121,33 @@ export class PythiaConnector {
       };
     }
     return this.refresh();
+  }
+
+  /**
+   * Drop the cached secret so the next `ensureSecret()` performs a full
+   * `refresh()` (re-mint). Used by `PythiaClient`'s 401 self-heal when the
+   * gateway rejects an orphaned key. Idempotent; safe to call concurrently
+   * (the subsequent `refresh()` is in-flight-deduped, so a burst of 401s
+   * collapses to ONE re-mint).
+   */
+  async invalidate(): Promise<void> {
+    await this.storage.clear();
+  }
+
+  /**
+   * A {@link RefreshablePythiaKey} for `PythiaClient`'s `pythiaKey` option —
+   * `get()` returns the live secret (minting/refreshing as needed), `invalidate()`
+   * drops it. Wire `new PythiaClient({ pythiaKey: connector.asKeySource() })` to
+   * get automatic 401 self-heal.
+   */
+  asKeySource(): RefreshablePythiaKey {
+    return {
+      get: async () => {
+        const r = await this.ensureSecret();
+        return r.status === "active" ? r.secret : undefined;
+      },
+      invalidate: () => this.invalidate(),
+    };
   }
 
   /**

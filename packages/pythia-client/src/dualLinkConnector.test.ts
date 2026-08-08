@@ -360,3 +360,25 @@ describe("DualLinkConnector + PythiaClient integration", () => {
     expect(connector.status().secret).toBe("secret-for-standard");
   });
 });
+
+describe("DualLinkConnector.invalidate + asKeySource (401 self-heal)", () => {
+  it("asKeySource().get() yields the active secret; invalidate() forces a re-mint of both halves", async () => {
+    const { fetchImpl, verifyCalls } = buildStubFetch();
+    const dl = new DualLinkConnector({
+      dualLinkKey: DUAL_LINK_KEY,
+      baseUrl: BASE,
+      standardSigner: stubSigner(),
+      smartSigner: stubSigner(),
+      fetchImpl: fetchImpl as never,
+    });
+    const src = dl.asKeySource();
+
+    const key1 = await src.get();
+    expect(typeof key1).toBe("string"); // an active half's secret
+    const verifiesAfterFirst = verifyCalls.length;
+
+    await src.invalidate(); // drops BOTH halves' cached secrets
+    await src.get(); // must re-verify (re-mint) — more verify calls happen
+    expect(verifyCalls.length).toBeGreaterThan(verifiesAfterFirst);
+  });
+})

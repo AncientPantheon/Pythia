@@ -11,6 +11,7 @@ export type {
   Routing,
   SourceHealth,
   PythiaClientOptions,
+  RefreshablePythiaKey,
   ReadInput,
   SendInput,
   PollInput,

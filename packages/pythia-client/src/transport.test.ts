@@ -194,3 +194,72 @@ describe("Transport x-pythia-key gated-access header", () => {
     expect("x-pythia-key" in ((supplierInit?.headers ?? {}) as Record<string, string>)).toBe(false);
   });
 });
+
+describe("Transport — 401 self-heal (invalid/expired connector key)", () => {
+  // A fetch stub that returns a 401 invalid-key body the FIRST N times, then 200.
+  function healingFetch(opts: { fail: number; body401?: unknown }) {
+    let calls = 0;
+    const sentKeys: (string | null)[] = [];
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      calls += 1;
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      sentKeys.push(headers["x-pythia-key"] ?? null);
+      if (calls <= opts.fail) {
+        return new Response(
+          JSON.stringify(opts.body401 ?? { error: "invalid or expired connector key" }),
+          { status: 401, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    return { fetchImpl, sentKeys, calls: () => calls };
+  }
+
+  function refreshableKey() {
+    let n = 0;
+    const invalidate = vi.fn(async () => {});
+    const get = vi.fn(async () => `pk_eph_key-${n}`);
+    // each invalidate bumps the minted key so the retry sends a DIFFERENT one
+    invalidate.mockImplementation(async () => { n += 1; });
+    return { get, invalidate };
+  }
+
+  it("(a) on the target 401, invalidates once + re-mints + retries once, and the retry succeeds", async () => {
+    const { fetchImpl, sentKeys } = healingFetch({ fail: 1 });
+    const key = refreshableKey();
+    const t = new Transport({ baseUrl: BASE, fetchImpl: fetchImpl as never, pythiaKey: key });
+    const res = await t.postJson("/stoachain/send", { cmds: [] });
+    expect(res.status).toBe(200);
+    expect(key.invalidate).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // original + one retry
+    expect(sentKeys).toEqual(["pk_eph_key-0", "pk_eph_key-1"]); // retry used the re-minted key
+  });
+
+  it("(b) a 401 with a DIFFERENT body is NOT retried", async () => {
+    const { fetchImpl } = healingFetch({ fail: 1, body401: { error: "some other 401" } });
+    const key = refreshableKey();
+    const t = new Transport({ baseUrl: BASE, fetchImpl: fetchImpl as never, pythiaKey: key });
+    const res = await t.postJson("/stoachain/send", {});
+    expect(res.status).toBe(401);
+    expect(key.invalidate).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("(b2) a static-string key (not refreshable) is NEVER retried even on the target 401", async () => {
+    const { fetchImpl } = healingFetch({ fail: 1 });
+    const t = new Transport({ baseUrl: BASE, fetchImpl: fetchImpl as never, pythiaKey: "pk_live_static" });
+    const res = await t.postJson("/stoachain/send", {});
+    expect(res.status).toBe(401);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("(d) a SECOND consecutive 401 after the retry surfaces the error (no infinite loop)", async () => {
+    const { fetchImpl } = healingFetch({ fail: 2 }); // both attempts 401
+    const key = refreshableKey();
+    const t = new Transport({ baseUrl: BASE, fetchImpl: fetchImpl as never, pythiaKey: key });
+    const res = await t.postJson("/stoachain/send", {});
+    expect(res.status).toBe(401);
+    expect(key.invalidate).toHaveBeenCalledTimes(1); // exactly one re-mint attempt
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // original + one retry, then stop
+  });
+})

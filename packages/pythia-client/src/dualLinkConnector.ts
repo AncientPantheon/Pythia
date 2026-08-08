@@ -1,4 +1,5 @@
 import { PythiaConnector, type ApolloSigner, type ConnectorSecretResult } from "./connector.js";
+import type { RefreshablePythiaKey } from "./types.js";
 import { splitDualLinkKey } from "./dualLinkKey.js";
 
 /** Matches `PythiaConnector`'s own refresh-margin assumption — a refresh well
@@ -176,5 +177,24 @@ export class DualLinkConnector {
         return undefined;
       }
     };
+  }
+
+  /**
+   * Drop BOTH halves' cached secrets so the next `tick()`/`ensureSecret()`
+   * re-mints. Used by `PythiaClient`'s 401 self-heal (the unified key could have
+   * come from either half). Idempotent.
+   */
+  async invalidate(): Promise<void> {
+    await Promise.all([this.standardConnector.invalidate(), this.smartConnector.invalidate()]);
+  }
+
+  /**
+   * A {@link RefreshablePythiaKey} for `PythiaClient`'s `pythiaKey` option, giving
+   * automatic 401 self-heal: `get()` is the same driven-tick resolution as
+   * {@link keyProvider}, `invalidate()` drops both halves. Wire
+   * `new PythiaClient({ pythiaKey: dualLink.asKeySource() })`.
+   */
+  asKeySource(): RefreshablePythiaKey {
+    return { get: this.keyProvider(), invalidate: () => this.invalidate() };
   }
 }
