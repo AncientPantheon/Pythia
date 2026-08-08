@@ -1800,8 +1800,21 @@ function pulseMetric(value, unit, fmt) {
   return cell;
 }
 
+// Consumer-list pagination. 10/page keeps the Live Pulse list short so the eye
+// finds a key fast; the graph now lives in its own Statistics sub-view so length
+// here no longer buries it. Trivially switchable to 15.
+const ACTIVITY_CONSUMER_PAGE_SIZE = 10;
+let activityConsumerPage = 0;
+let lastByConsumer = null; // last-rendered byConsumer, so a lane-map load can re-render in place
+
+// Apollo-account → consumer-lane, built from the on-chain dual-link roster
+// (URD_ListAllDualLinks). Both sides of a link map to the same lane so whichever
+// side a byConsumer key matches resolves. Loaded on Activity entry (see below).
+let consumerLaneByApollo = {};
+
 function renderPulseConsumers(container, byConsumer) {
   container.textContent = "";
+  lastByConsumer = byConsumer || null;
   const entries = Object.entries(byConsumer || {}).sort(
     // Most active first — reads + transactions combined.
     (a, b) =>
@@ -1814,12 +1827,23 @@ function renderPulseConsumers(container, byConsumer) {
     return;
   }
   container.appendChild(el("h4", "pulse-consumers-title", "Activity by consumer (per API key)"));
+  // Clamp the page — the live list may have shrunk since the user last paged
+  // (a consumer dropping off). Never reset to 0 on a refresh (§ live poll).
+  const pageCount = Math.max(1, Math.ceil(entries.length / ACTIVITY_CONSUMER_PAGE_SIZE));
+  if (activityConsumerPage >= pageCount) activityConsumerPage = pageCount - 1;
+  if (activityConsumerPage < 0) activityConsumerPage = 0;
+  const start = activityConsumerPage * ACTIVITY_CONSUMER_PAGE_SIZE;
+  const slice = entries.slice(start, start + ACTIVITY_CONSUMER_PAGE_SIZE);
   const list = el("div", "pulse-clist");
-  for (const [name, c] of entries) {
+  for (const [name, c] of slice) {
     const row = el("div", "pulse-crow");
     const nm = el("span", "pulse-cname", consumerLabel(name));
     nm.title = name; // full identifier on hover
     row.appendChild(nm);
+    // Lane pill — the consumer's dual-link lane, when the key maps to one.
+    // Empty / BAR sentinel → no lane (e.g. pythia-self, unmapped keys).
+    const lane = consumerLaneByApollo[name];
+    if (lane && lane !== BAR) row.appendChild(el("span", "pulse-clane", lane));
     const metrics = el("span", "pulse-cmetrics");
     metrics.appendChild(pulseMetric(c.petitions, "petitions", fmtInt));
     metrics.appendChild(pulseMetric(c.pondus, "pondus", fmtPondus));
@@ -1829,6 +1853,15 @@ function renderPulseConsumers(container, byConsumer) {
     list.appendChild(row);
   }
   container.appendChild(list);
+  // Prev/next + page indicator BELOW the list, only when it overflows one page.
+  if (entries.length > ACTIVITY_CONSUMER_PAGE_SIZE) {
+    const pager = el("div", "pulse-pager");
+    renderPager(pager, activityConsumerPage, pageCount, (p) => {
+      activityConsumerPage = p;
+      renderPulseConsumers(container, byConsumer);
+    });
+    container.appendChild(pager);
+  }
 }
 
 // Build the always-present pulse block from a /pyth response (may be null).
@@ -1905,8 +1938,11 @@ function stopPythPulse() {
 // live pulse block (from /pyth) is rendered ABOVE the stone/air view and is the part
 // the poll keeps ticking.
 async function loadPyth() {
-  const container = document.getElementById("stats-body");
-  if (!container) return;
+  // The pulse (live-pulse sub-view) and the stone/air view (statistics sub-view)
+  // now live in separate wrappers — render each into its own body.
+  const pulseBody = document.getElementById("pulse-body");
+  const statsBody = document.getElementById("stats-body");
+  if (!pulseBody || !statsBody) return;
   let air = null;
   let stone = null;
   try {
@@ -1920,18 +1956,19 @@ async function loadPyth() {
   } catch {
     /* stone stays null — chain unavailable; air-only render */
   }
-  container.textContent = "";
   // Live pulse — always present so the poll can bump it in place (fleet ledger).
-  container.appendChild(buildPythPulse(air));
+  pulseBody.textContent = "";
+  pulseBody.appendChild(buildPythPulse(air));
   pythPulseLast = (air && air.total) || {};
-  // The on-chain stone/air view below (unchanged).
+  // The on-chain stone/air view (unchanged) — now in the Statistics sub-view.
+  statsBody.textContent = "";
   const onchain = el("div", "pyth-onchain");
   if (!air && !stone) {
     onchain.appendChild(el("p", "empty", "Ledger unavailable."));
   } else {
     renderPyth(onchain, air, stone);
   }
-  container.appendChild(onchain);
+  statsBody.appendChild(onchain);
 }
 
 // ── top-level tabs (Chains / Activity / For developers / Connectors) ─────────
@@ -1959,42 +1996,58 @@ function showConnectorSubview(key) {
   }
 }
 
-// Activity is per-chain: the tier-2 picks the chain. A live chain shows its
-// stats; a not-yet-live chain (Arweave) shows a coming-soon placeholder.
-let currentActivityChain = CHAINS[0].id;
-function renderActivitySoon(chain) {
-  const box = document.getElementById("activity-soon");
-  if (!box) return;
-  box.textContent = "";
-  const badge = el("span", "chain-badge chain-badge--soon", "Coming soon");
-  const h = el("h3", null, chain.name);
-  h.appendChild(el("span", "chain-kind", ` · ${chain.kind || "next in line"}`));
-  const p = el("p", null, `Usage will appear here once ${chain.name} is live.`);
-  box.append(badge, h, p);
+// StoaChain Activity has two tier-2 sub-views: Live Pulse (heartbeat tiles +
+// consumer list) and Statistics (stone/air totals + daily graph). The URL picks
+// one; showActivitySubview toggles which [data-activity-view] wrapper is shown.
+// The pulse feeds both, so it runs whenever the section is on (either sub).
+let currentActivitySub = "live-pulse";
+function showActivitySubview(key) {
+  currentActivitySub = key;
+  const panel = document.querySelector('[data-panel="activity"]');
+  if (!panel) return;
+  panel.querySelectorAll("[data-activity-view]").forEach((v) => {
+    v.hidden = v.dataset.activityView !== key;
+  });
+  // Both subs read from /pyth — (re)load the data and (re)arm the live heartbeat
+  // on entry. startPythPulse() clears any prior timer first, so toggling is safe.
+  loadPyth();
+  startPythPulse();
+  loadConsumerLanes(); // refresh the apollo→lane map for the consumer list (throttled)
 }
-function showActivityChain(id) {
-  currentActivityChain = id;
-  const chain = CHAINS.find((c) => c.id === id);
-  if (!chain) return;
-  const live = chain.status === "live";
-  const body = document.getElementById("stats-body");
-  const noteLine = document.getElementById("stats-note-line");
-  const soon = document.getElementById("activity-soon");
-  const note = document.getElementById("activity-note");
-  if (body) body.hidden = !live;
-  if (noteLine) noteLine.hidden = !live;
-  if (soon) soon.hidden = live;
-  if (note) {
-    note.textContent = live
-      ? `${chain.name} — Petitions & Pondus served (keyed reads) plus Transactions & Gas relayed. Fleet-wide, keyless.`
-      : `${chain.name} is not live yet — no usage to report.`;
-  }
-  if (live) {
-    loadPyth();
-    startPythPulse(); // begin the live heartbeat while this chain's Activity is shown
-  } else {
-    stopPythPulse();
-    renderActivitySoon(chain);
+
+// Foreign Blockchain Activity — one sub-view (Arweave) for now, a placeholder.
+// No data yet, so this just records which sub is active (the panel is static).
+let currentForeignSub = "arweave";
+function showForeignSubview(key) {
+  currentForeignSub = key;
+}
+
+// Build the apollo-account → consumer-lane map from the on-chain dual-link roster.
+// Both sides of each link map to the same lane, so whichever side a byConsumer key
+// matches resolves. Throttled: the roster changes rarely, so a single load-on-enter
+// (plus a 60s floor between reloads) is plenty — never on the 4s pulse tick.
+let consumerLaneLoadedAt = 0;
+async function loadConsumerLanes(force) {
+  const now = Date.now();
+  if (!force && consumerLaneLoadedAt && now - consumerLaneLoadedAt < 60000) return;
+  consumerLaneLoadedAt = now;
+  try {
+    const rows = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.URD_ListAllDualLinks)`);
+    const map = {};
+    if (Array.isArray(rows)) {
+      for (const r of rows) {
+        const lane = r && r["consumer-lane"];
+        if (!lane || lane === BAR) continue; // empty / sentinel → no lane
+        if (r["standard-apollo"]) map[r["standard-apollo"]] = lane;
+        if (r["smart-apollo"]) map[r["smart-apollo"]] = lane;
+      }
+    }
+    consumerLaneByApollo = map;
+    // Re-render the visible consumer list so lanes appear without waiting a tick.
+    const cc = document.getElementById("pulse-consumers");
+    if (cc && lastByConsumer) renderPulseConsumers(cc, lastByConsumer);
+  } catch {
+    /* leave the previous map in place on a failed read */
   }
 }
 
@@ -2005,9 +2058,17 @@ const TIER2 = {
     active: () => currentChainId,
   },
   activity: {
-    items: () => CHAINS.map((c) => ({ key: c.id, label: c.name })),
-    select: (key) => showActivityChain(key),
-    active: () => currentActivityChain,
+    items: () => [
+      { key: "live-pulse", label: "Live Pulse" },
+      { key: "statistics", label: "Statistics" },
+    ],
+    select: (key) => showActivitySubview(key),
+    active: () => currentActivitySub,
+  },
+  foreign: {
+    items: () => [{ key: "arweave", label: "Arweave" }],
+    select: (key) => showForeignSubview(key),
+    active: () => currentForeignSub,
   },
   connectors: {
     items: () => [
@@ -2046,7 +2107,7 @@ function renderTier2(name) {
 // Every Tier-1 section (#chains) and Tier-2 sub-view (#chains/stoachain) is its own
 // deep-linkable, back-navigable URL. Nav controls set location.hash; the hash drives
 // what renders — never in-memory panel flipping behind a static, opaque URL.
-const SECTIONS = ["chains", "activity", "connectors", "developers"];
+const SECTIONS = ["chains", "activity", "foreign", "connectors", "developers"];
 const DEFAULT_SECTION = "chains";
 
 function parseHash() {
@@ -2070,7 +2131,7 @@ function routeFromHash() {
 
 function showTab(name, wantSub) {
   // Leaving the Activity section stops the live pulse poll (re-armed on re-entry by
-  // showActivityChain for a live chain) — no polling while it's off-screen.
+  // showActivitySubview, which both subs share) — no polling while it's off-screen.
   if (name !== "activity") stopPythPulse();
   // Tier-1 section nav lives in the header (.ph-tier1); mark the active button.
   document.querySelectorAll(".ph-tier1 [data-tab]").forEach((t) => {
@@ -2092,7 +2153,7 @@ function showTab(name, wantSub) {
     // A bare section URL (#connectors) resolves to its FIRST sub deterministically —
     // never to last-used in-memory state, so the same URL always renders the same view.
     const sub = wantSub && keys.includes(wantSub) ? wantSub : keys[0];
-    if (sub) cfg.select(sub); // selectChain / showActivityChain / showConnectorSubview
+    if (sub) cfg.select(sub); // selectChain / showActivitySubview / showForeignSubview / showConnectorSubview
   }
   renderTier2(name); // repopulate the header's tier-2 sub-nav for this section
 

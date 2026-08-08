@@ -1,45 +1,36 @@
 import type { Context, Next } from "hono";
-import { OPERATIONAL_PATH, CONSUMER_HEADER } from "../../stats/middleware.js";
-import type { EphemeralKeyStore } from "./ephemeralKeyStore.js";
-import type { ConnectorStore } from "../store.js";
+import { OPERATIONAL_PATH } from "../../stats/middleware.js";
+import type { ReadConsumerResolver } from "../../stats/consumerResolver.js";
+import { effectiveKey } from "./effectiveKey.js";
 
 /**
- * Hono middleware that enforces `docs/work/pythia-connector-protocol/design.md`
- * Decision 1 ("gate access") on the operational `/{chain}/{read|send|poll}`
- * routes — the same path set `statsMiddleware` attributes usage against,
- * reusing its exported `OPERATIONAL_PATH` regex rather than duplicating it.
+ * Hono middleware that HARD-GATES the operational `/{chain}/{read|send|poll}` routes
+ * (see `docs/work/read-gate-self-key/design.md`): a request is served only if it
+ * resolves to a recognized consumer — a real ephemeral/permanent/env key, or Pythia's
+ * own self secret (injected server-side for same-origin reads, see `effectiveKey.ts`).
  *
- * A valid `x-pythia-key` can come from EITHER of two independent stores —
- * both are checked, and a match in either is accepted:
- *   - `EphemeralKeyStore`: the new, short-lived (`pk_eph_...`) secrets minted
- *     by the headless connector-auth round trip this topic adds.
- *   - `ConnectorStore`: the PRE-EXISTING, permanent (`pk_live_...`) keys an
- *     ancient admin mints via `/admin/connectors` — these predate this gate
- *     entirely and must keep working; checking only the ephemeral store here
- *     would silently 401 every already-registered connector.
+ * Rejection rule: resolve the request's EFFECTIVE key through the shared consumer
+ * resolver; if it lands in the `"direct"` bucket (no key at all, or a key that matched
+ * NOTHING — unknown/expired), reject with 401. This unifies the gate with attribution:
+ * `"direct"` is precisely the unrecognized/anonymous case, and nothing that resolves to
+ * a real consumer is ever `"direct"`.
  *
- * No `x-pythia-key` header at all falls through unchanged (today's open/
- * "direct" behavior, no regression). A header that IS present but resolves in
- * NEITHER store — unknown, expired, malformed — is rejected with 401: a
- * caller actively claiming an identity that doesn't check out is treated
- * differently than an anonymous caller.
+ * This closes the old hole where a keyless caller fell straight through (served + mislabelled
+ * `pythia-self`). It must run BEFORE `statsMiddleware`/`pythMeterMiddleware`, so a rejected
+ * request is NOT metered — the `"direct"`/"Anonymous" bucket can no longer reappear.
+ *
+ * Non-operational paths (health, static, connectors, /api/*) pass through untouched.
  */
-export function connectorGateMiddleware(ephemeralStore: EphemeralKeyStore, connectorStore: ConnectorStore) {
+export function connectorGateMiddleware(resolveConsumer: ReadConsumerResolver) {
   return async (c: Context, next: Next): Promise<Response | void> => {
     if (OPERATIONAL_PATH.exec(c.req.path) === null) {
       await next();
       return;
     }
 
-    const key = c.req.header(CONSUMER_HEADER);
-    if (key === undefined) {
-      await next();
-      return;
-    }
-
-    const resolved = ephemeralStore.resolve(key) !== null || connectorStore.nameForKey(key) !== undefined;
-    if (!resolved) {
-      return c.json({ error: "invalid or expired connector key" }, 401);
+    const { consumer } = resolveConsumer(effectiveKey(c));
+    if (consumer === "direct") {
+      return c.json({ error: "a valid connector API key is required" }, 401);
     }
 
     await next();

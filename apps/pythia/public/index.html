@@ -43,7 +43,8 @@
         <div class="ph-l2">
           <nav class="ph-tier1" aria-label="Sections">
             <button class="ph-btn ph-btn--ghost ph-btn--active" data-tab="chains" type="button">Chains</button>
-            <button class="ph-btn ph-btn--ghost" data-tab="activity" type="button">Activity</button>
+            <button class="ph-btn ph-btn--ghost" data-tab="activity" type="button">StoaChain Activity</button>
+            <button class="ph-btn ph-btn--ghost" data-tab="foreign" type="button">Foreign Blockchain Activity</button>
             <button class="ph-btn ph-btn--ghost" data-tab="developers" type="button">For developers</button>
             <button class="ph-btn ph-btn--ghost" data-tab="connectors" type="button">Connectors</button>
           </nav>
@@ -111,20 +112,44 @@
         <div class="chain-module" id="chain-module" role="tabpanel"></div>
       </section>
 
-      <!-- ── ACTIVITY ─────────────────────────────────────────── -->
-      <!-- Per-chain: the StoaChain / Arweave selector lives in the header's
-           tier-2 (L3) row — see renderTier2 / showActivityChain. -->
+      <!-- ── STOACHAIN ACTIVITY ───────────────────────────────── -->
+      <!-- Two tier-2 sub-views (Live Pulse / Statistics) live in the header's
+           tier-2 (L3) row — see renderTier2 / showActivitySubview. The two
+           [data-activity-view] wrappers below are toggled to match the URL. -->
       <section class="panel tabpanel" data-panel="activity" aria-labelledby="stats-h" hidden>
         <div class="panel-head">
-          <h2 id="stats-h">Activity</h2>
+          <h2 id="stats-h">StoaChain Activity</h2>
           <p class="panel-note" id="activity-note">StoaChain — Petitions &amp; Pondus served (keyed reads) plus Transactions &amp; Gas relayed. Fleet-wide, keyless.</p>
         </div>
-        <div id="stats-body" class="stats" aria-live="polite">
-          <p class="empty">Loading ledger…</p>
+        <!-- Live Pulse: the heartbeat tiles + per-consumer (per API key) list. -->
+        <div data-activity-view="live-pulse">
+          <div id="pulse-body" class="stats" aria-live="polite">
+            <p class="empty">Loading pulse…</p>
+          </div>
         </div>
-        <p class="stats-note" id="stats-note-line">Pyth ledger · fleet-wide totals + daily · <code>GET /pyth</code></p>
-        <!-- Shown when a not-yet-live chain (Arweave) is picked in the tier-2. -->
-        <div id="activity-soon" class="chain-soon" hidden></div>
+        <!-- Statistics: the stone/air totals + the daily petitions graph. -->
+        <div data-activity-view="statistics" hidden>
+          <div id="stats-body" class="stats" aria-live="polite">
+            <p class="empty">Loading ledger…</p>
+          </div>
+          <p class="stats-note" id="stats-note-line">Pyth ledger · fleet-wide totals + daily · <code>GET /pyth</code></p>
+        </div>
+      </section>
+
+      <!-- ── FOREIGN BLOCKCHAIN ACTIVITY ──────────────────────── -->
+      <!-- Tier-2 (Arweave) lives in the header's L3 row — see showForeignSubview.
+           Placeholder only this round; no data yet. -->
+      <section class="panel tabpanel" data-panel="foreign" aria-labelledby="foreign-h" hidden>
+        <div class="panel-head">
+          <h2 id="foreign-h">Foreign Blockchain Activity</h2>
+          <p class="panel-note">Usage across the non-StoaChain chains Pythia will serve.</p>
+        </div>
+        <div data-foreign-view="arweave">
+          <div class="pyth-pulse foreign-soon">
+            <h3>Arweave</h3>
+            <p>Arweave — coming soon.</p>
+          </div>
+        </div>
       </section>
 
       <!-- ── FOR DEVELOPERS ───────────────────────────────────── -->

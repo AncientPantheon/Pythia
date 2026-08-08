@@ -9,6 +9,44 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.1.0] — 2026-08-08
+
+### Changed — read face HARD-GATED; Pythia's own reads go through her self key (no more "Anonymous")
+
+The read/send/poll face now requires a **recognized key** — the old behaviour where a *keyless*
+request fell straight through (served, and mis-attributed to `pythia-self`) is gone. Two defects it
+fixed (see `docs/work/read-gate-self-key/design.md`):
+- `consumerResolver`'s `no-key → pythia-self` shortcut let any external keyless caller free-ride AND
+  masquerade as Pythia. Removed — an absent key is now `"direct"` (unrecognized).
+- The gate only rejected a *present-but-invalid* key; an absent key passed. Now it rejects **both**
+  (`consumer === "direct"` → `401`), and it runs **before** the stats/pyth meters, so a rejected
+  request is never counted — the `"direct"`/"Anonymous" bucket can no longer appear.
+
+Pythia's own website keeps reading `/stoachain/read` keyless with **no frontend change**: a new
+middleware injects her effective key server-side for **same-origin** requests (`Sec-Fetch-Site:
+same-origin`, which cross-site page script can't forge) — her self secret when active (→
+`pythia-self`, keyed), else a random per-process marker that resolves to `pythia-self` unkeyed so her
+site stays readable in the brief windows the self secret is absent (e.g. right after a deploy). The
+secret never reaches the browser; the automaton (which reads via `dial()` server-side) is untouched.
+Valid-key policy is **any recognized key** (ephemeral dual-link, permanent `pk_live_`, or env), so
+the live fleet keeps working. New: `stats/operational.ts`, `connectors/auth/effectiveKey.ts`.
+
+**Operators:** existing `"direct"` values already on disk are historical — purge them out-of-band
+(pyth-ledger `byConsumer.direct` + stats `|direct|` buckets); nothing new will ever write `"direct"`.
+
+### Added — Activity tab: StoaChain / Foreign tiers + paginated pulse with consumer lanes
+
+Restructured the Activity tab (see `docs/work/activity-tab-restructure/design.md`):
+- **Tier-1 "StoaChain Activity"** with **Tier-2 "Live Pulse"** (the pulse cards + the per-API-key
+  consumer list) and **Tier-2 "Statistics"** (the Stone/Air totals + Daily Petitions graph, lifted
+  out from under the list so it's never buried).
+- **Tier-1 "Foreign Blockchain Activity"** with a **Tier-2 "Arweave"** "coming soon" placeholder.
+- The consumer list now **paginates at 10/page** (prev/next + page indicator; the live 4s refresh
+  keeps your page), and each row shows its **consumer lane** (joined from the on-chain dual-link
+  roster `URD_ListAllDualLinks`).
+
+Frontend-only for the Activity work; npm client stays `3.1.0`.
+
 ## [3.0.8] — 2026-08-08
 
 ### Fixed — a just-activated dual link settles into ACTIVE on its own (no manual page refresh)

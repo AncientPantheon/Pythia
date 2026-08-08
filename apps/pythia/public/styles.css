@@ -546,6 +546,14 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .pulse-cval { color: var(--gold); font-weight: 600; font-variant-numeric: tabular-nums; }
 .pulse-cunit { color: var(--ink-mute); font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; }
 .pulse-cfail { color: var(--red, #e06d6d); font-size: 11px; flex: none; }
+/* Consumer lane pill — mirrors the .dl-lane accent on connector rows, as a chip. */
+.pulse-clane { flex: none; font-size: 11px; color: var(--ink-soft); border: 1px solid var(--line); border-radius: 6px; padding: 1px .45rem; background: rgba(230,190,106,.08); white-space: nowrap; }
+/* Consumer-list pager — centred below the list, reuses the shared .pg-btn/.pg-label. */
+.pulse-pager { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; }
+/* Foreign / Arweave placeholder card. */
+.foreign-soon { text-align: center; padding: 26px 16px; }
+.foreign-soon h3 { margin: 0 0 8px; font-size: 18px; color: var(--ink); }
+.foreign-soon p { margin: 0 auto; max-width: 44ch; color: var(--ink-soft); }
 
 .stats-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .stats-table th, .stats-table td {

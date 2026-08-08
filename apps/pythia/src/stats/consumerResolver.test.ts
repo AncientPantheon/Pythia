@@ -30,16 +30,14 @@ describe("makeResolveConsumer", () => {
     });
   });
 
-  it("a KEYLESS read is ALWAYS Pythia's own → 'pythia-self' (the fix), regardless of self-connector state", () => {
-    // Was the bug: with the self-connector inactive, keyless reads resolved to
-    // "direct"/Anonymous, so "Pythia (self)" showed 0 petitions despite her reading.
-    expect(make({ selfSecret: () => null })()).toEqual({ consumer: "pythia-self", keyed: false });
-    expect(make({ selfSecret: () => undefined })()).toEqual({ consumer: "pythia-self", keyed: false });
-  });
-
-  it("a KEYLESS read EARNS (keyed) only when Pythia has an active self-connector", () => {
-    // label is always pythia-self; keyed follows self-connector activity (economics preserved).
-    expect(make({ selfSecret: () => "SELF" })()).toEqual({ consumer: "pythia-self", keyed: true });
+  it("a KEYLESS read is 'direct', NOT keyed — the no-key→self shortcut is gone (read-gate hardening)", () => {
+    // Post-hardening: a keyless request is never ASSUMED to be Pythia. Her own website
+    // reads arrive with her self secret injected server-side (effectiveKey.ts) → they
+    // resolve via the explicit self-secret branch, not here. A genuinely keyless request
+    // is rejected by the gate before it is metered. Independent of self-connector state.
+    expect(make({ selfSecret: () => null })()).toEqual({ consumer: "direct", keyed: false });
+    expect(make({ selfSecret: () => undefined })()).toEqual({ consumer: "direct", keyed: false });
+    expect(make({ selfSecret: () => "SELF" })()).toEqual({ consumer: "direct", keyed: false });
   });
 
   it("a caller explicitly presenting Pythia's self secret → 'pythia-self', keyed", () => {
@@ -53,6 +51,13 @@ describe("makeResolveConsumer", () => {
       resolveEphemeral: (s) => (s === "OTHER" ? { apolloAccount: "₱.other" } : null),
     });
     expect(r("OTHER")).toEqual({ consumer: "₱.other", keyed: true });
+  });
+
+  it("the injected first-party marker → 'pythia-self', NOT keyed (same-origin read, no active self secret)", () => {
+    const r = make({ firstPartyMarker: "fp_marker", selfSecret: () => null });
+    expect(r("fp_marker")).toEqual({ consumer: "pythia-self", keyed: false });
+    // Without the marker dep wired, that same string is just an unknown key → direct.
+    expect(make()("fp_marker")).toEqual({ consumer: "direct", keyed: false });
   });
 
   it("a key that resolves to NOTHING (unknown/expired) → 'direct', NOT keyed", () => {

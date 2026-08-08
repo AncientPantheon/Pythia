@@ -1,19 +1,17 @@
 import type { Context, Next } from "hono";
 import type { StatsEndpoint, StatsStore } from "./store.js";
+import { OPERATIONAL_PATH, CONSUMER_HEADER } from "./operational.js";
+import { effectiveKey } from "../connectors/auth/effectiveKey.js";
 
 /** Resolve a request's `x-pythia-key` to a consumer name (or the "direct"
  * anonymous bucket). Injected so the source — env map, connector store, or both —
  * is decided at wiring time. */
 export type ConsumerResolver = (key?: string) => string;
 
-/** Only the three operational verbs are counted — `/{chain}/{read|send|poll}`.
- * Health, connectors, and static assets deliberately do NOT match. */
-export const OPERATIONAL_PATH = /^\/([^/]+)\/(read|send|poll)$/;
-
-/** Header a consumer sends to identify itself for usage attribution. Exported
- * so other consumers of this header (e.g. `connectors/auth/gateMiddleware.ts`)
- * reuse the same literal instead of redeclaring it. */
-export const CONSUMER_HEADER = "x-pythia-key";
+// Re-exported from ./operational.js (the leaf module that also feeds effectiveKey.ts,
+// breaking the middleware↔effectiveKey cycle) so existing `from "./middleware.js"`
+// importers of these two constants keep working unchanged.
+export { OPERATIONAL_PATH, CONSUMER_HEADER };
 
 /**
  * Hono middleware that records usage analytics for operational requests.
@@ -38,7 +36,7 @@ export function statsMiddleware(
 
     const chain = match[1];
     const endpoint = match[2] as StatsEndpoint;
-    const consumer = resolveConsumer(c.req.header(CONSUMER_HEADER));
+    const consumer = resolveConsumer(effectiveKey(c));
 
     await next();
 

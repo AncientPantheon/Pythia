@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { registerHealthz } from "./routes/healthz.js";
@@ -22,6 +23,7 @@ import { DualLinkCache, readActiveDualLinkAccounts } from "./connectors/auth/dua
 import { AuthNonceStore } from "./connectors/auth/nonceStore.js";
 import { EphemeralKeyStore } from "./connectors/auth/ephemeralKeyStore.js";
 import { connectorGateMiddleware } from "./connectors/auth/gateMiddleware.js";
+import { firstPartyKeyMiddleware } from "./connectors/auth/effectiveKey.js";
 import { readApolloPublicKey } from "./connectors/verify/readApolloPublicKey.js";
 import { readApolloCounterpart } from "./connectors/auth/readApolloCounterpart.js";
 import { PendingActivationTracker } from "./connectors/auth/pendingActivationTracker.js";
@@ -122,6 +124,14 @@ export const connectorStore = new ConnectorStore({
   filePath: process.env.CONNECTORS_FILE || "./pythia-connectors.json",
 });
 
+// A RANDOM per-process marker (read-gate-self-key). `firstPartyKeyMiddleware` injects
+// it as the effective key for same-origin keyless reads WHEN Pythia has no active self
+// secret, and the resolver maps it back to `pythia-self` (unkeyed) — so her own website
+// stays readable in the brief windows the self secret is absent (e.g. right after a
+// deploy). It is never sent to any client and is unguessable, so it can't be presented
+// by an external caller to masquerade as Pythia.
+const FIRST_PARTY_MARKER = `fp_${randomBytes(24).toString("base64url")}`;
+
 // Resolve an `x-pythia-key` to a consumer identity for usage attribution — see
 // `stats/consumerResolver.ts` for the precedence + rationale. Pythia's OWN key
 // (keyless reads + her fires) unifies under `PYTHIA_SELF_CONSUMER`. The closures
@@ -133,6 +143,7 @@ const resolveConsumerFull = makeResolveConsumer({
   nameForKey: (key) => connectorStore.nameForKey(key),
   envConsumer: (key) => envConsumerMap.get(key),
   selfLabel: PYTHIA_SELF_CONSUMER,
+  firstPartyMarker: FIRST_PARTY_MARKER,
 });
 // The meter needs both the consumer AND the keyed/earning flag; stats + the report
 // gate only need the consumer NAME.
@@ -377,15 +388,27 @@ const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public")
 // for this public read-only gateway. Same-origin static assets are unaffected.
 app.use("*", corsMiddleware(loadConfigFromDisk().corsOrigins));
 
-// Usage analytics runs before the route handlers so it can observe each
-// operational request's final status. It only counts `/{chain}/{read|send|poll}`
-// (health/static/connectors are ignored) and records nothing else — keyless, it
-// never signs or broadcasts.
+// Read-gate + self-key seam (docs/work/read-gate-self-key/design.md). ORDER MATTERS:
+//   1. first-party self-key injection — a same-origin (Sec-Fetch-Site: same-origin)
+//      operational read with NO x-pythia-key gets Pythia's own self secret injected as
+//      its effective key, so her website's keyless fetches attribute to `pythia-self`
+//      and clear the gate. Secret never leaves the server; the automaton (which reads
+//      via dial() server-side, not over HTTP) is untouched.
+//   2. HARD gate — reject any operational request whose effective key resolves to the
+//      unrecognized "direct" bucket (no key, or unknown/expired key). Runs BEFORE the
+//      meters, so a rejected request is NEVER counted — the "direct"/Anonymous bucket
+//      can no longer reappear in the ledger or /stats.
+//   3. stats + pyth metering — now only ever see served (recognized) requests.
+app.use("*", firstPartyKeyMiddleware(() => selfConnectorLoop.status().secret, FIRST_PARTY_MARKER));
+app.use("*", connectorGateMiddleware(resolveConsumerFull));
+
+// Usage analytics — counts `/{chain}/{read|send|poll}` (health/static/connectors are
+// ignored). Keyless; never signs or broadcasts.
 app.use("*", statsMiddleware(statsStore, resolveConsumer));
 
-// Pyth-economy metering runs alongside stats — keyed reads/polls → Petitions +
-// Pondus, sends → Transactions/Gas (accepted) or Failed/Wasted (rejected). It
-// reads only response gas/bytes + the caller's gasLimit; it never signs.
+// Pyth-economy metering — keyed reads/polls → Petitions + Pondus, sends →
+// Transactions/Gas (accepted) or Failed/Wasted (rejected). Reads only response
+// gas/bytes + the caller's gasLimit; it never signs.
 app.use(
   "*",
   pythMeterMiddleware(pythLedger, resolveConsumerFull, txTracker, {
@@ -393,14 +416,6 @@ app.use(
     operatorForSlot: (id) => nodePool.operatorForSlot(id),
   }),
 );
-
-// Real request gating (design.md Decision 1): a caller presenting an
-// `x-pythia-key` that doesn't resolve to a live ephemeral secret is rejected
-// outright; no header at all is unchanged (today's open/"direct" behavior).
-// Positioned AFTER stats/pyth metering so a gated-and-rejected request is
-// still counted/metered — matching how every other layered middleware here
-// is ordered.
-app.use("*", connectorGateMiddleware(ephemeralKeyStore, connectorStore));
 
 // API + health routes are registered BEFORE the `/` static catch-all so the
 // static handler never shadows `/healthz`, `/stoachain/*`, `/api/v1/*`, or `/stats`.

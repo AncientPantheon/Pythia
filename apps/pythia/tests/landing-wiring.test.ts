@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { app } from "../src/index.js";
+import { app, ephemeralKeyStore } from "../src/index.js";
 
 // Smoke coverage for the additive wiring in src/index.ts: the static landing
 // mount at `/` and the connectors route must both respond, and the pre-existing
@@ -45,11 +45,23 @@ describe("landing wiring in the app", () => {
     // An out-of-range chainId is rejected with 400 BEFORE any network attempt,
     // proving the read route handler ran — the static `/` catch-all did not shadow
     // it (a shadow would yield a 404 from static file resolution, not a 400).
+    // The read face is now HARD-GATED (read-gate-self-key), so we must present a
+    // recognized key to reach the handler at all — issue a real ephemeral one.
+    const { secret } = ephemeralKeyStore.issue("₱.landing-wiring-test");
     const res = await app.request("/stoachain/read", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-pythia-key": secret },
       body: JSON.stringify({ chainId: 99, code: "(f)" }),
     });
     expect(res.status).toBe(400);
+  });
+
+  it("HARD-GATES the read face — a keyless POST /stoachain/read is 401 (read-gate-self-key)", async () => {
+    const res = await app.request("/stoachain/read", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chainId: 0, code: "(f)" }),
+    });
+    expect(res.status).toBe(401);
   });
 });

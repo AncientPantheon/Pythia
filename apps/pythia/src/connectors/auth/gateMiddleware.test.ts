@@ -6,6 +6,8 @@ import { Hono } from "hono";
 import { EphemeralKeyStore } from "./ephemeralKeyStore.js";
 import { ConnectorStore } from "../store.js";
 import { connectorGateMiddleware } from "./gateMiddleware.js";
+import { firstPartyKeyMiddleware } from "./effectiveKey.js";
+import { makeResolveConsumer, type ReadConsumerResolver } from "../../stats/consumerResolver.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -18,85 +20,125 @@ function freshConnectorStore(): ConnectorStore {
   return new ConnectorStore({ filePath: join(dir, "connectors.json") });
 }
 
-function appWith(ephemeralStore: EphemeralKeyStore, connectorStore: ConnectorStore): Hono {
+/** A real resolver over the given stores (+ optional self secret) — the same one
+ * the gate uses in production, so the test exercises actual recognition. */
+const MARKER = "fp_test_marker";
+
+function resolverFor(
+  eph: EphemeralKeyStore,
+  conn: ConnectorStore,
+  selfSecret: string | null = null,
+): ReadConsumerResolver {
+  return makeResolveConsumer({
+    selfSecret: () => selfSecret,
+    resolveEphemeral: (s) => eph.resolve(s),
+    nameForKey: (k) => conn.nameForKey(k),
+    envConsumer: () => undefined,
+    selfLabel: "pythia-self",
+    firstPartyMarker: MARKER,
+  });
+}
+
+function appWith(resolve: ReadConsumerResolver, selfSecret: string | null = null): Hono {
   const app = new Hono();
-  app.use("*", connectorGateMiddleware(ephemeralStore, connectorStore));
+  app.use("*", firstPartyKeyMiddleware(() => selfSecret, MARKER));
+  app.use("*", connectorGateMiddleware(resolve));
   app.get("/healthz", (c) => c.json({ status: "ok" }));
   app.post("/stoachain/read", (c) => c.json({ ok: true }));
   return app;
 }
 
-describe("connectorGateMiddleware", () => {
-  it("passes through a non-matching path unchanged, even with a bogus key header", async () => {
-    // The gate must only ever look at operational read/send/poll paths — a
-    // health check carrying a garbage key must not be affected at all.
-    const app = appWith(new EphemeralKeyStore(), freshConnectorStore());
-
-    const res = await app.request("/healthz", {
-      headers: { "x-pythia-key": "not-a-real-key" },
-    });
-
+describe("connectorGateMiddleware (hardened)", () => {
+  it("passes through a non-operational path unchanged, even with a bogus key header", async () => {
+    const app = appWith(resolverFor(new EphemeralKeyStore(), freshConnectorStore()));
+    const res = await app.request("/healthz", { headers: { "x-pythia-key": "not-a-real-key" } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "ok" });
   });
 
-  it("passes an operational request through when no key header is present", async () => {
-    // Decision 1: no header at all is today's open/"direct" behavior — must not regress.
-    const app = appWith(new EphemeralKeyStore(), freshConnectorStore());
-
+  it("REJECTS an operational request with NO key header (the hardening — was 200)", async () => {
+    const app = appWith(resolverFor(new EphemeralKeyStore(), freshConnectorStore()));
     const res = await app.request("/stoachain/read", { method: "POST" });
-
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "a valid connector API key is required" });
   });
 
-  it("rejects an operational request with an unknown key and never reaches the handler", async () => {
-    const app = new Hono();
+  it("rejects an operational request with an unknown/expired key and never reaches the handler", async () => {
     let handlerCalled = false;
-    app.use("*", connectorGateMiddleware(new EphemeralKeyStore(), freshConnectorStore()));
+    const app = new Hono();
+    app.use("*", connectorGateMiddleware(resolverFor(new EphemeralKeyStore(), freshConnectorStore())));
     app.post("/stoachain/read", (c) => {
       handlerCalled = true;
       return c.json({ ok: true });
     });
-
     const res = await app.request("/stoachain/read", {
       method: "POST",
       headers: { "x-pythia-key": "pk_eph_unknown-or-expired" },
     });
-
     expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "invalid or expired connector key" });
     expect(handlerCalled).toBe(false);
   });
 
-  it("passes an operational request through when the key resolves via a real EphemeralKeyStore", async () => {
-    const ephemeralStore = new EphemeralKeyStore();
-    const { secret } = ephemeralStore.issue("₱.consumer-a");
-    const app = appWith(ephemeralStore, freshConnectorStore());
-
+  it("passes an operational request whose key resolves via a real EphemeralKeyStore", async () => {
+    const eph = new EphemeralKeyStore();
+    const { secret } = eph.issue("₱.consumer-a");
+    const app = appWith(resolverFor(eph, freshConnectorStore()));
     const res = await app.request("/stoachain/read", {
       method: "POST",
       headers: { "x-pythia-key": secret },
     });
-
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
   });
 
-  it("passes an operational request through when the key resolves via the PRE-EXISTING ConnectorStore (a permanent pk_live_ key, not one this gate itself issues)", async () => {
-    // Regression guard: an ancient admin's already-registered connector must
-    // keep working after this gate ships — it must not be silently 401'd just
-    // because its key lives in ConnectorStore rather than EphemeralKeyStore.
-    const connectorStore = freshConnectorStore();
-    const { apiKey } = connectorStore.add({ name: "existing-connector", url: "https://example.com", isPublic: false });
-    const app = appWith(new EphemeralKeyStore(), connectorStore);
-
+  it("passes a PRE-EXISTING permanent pk_live_ key (ConnectorStore) — the live fleet must not break", async () => {
+    const conn = freshConnectorStore();
+    const { apiKey } = conn.add({ name: "existing-connector", url: "https://example.com", isPublic: false });
+    const app = appWith(resolverFor(new EphemeralKeyStore(), conn));
     const res = await app.request("/stoachain/read", {
       method: "POST",
       headers: { "x-pythia-key": apiKey },
     });
-
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("passes a caller presenting Pythia's own self secret explicitly", async () => {
+    const app = appWith(resolverFor(new EphemeralKeyStore(), freshConnectorStore(), "SELF-SECRET"), "SELF-SECRET");
+    const res = await app.request("/stoachain/read", {
+      method: "POST",
+      headers: { "x-pythia-key": "SELF-SECRET" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("INJECTS the self key for a same-origin keyless read → served as pythia-self", async () => {
+    // Pythia's own website: keyless fetch, Sec-Fetch-Site: same-origin. The
+    // firstPartyKeyMiddleware injects her self secret so the gate lets it through.
+    const app = appWith(resolverFor(new EphemeralKeyStore(), freshConnectorStore(), "SELF-SECRET"), "SELF-SECRET");
+    const res = await app.request("/stoachain/read", {
+      method: "POST",
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("does NOT inject for a cross-site keyless read → still rejected", async () => {
+    const app = appWith(resolverFor(new EphemeralKeyStore(), freshConnectorStore(), "SELF-SECRET"), "SELF-SECRET");
+    const res = await app.request("/stoachain/read", {
+      method: "POST",
+      headers: { "sec-fetch-site": "cross-site" },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("SERVES a same-origin keyless read even with NO active self secret (marker robustness)", async () => {
+    // The failure mode this guards: right after a deploy the self secret is briefly
+    // absent. Pythia's own site must NOT go dark — the marker keeps same-origin reads
+    // served (as pythia-self, unkeyed) until the self-connector re-mints.
+    const app = appWith(resolverFor(new EphemeralKeyStore(), freshConnectorStore(), null), null);
+    const res = await app.request("/stoachain/read", {
+      method: "POST",
+      headers: { "sec-fetch-site": "same-origin" },
+    });
+    expect(res.status).toBe(200);
   });
 });
