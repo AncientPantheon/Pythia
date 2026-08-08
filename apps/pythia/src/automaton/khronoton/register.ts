@@ -6,8 +6,10 @@ import {
   DUAL_LINK_ACTIVATE_RESOLVER,
 } from "./dualLinkActivateResolver.js";
 import { wireEventDrivenActivation } from "./dualLinkActivateTrigger.js";
+import { registerDualLinkBreakResolver } from "./dualLinkBreakResolver.js";
 import { repairEventedScheduleless, type RepairDb } from "./eventedScheduleRepair.js";
 import type { PendingActivationTracker } from "../../connectors/auth/pendingActivationTracker.js";
+import type { PendingBreakTracker } from "../../connectors/auth/pendingBreakTracker.js";
 import type { CodexStore } from "../codexStore.js";
 import type { PythLedger } from "../../pyth/ledger.js";
 
@@ -23,6 +25,7 @@ export async function startPythiaKhronotonEngine(
   codex: CodexStore,
   ledger: PythLedger,
   pendingActivation: PendingActivationTracker,
+  pendingBreak: PendingBreakTracker,
 ): Promise<void> {
   if (g.__pythiaKhronotonLoop) return;
   // Register the pyth-flush server resolver with the live ledger so a flush cronoton's
@@ -35,6 +38,12 @@ export async function startPythiaKhronotonEngine(
   // `dual-link-activate` cronoton's `standardApollo`/`smartApollo` payload fills at
   // fire time. Same idempotent, disabled-loop-safe registration as the flush resolver.
   registerDualLinkActivateResolver(pendingActivation);
+  // Register the dual-link-break server resolver with the live break queue, so a
+  // `dual-link-break` cronoton's `dualAPI` payload fills at fire time with the
+  // ancient-admin-selected key. Same idempotent, disabled-loop-safe registration.
+  // The break is operator-initiated (fired by the /admin/connectors/break route's
+  // executeNow), so there is no proof-event wiring — just the resolver + queue.
+  registerDualLinkBreakResolver(pendingBreak);
   // TRUE event-driven activation: a pair becoming fully proven fires the
   // scheduleless `dual-link-activate` cronoton IMMEDIATELY (no schedule tick). Wired
   // to the SAME tracker the resolver drains, so the event both resolves the payload

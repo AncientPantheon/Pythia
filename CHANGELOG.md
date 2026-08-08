@@ -9,6 +9,25 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.4] — 2026-08-08
+
+### Added — dual-link DEACTIVATION ("API Break") backend: resolver + ancient-gated route
+
+The server half of the connector deactivate feature. New **`dual-link-break` server resolver**
+(`dualLinkBreakResolver.ts`, evented/scheduleless) that drains an operator-queued composite
+`dual-link-key` from a new **`PendingBreakTracker`** into the on-chain revoke tx —
+`(ouronet-ns.TS01-C4.PYTHIA|A_RevokeLink (read-msg "dualAPI"))`. Registered in the engine (so a cronoton
+can bind to it) and added to the evented registry. New **ancient-gated `POST /admin/connectors/break`**
+(same gate + `x-pythia-confirmed` + audit triad as force-delete) records the target link and fires the
+`dual-link-break` cronoton via `executeNow`; if the operator hasn't created that cronoton yet, the break
+is queued and a clear `503 break_resolver_unregistered` is returned (it fires the moment the cronoton
+exists). The route lives under `automaton/` (the keyed sovereign boundary — it drives on-chain signing),
+per the keyless-invariant scanner. Operator adds the `dual-link-break` cronoton (pact code above) to
+light it up. Service-only — client stays 3.1.0.
+
+> Remaining for this feature: the FRONTEND (row selection + "API Link" activate for inactive links +
+> ancient-only "API Break" button on active links) — next.
+
 ## [3.0.3] — 2026-08-08
 
 ### Added — client 401 self-heal (ships `pythia-client` 3.1.0)

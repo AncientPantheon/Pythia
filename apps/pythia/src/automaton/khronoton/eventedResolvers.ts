@@ -1,4 +1,5 @@
 import { DUAL_LINK_ACTIVATE_RESOLVER } from "./dualLinkActivateResolver.js";
+import { DUAL_LINK_BREAK_RESOLVER } from "./dualLinkBreakResolver.js";
 import { PYTH_FLUSH_RESOLVER } from "./pythFlushResolver.js";
 
 /**
@@ -16,6 +17,7 @@ import { PYTH_FLUSH_RESOLVER } from "./pythFlushResolver.js";
  */
 export const EVENTED_SERVER_RESOLVERS: ReadonlySet<string> = new Set<string>([
   DUAL_LINK_ACTIVATE_RESOLVER,
+  DUAL_LINK_BREAK_RESOLVER,
 ]);
 
 // Referenced so the schedule-driven resolver is explicitly documented as NON-evented

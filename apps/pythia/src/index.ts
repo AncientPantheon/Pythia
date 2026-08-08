@@ -25,10 +25,12 @@ import { connectorGateMiddleware } from "./connectors/auth/gateMiddleware.js";
 import { readApolloPublicKey } from "./connectors/verify/readApolloPublicKey.js";
 import { readApolloCounterpart } from "./connectors/auth/readApolloCounterpart.js";
 import { PendingActivationTracker } from "./connectors/auth/pendingActivationTracker.js";
+import { PendingBreakTracker } from "./connectors/auth/pendingBreakTracker.js";
 import { registerAdminDeploy } from "./routes/adminDeploy.js";
 import { VerifierStore } from "./verifiers/store.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { loadOidcConfig } from "./admin/oidcConfig.js";
+import { registerConnectorBreak } from "./automaton/khronoton/connectorBreakRoute.js";
 import { registerAdmin } from "./admin/routes.js";
 import { ConnectorStore } from "./connectors/store.js";
 import { SettingsStore } from "./admin/settingsStore.js";
@@ -270,6 +272,10 @@ async function readApolloPublicKeyForAuth(account: string): Promise<string> {
 // above are — a single shared instance threaded to both the HTTP route (record side) and
 // the Khronoton engine (fire side).
 export const pendingActivationTracker = new PendingActivationTracker();
+// The operator-initiated DEACTIVATION ("API Break") queue — the ancient-gated
+// /admin/connectors/break route records the selected dual-link-key here, and the
+// dual-link-break resolver drains it into the on-chain A_RevokeLink tx.
+export const pendingBreakTracker = new PendingBreakTracker();
 
 // Pythia consuming her OWN connector protocol on her own behalf
 // (docs/work/pythia-self-consumer/design.md): a sealed-vault-backed dual-Apollo
@@ -597,6 +603,9 @@ if (oidcConfig) {
   // admin surface, sharing the same engine context (db + sealed-codex resolver +
   // chain runtime) as the tick loop. Keyed automaton core — never on the client path.
   registerKhronotonAdmin(app, oidcConfig, codexStore);
+  // Ancient-gated dual-link DEACTIVATION ("API Break") → fires the dual-link-break
+  // cronoton (on-chain A_RevokeLink). Same gate+confirm+audit as force-delete.
+  registerConnectorBreak(app, { cfg: oidcConfig, codex: codexStore, pendingBreak: pendingBreakTracker });
 }
 
 // The dedicated ancient-admin dashboard page. Served as its own document at
