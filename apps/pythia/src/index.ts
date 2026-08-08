@@ -239,7 +239,12 @@ export const dualLinkCache = new DualLinkCache({
   },
 });
 export const authNonceStore = new AuthNonceStore();
-export const ephemeralKeyStore = new EphemeralKeyStore();
+// Volume-backed (like connectorStore) so a gateway restart / deploy does NOT
+// orphan every consumer's live ephemeral key — set EPHEMERAL_KEYS_FILE to the
+// mounted-volume path in prod (same volume as CONNECTORS_FILE).
+export const ephemeralKeyStore = new EphemeralKeyStore({
+  filePath: process.env.EPHEMERAL_KEYS_FILE || "./pythia-ephemeral-keys.json",
+});
 
 // Resolves a headless-verify caller's on-chain Apollo public key for
 // `registerConnectorAuth` below. `readApolloPublicKey` itself takes an

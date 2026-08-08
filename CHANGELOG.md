@@ -9,6 +9,23 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.1] — 2026-08-08
+
+### Fixed — ephemeral connector keys no longer orphaned on gateway restart (deploy incident)
+
+Every gated write from a daimon (OuronetUI, …) 401'd with "invalid or expired connector key" after a
+deploy, while the client still showed the key active — because `EphemeralKeyStore` was **in-memory only**,
+so a gateway restart wiped every minted `pk_eph_` key (the permanent `pk_live_` `ConnectorStore` already
+persisted). `EphemeralKeyStore` is now **volume-backed** exactly like `ConnectorStore`: hash-only,
+atomic (tmp+rename) write on mint/sweep, drops already-expired entries on load, best-effort (a disk
+failure warns once and never breaks minting). Set `EPHEMERAL_KEYS_FILE` to the mounted-volume path in
+prod (same volume as `CONNECTORS_FILE`). So a restart/deploy no longer orphans live keys — consumers keep
+working with **no client change required**. (Keys minted BEFORE this deploy are already gone and recover
+on each consumer's next natural re-mint near expiry; a follow-up client self-heal will make that instant.)
+
+**First SERVICE-ONLY release under the decoupled versioning (v3.0.0):** the client package is untouched
+and stays at `3.0.0` — its npm publish is skipped; only the service image bumps.
+
 ## [3.0.0] — 2026-08-08
 
 ### Changed (BREAKING, versioning) — the client version is now INDEPENDENT of the service

@@ -53,6 +53,7 @@ pythia-stats.json
 pythia-connectors.json
 pythia-settings.json
 pythia-txsenders.json
+pythia-ephemeral-keys.json
 
 # generated runtime Pyth ledger + epoch (fleet ledger, written by the automaton)
 pythia-pyth-ledger.json
