@@ -33,6 +33,13 @@ const SERVER_RESOLVER_OPTIONS: ServerResolverOption[] = [
       "Fills standardApollo/smartApollo from the oldest verified-but-not-yet-active " +
       "pair — a no-op fire when none are ready.",
   },
+  {
+    value: "dual-link-break",
+    label: "Dual-Link Break (A_RevokeLink)",
+    note:
+      "Fills dualAPI from the oldest ancient-admin-queued revoke — a no-op fire when " +
+      "none are queued. Pact: (ouronet-ns.TS01-C4.PYTHIA|A_RevokeLink (read-msg \"dualAPI\")).",
+  },
 ];
 
 /**

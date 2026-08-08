@@ -9,6 +9,17 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.5] — 2026-08-08
+
+### Fixed — `dual-link-break` was un-selectable in the Khronoton Builder's Server Resolver dropdown
+
+The resolver was registered and working server-side (`listServerResolvers()` returns it), but the
+Builder's dropdown is populated from a HARDCODED `SERVER_RESOLVER_OPTIONS` list in `khronoton-ui/
+KhronotonApp.tsx` (deliberately, not auto-discovered) that had `pyth-flush` + `dual-link-activate` but
+not the new `dual-link-break`. Added it: **"Dual-Link Break (A_RevokeLink)"**, with the pact code hint
+`(ouronet-ns.TS01-C4.PYTHIA|A_RevokeLink (read-msg "dualAPI"))`. So the operator can now pick it when
+creating the deactivation cronoton. Service-only — client stays 3.1.0.
+
 ## [3.0.4] — 2026-08-08
 
 ### Added — dual-link DEACTIVATION ("API Break") backend: resolver + ancient-gated route
