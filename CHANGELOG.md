@@ -9,6 +9,26 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.6] — 2026-08-08
+
+### Added — activate/deactivate a dual link from the Connectors list (the frontend)
+
+Completes the connector activate/deactivate feature. On `#connectors` (full API keys) the rows are now
+**selectable**; the selected row reveals a context action by its state + the viewer's role:
+- **Inactive link → "Verify & Activate (API Link)"** — available to ANY viewer (logged in or not,
+  login-agnostic like the register flow). Drives the existing verify flow seeded with that row's two
+  halves (`verify/start` → a verifier's `/apollo-verify` → `verify/status`); on both-proven, Pythia
+  autonomously fires `A_LinkDualApiKey`. The row shows pending → activating → activated live, then flips
+  ACTIVE.
+- **Active link → "Deactivate (API Break)"** — shown ONLY to the ancient admin; confirm → `POST
+  /admin/connectors/break` (x-pythia-confirmed) → the `dual-link-break` cronoton fires `A_RevokeLink`.
+  Non-ancient viewers see "only the ancient admin can deactivate." Clear messages for the 401/403/503/400
+  cases.
+
+`openVerifyPopup` was generalized to accept an explicit pair (register flow untouched — it still passes
+its picked halves). Frontend only (`public/app.js` + `styles.css`); server side shipped in 3.0.4/3.0.5.
+Service-only — client stays 3.1.0.
+
 ## [3.0.5] — 2026-08-08
 
 ### Fixed — `dual-link-break` was un-selectable in the Khronoton Builder's Server Resolver dropdown

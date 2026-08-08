@@ -260,7 +260,7 @@ function renderReading(container, rows = 4) {
 }
 
 // ── sub-tab 1: full API keys (dual-links) ───────────────────────────────────
-let dlState = { filter: "all", search: "", page: 0, rows: [] };
+let dlState = { filter: "all", search: "", page: 0, rows: [], selKey: null, actPhase: null, busy: false };
 let dlReqSeq = 0; // guards against a slow earlier fetch clobbering a newer one
 
 async function loadDualLinks() {
@@ -391,12 +391,141 @@ function copyKeyButton(key) {
   return btn;
 }
 
+// ── select a dual link → activate (inactive) / deactivate (active) ───────────
+// Selecting a row reveals a context action: an INACTIVE link offers "Verify &
+// Activate (API Link)" to ANY viewer (login-agnostic, like the register flow); an
+// ACTIVE link offers "Deactivate (API Break)" ONLY to the ancient admin.
+function selectDlRow(key) {
+  dlState.selKey = dlState.selKey === key ? null : key; // toggle
+  dlState.actPhase = null;
+  stopDlActivationPoll();
+  renderDualLinks();
+}
+
+// Poll the pair's verify/activation status (same endpoint the register view uses),
+// so the row reflects pending → activating → activated live after "API Link".
+let dlActPollTimer = null;
+let dlActPollLeft = 0;
+async function loadDlActivation(std, smart) {
+  try {
+    const url = `/api/connectors/verify/status?standard=${encodeURIComponent(std)}&smart=${encodeURIComponent(smart)}`;
+    const res = await fetch(url, { headers: { accept: "application/json" } });
+    const body = await res.json();
+    dlState.actPhase = typeof body.activation === "string" ? body.activation : null;
+  } catch { /* keep last */ }
+  renderDualLinks();
+  if (dlState.actPhase === "activating") {
+    if (!dlActPollTimer) {
+      dlActPollLeft = 20;
+      dlActPollTimer = setInterval(() => {
+        if (dlActPollLeft-- <= 0) { stopDlActivationPoll(); return; }
+        loadDlActivation(std, smart);
+      }, 5000);
+    }
+  } else {
+    stopDlActivationPoll();
+    if (dlState.actPhase === "activated") loadDualLinks(); // row flips ACTIVE
+  }
+}
+function stopDlActivationPoll() {
+  if (dlActPollTimer) { clearInterval(dlActPollTimer); dlActPollTimer = null; }
+  dlActPollLeft = 0;
+}
+
+// Deactivate ("API Break") — ancient-only. Confirm → POST /admin/connectors/break
+// (x-pythia-confirmed) → the dual-link-break cronoton fires A_RevokeLink on-chain.
+async function apiBreak(dualLinkKey) {
+  const ok = await confirmDialog({
+    title: "Deactivate this link? (API Break)",
+    message:
+      "This revokes the ACTIVE dual link on-chain via A_RevokeLink — the consumer's gated access stops. Ancient-only, and irreversible without re-linking + re-activating.",
+    confirmLabel: "Deactivate",
+    danger: true,
+  });
+  if (!ok) return;
+  dlState.busy = true;
+  renderDualLinks();
+  try {
+    const res = await fetch("/admin/connectors/break", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json", "x-pythia-confirmed": "1" },
+      body: JSON.stringify({ dualLinkKey }),
+    });
+    const body = await res.json().catch(() => ({}));
+    dlState.busy = false;
+    if (res.ok && body.ok) {
+      dlState.selKey = null;
+      loadDualLinks(); // refresh — the row flips inactive once the revoke mines
+      return;
+    }
+    let msg;
+    if (res.status === 401 || res.status === 403) msg = "ancient admin session required — log in via the Admin dashboard.";
+    else if (body.code === "break_resolver_unregistered") msg = "no dual-link-break cronoton is set up yet — create one in the Khronoton admin.";
+    else msg = body.error || `break failed (HTTP ${res.status})`;
+    dlState.actPhase = null;
+    renderDualLinks();
+    setDlActionError(msg);
+  } catch (e) {
+    dlState.busy = false;
+    renderDualLinks();
+    setDlActionError(e.message || "break request failed");
+  }
+}
+function setDlActionError(msg) {
+  const el = document.getElementById("dl-action-error");
+  if (el) { el.textContent = msg; el.hidden = !msg; }
+}
+
+// The inline context action zone for the SELECTED row.
+function buildDlActions(r, key, active) {
+  const zone = el("div", "dl-actions");
+  if (!active) {
+    // INACTIVE → Verify & Activate (API Link), any viewer.
+    const std = r["standard-apollo"];
+    const smart = r["smart-apollo"];
+    const phase = dlState.actPhase;
+    if (phase === "activated") {
+      zone.appendChild(el("span", "dl-act-phase dl-act-phase--ok", "Activated — refreshing…"));
+    } else if (phase === "activating") {
+      zone.appendChild(el("span", "dl-act-phase dl-act-phase--live", "Proven — Pythia is firing A_Link…"));
+    } else {
+      const btn = el("button", "btn btn--primary dl-act-btn", "Verify & Activate (API Link)");
+      btn.type = "button";
+      btn.title = "Prove ownership of both halves, then Pythia autonomously activates the link";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openVerifyPopup({ std, smart, onDone: () => loadDlActivation(std, smart) });
+      });
+      zone.appendChild(btn);
+      if (phase === "pending") {
+        zone.appendChild(el("span", "dl-act-phase", "One or both halves not yet proven — verify to activate."));
+      }
+    }
+  } else if (isAncient()) {
+    // ACTIVE + ancient → Deactivate (API Break).
+    const btn = el("button", "btn btn--danger dl-act-btn", dlState.busy ? "Deactivating…" : "Deactivate (API Break)");
+    btn.type = "button";
+    btn.disabled = dlState.busy;
+    btn.addEventListener("click", (e) => { e.stopPropagation(); apiBreak(key); });
+    zone.appendChild(btn);
+  } else {
+    // ACTIVE, non-ancient → nothing actionable.
+    zone.appendChild(el("span", "dl-act-phase", "Active. Only the ancient admin can deactivate (API Break)."));
+  }
+  const err = el("p", "conn-error dl-act-err");
+  err.id = "dl-action-error";
+  err.hidden = true;
+  zone.appendChild(err);
+  return zone;
+}
+
 function dualLinkRow(r) {
   const active = r["iz-active"] === true;
   const row = document.createElement("div");
-  row.className = "dl-row" + (active ? "" : " dl-row--off");
-
   const key = dualLinkKeyOf(r);
+  const selected = key && dlState.selKey === key;
+  row.className = "dl-row" + (active ? "" : " dl-row--off") + (selected ? " dl-row--sel" : "");
+
   const copyBtn = key ? copyKeyButton(key) : null;
 
   const main = document.createElement("div");
@@ -436,6 +565,19 @@ function dualLinkRow(r) {
 
   if (copyBtn) row.prepend(copyBtn);
   row.append(main, meta);
+
+  // Selectable: clicking the row (not the copy/action buttons — those stopPropagation)
+  // toggles selection and reveals the context action. Only linked rows (with a key).
+  if (key) {
+    row.setAttribute("role", "button");
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("aria-pressed", selected ? "true" : "false");
+    row.addEventListener("click", () => selectDlRow(key));
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectDlRow(key); }
+    });
+    if (selected) row.appendChild(buildDlActions(r, key, active));
+  }
   return row;
 }
 
@@ -705,12 +847,23 @@ function stopActivationPoll() {
 // deep-links out to a wallet/Codex that holds the user's DALOS seed to prove
 // ownership of BOTH halves. Once Pythia confirms the proof, the Link step (stage
 // 2) unlocks. This popup does NOT submit the link itself.
-function openVerifyPopup() {
-  const s = regState.selStd;
-  const m = regState.selSmart;
-  if (!s || !m || !isUnlinked(s.counterpart) || !isUnlinked(m.counterpart)) return;
-  const std = s["apollo-account"];
-  const smart = m["apollo-account"];
+function openVerifyPopup(opts) {
+  // Two callers: the register view (two picked UNLINKED halves, from regState) and
+  // the dual-link list's "API Link" activate (an already-linked-but-INACTIVE pair,
+  // passed as { std, smart } account strings). The verify flow itself is
+  // link-state-agnostic — it only proves ownership of two accounts.
+  let std, smart, onDone;
+  if (opts && typeof opts.std === "string" && typeof opts.smart === "string") {
+    std = opts.std;
+    smart = opts.smart;
+    onDone = typeof opts.onDone === "function" ? opts.onDone : null;
+  } else {
+    const s = regState.selStd;
+    const m = regState.selSmart;
+    if (!s || !m || !isUnlinked(s.counterpart) || !isUnlinked(m.counterpart)) return;
+    std = s["apollo-account"];
+    smart = m["apollo-account"];
+  }
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
@@ -831,7 +984,11 @@ function openVerifyPopup() {
   done.className = "btn btn--ghost";
   done.type = "button";
   done.textContent = "Done — recheck";
-  done.addEventListener("click", () => { close(); loadProven(); loadHalves(); loadDualLinks(); });
+  done.addEventListener("click", () => {
+    close();
+    if (onDone) onDone();
+    else { loadProven(); loadHalves(); loadDualLinks(); }
+  });
   const cancel = document.createElement("button");
   cancel.className = "btn btn--ghost";
   cancel.type = "button";
