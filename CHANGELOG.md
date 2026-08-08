@@ -9,6 +9,27 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.8] — 2026-08-08
+
+### Fixed — a just-activated dual link settles into ACTIVE on its own (no manual page refresh)
+
+After "API Link" activation, the selected row stayed stuck on **"Activated — refreshing…"** and only
+flipped to `ACTIVE` after a manual page refresh.
+
+`verify/status` reports `"activated"` the moment Pythia's activation tracker CONFIRMS `A_LinkDualApiKey`
+on-chain — but the connector list read (`URD_List…DualLinks`) lags a few seconds behind that
+confirmation. `loadDlActivation` did a single `loadDualLinks()` on `"activated"` and stopped; that one
+reload still saw the row as `iz-active:false`, so the transient label never cleared until a later manual
+read caught up.
+
+The list now **reloads until the pair's row actually flips `iz-active`** (bounded: ~10 tries at a 3s
+cadence — ample for chain-read lag), then drops the transient phase so the row settles into its `ACTIVE`
+state (Deactivate/API Break affordance) on its own. Selecting another row cancels an in-flight settle
+loop. Frontend-only (`apps/pythia/public/app.js`); npm client stays `3.1.0`.
+
+_(Not a bug: the **"Anonymous"** row in Activity-by-consumer is the `"direct"` bucket — keyless public
+reads that carry no connector API key. Metered/counted but never earning, read-only, so `0 TX`.)_
+
 ## [3.0.7] — 2026-08-08
 
 ### Fixed — "API Link" activation from the API-keys list survives the verifier round-trip

@@ -399,6 +399,7 @@ function selectDlRow(key) {
   dlState.selKey = dlState.selKey === key ? null : key; // toggle
   dlState.actPhase = null;
   stopDlActivationPoll();
+  stopDlSettle();
   renderDualLinks();
 }
 
@@ -406,6 +407,7 @@ function selectDlRow(key) {
 // so the row reflects pending → activating → activated live after "API Link".
 let dlActPollTimer = null;
 let dlActPollLeft = 0;
+let dlSettleTimer = null;
 async function loadDlActivation(std, smart) {
   try {
     const url = `/api/connectors/verify/status?standard=${encodeURIComponent(std)}&smart=${encodeURIComponent(smart)}`;
@@ -424,12 +426,42 @@ async function loadDlActivation(std, smart) {
     }
   } else {
     stopDlActivationPoll();
-    if (dlState.actPhase === "activated") loadDualLinks(); // row flips ACTIVE
+    if (dlState.actPhase === "activated") settleActivatedDlRow(std, smart);
   }
 }
 function stopDlActivationPoll() {
   if (dlActPollTimer) { clearInterval(dlActPollTimer); dlActPollTimer = null; }
   dlActPollLeft = 0;
+}
+// verify/status reports "activated" the moment the tracker CONFIRMS A_LinkDualApiKey
+// on-chain — but the list read (URD_List…DualLinks) can lag a few seconds behind that
+// confirmation. A single reload would still see the row as iz-active:false and leave the
+// transient "Activated — refreshing…" label stuck until a manual page refresh. So reload
+// the list until THIS pair's row actually flips active, THEN drop the phase so the row
+// settles into its ACTIVE state on its own. Bounded, so a genuine read-stall clears the
+// stale label instead of spinning forever.
+function stopDlSettle() {
+  if (dlSettleTimer) { clearInterval(dlSettleTimer); dlSettleTimer = null; }
+}
+async function settleActivatedDlRow(std, smart) {
+  const shows = () =>
+    dlState.rows.some(
+      (r) => r["standard-apollo"] === std && r["smart-apollo"] === smart && r["iz-active"] === true,
+    );
+  const settle = () => {
+    stopDlSettle();
+    dlState.actPhase = null; // row is ACTIVE now — clear the transient label
+    renderDualLinks();
+  };
+  await loadDualLinks();
+  if (shows()) { settle(); return; }
+  if (dlSettleTimer) return; // a settle loop is already running for this row
+  let left = 10; // ~30s at 3s cadence — ample for chain-read lag
+  dlSettleTimer = setInterval(async () => {
+    if (left-- <= 0) { settle(); return; }
+    await loadDualLinks();
+    if (shows()) settle();
+  }, 3000);
 }
 
 // Deactivate ("API Break") — ancient-only. Confirm → POST /admin/connectors/break
