@@ -34,7 +34,7 @@ describe("splitDualLinkKey", () => {
   });
 });
 
-describe("readActiveDualLinkAccounts", () => {
+describe("readActiveDualLinkAccounts (reads URD_ListActiveDualLinks row objects)", () => {
   it("rejects when a 'success' response's data is not an array, instead of resolving to an empty set", async () => {
     const fetchImpl = fakeChainFetch({ status: "success", data: { unexpected: "shape" } });
     await expect(
@@ -42,19 +42,42 @@ describe("readActiveDualLinkAccounts", () => {
     ).rejects.toThrow(/malformed data/);
   });
 
-  it("skips a malformed-length key instead of splitting it, and still returns the well-formed key's accounts", async () => {
-    const goodKey = compositeKey(STANDARD, SMART);
+  it("collects both halves from each active DualLink ROW", async () => {
     const fetchImpl = fakeChainFetch({
       status: "success",
-      data: [goodKey, "too-short-to-be-a-real-composite-key"],
+      data: [
+        { "standard-apollo": STANDARD, "smart-apollo": SMART, "iz-active": true, "dual-link-key": compositeKey(STANDARD, SMART) },
+      ],
     });
-
     const accounts = await readActiveDualLinkAccounts(FAKE_PAIR, { fetchImpl });
-
     expect(accounts.has(STANDARD)).toBe(true);
     expect(accounts.has(SMART)).toBe(true);
-    // The malformed entry must not contribute a truncated/garbage account.
     expect(accounts.size).toBe(2);
+  });
+
+  it("skips rows that are malformed or flagged iz-active:false, keeping the good rows' accounts", async () => {
+    const OTHER_STD = "₩.".padEnd(162, "x");
+    const OTHER_SMART = "Π.".padEnd(162, "y");
+    const fetchImpl = fakeChainFetch({
+      status: "success",
+      data: [
+        { "standard-apollo": STANDARD, "smart-apollo": SMART, "iz-active": true },
+        { "standard-apollo": OTHER_STD, "smart-apollo": OTHER_SMART, "iz-active": false }, // deactivated → skipped
+        "not-an-object", // garbage → skipped
+        { "smart-apollo": 42 }, // non-string field → skipped
+      ],
+    });
+    const accounts = await readActiveDualLinkAccounts(FAKE_PAIR, { fetchImpl });
+    expect(accounts.has(STANDARD)).toBe(true);
+    expect(accounts.has(SMART)).toBe(true);
+    expect(accounts.has(OTHER_STD)).toBe(false);
+    expect(accounts.size).toBe(2);
+  });
+
+  it("an empty active list yields an empty set (no active links yet)", async () => {
+    const fetchImpl = fakeChainFetch({ status: "success", data: [] });
+    const accounts = await readActiveDualLinkAccounts(FAKE_PAIR, { fetchImpl });
+    expect(accounts.size).toBe(0);
   });
 });
 

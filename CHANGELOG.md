@@ -9,6 +9,24 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.2] — 2026-08-08
+
+### Fixed (CRITICAL) — gateway read a nonexistent on-chain function → fleet-wide activation dead
+
+The activation cache read `(ouronet-ns.PYTHIA.UR_ActiveDualLinkSet)`, which **does not exist** on the
+deployed `PYTHIA` module (`"Module ouronet-ns.PYTHIA has no such member: UR_ActiveDualLinkSet"`). Because
+`DualLinkCache` fails closed, every poll failed → the active-set stayed EMPTY → every account read as
+inactive → every `/verify` returned `202 pending` → **no consumer could mint an `x-pythia-key`**, so all
+traffic ran unmetered (anonymous). `/healthz` + keyless `/read` stayed green, so it was invisible to
+health checks. Fix: repoint `readActiveDualLinkAccounts()` to the LIVE `URD_ListActiveDualLinks` (the
+same function the landing page already uses), taking both `standard-apollo`/`smart-apollo` halves of each
+active row (skipping malformed / `iz-active:false` rows). Verified against the live chain: the read now
+returns `success`. Consumers converge with **no human re-link** — the next connector tick sees the
+account active and mints a key. (Gateway-code ↔ on-chain-contract mismatch; the contract was fine, the
+gateway called a stale name.)
+
+**Service-only release** — client stays `3.0.0`.
+
 ## [3.0.1] — 2026-08-08
 
 ### Fixed — ephemeral connector keys no longer orphaned on gateway restart (deploy incident)

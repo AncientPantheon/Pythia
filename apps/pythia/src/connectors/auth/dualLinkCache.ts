@@ -20,11 +20,6 @@ export const APOLLO_ACCOUNT_LEN = 162;
  */
 export const PYTHIA_DUAL_LINK_BAR = "|";
 
-/** The exact length of a well-formed composite `dual-link-key`
- * (`standard || BAR || smart`) — anything else is malformed and must not be
- * split/trusted. */
-const DUAL_LINK_KEY_LEN = APOLLO_ACCOUNT_LEN * 2 + PYTHIA_DUAL_LINK_BAR.length;
-
 /** The {primary, fallback} nodes to read the active-dual-link set from. */
 export interface DualLinkReadPair {
   primary: DialNode;
@@ -48,8 +43,17 @@ export function splitDualLinkKey(key: string): { standard: string; smart: string
 
 /**
  * Read the chain's active-`DualLink` set via a keyless Pact local read of
- * `(ouronet-ns.PYTHIA.UR_ActiveDualLinkSet)`, and return a flat `Set` of every
- * standard AND smart Apollo account that is part of an active link.
+ * `(ouronet-ns.PYTHIA.URD_ListActiveDualLinks)`, and return a flat `Set` of
+ * every standard AND smart Apollo account that is part of an active link.
+ *
+ * NOTE (v3.0.2): this previously called `UR_ActiveDualLinkSet`, which does NOT
+ * exist on the deployed `ouronet-ns.PYTHIA` module — the read failed on every
+ * poll, the fail-closed cache stayed empty, and so EVERY consumer's account
+ * read as inactive (all `/verify` → `202 pending`, no `x-pythia-key` ever
+ * minted, fleet-wide). Repointed to `URD_ListActiveDualLinks` — the live
+ * function the landing page already uses — which returns active `DualLink` ROW
+ * objects (`standard-apollo`, `smart-apollo`, `iz-active`, …); we take both
+ * halves of each.
  *
  * Mirrors {@link readApolloPublicKey}'s request-building shape, but — unlike
  * that fail-closed-to-`null` read — REJECTS on any failure (bad response,
@@ -64,7 +68,7 @@ export async function readActiveDualLinkAccounts(
   opts: { chainId?: number; fetchImpl?: FetchImpl } = {},
 ): Promise<Set<string>> {
   const chainId = opts.chainId ?? 0;
-  const body = buildLocalCommand(`(${PYTHIA_NS}.PYTHIA.UR_ActiveDualLinkSet)`, { chainId });
+  const body = buildLocalCommand(`(${PYTHIA_NS}.PYTHIA.URD_ListActiveDualLinks)`, { chainId });
 
   const res = await dial(
     {
@@ -95,20 +99,22 @@ export async function readActiveDualLinkAccounts(
   if (!Array.isArray(data)) {
     throw new Error("dual-link active-set read returned malformed data");
   }
-  const keys = data.filter((d): d is string => typeof d === "string");
 
   const accounts = new Set<string>();
-  for (const key of keys) {
-    // Skip (and log) anything that isn't a well-formed composite key rather
-    // than slicing it anyway — a too-short/garbled key would otherwise
-    // silently add a truncated or empty "account" string to the active set.
-    if (key.length !== DUAL_LINK_KEY_LEN) {
-      console.error(`pythia dual-link cache: skipping malformed dual-link key (length ${key.length})`);
-      continue;
-    }
-    const { standard, smart } = splitDualLinkKey(key);
-    accounts.add(standard);
-    accounts.add(smart);
+  for (const row of data) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as {
+      "standard-apollo"?: unknown;
+      "smart-apollo"?: unknown;
+      "iz-active"?: unknown;
+    };
+    // Defensive: URD_ListActiveDualLinks returns only actives, but never trust a
+    // row explicitly flagged inactive.
+    if (r["iz-active"] === false) continue;
+    const std = r["standard-apollo"];
+    const smart = r["smart-apollo"];
+    if (typeof std === "string" && std.length > 0) accounts.add(std);
+    if (typeof smart === "string" && smart.length > 0) accounts.add(smart);
   }
   return accounts;
 }
