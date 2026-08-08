@@ -852,17 +852,19 @@ function openVerifyPopup(opts) {
   // the dual-link list's "API Link" activate (an already-linked-but-INACTIVE pair,
   // passed as { std, smart } account strings). The verify flow itself is
   // link-state-agnostic — it only proves ownership of two accounts.
-  let std, smart, onDone;
+  let std, smart, onDone, flow;
   if (opts && typeof opts.std === "string" && typeof opts.smart === "string") {
     std = opts.std;
     smart = opts.smart;
     onDone = typeof opts.onDone === "function" ? opts.onDone : null;
+    flow = "dual-link"; // API-keys list "API Link": activate a pre-linked INACTIVE pair
   } else {
     const s = regState.selStd;
     const m = regState.selSmart;
     if (!s || !m || !isUnlinked(s.counterpart) || !isUnlinked(m.counterpart)) return;
     std = s["apollo-account"];
     smart = m["apollo-account"];
+    flow = "register"; // two freshly-picked UNLINKED halves
   }
 
   const overlay = document.createElement("div");
@@ -972,7 +974,13 @@ function openVerifyPopup(opts) {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || !body.nonce) throw new Error(body.error || "could not start verification");
-      sessionStorage.setItem("pythia_verify_pending", JSON.stringify({ standard: std, smart }));
+      // Persist the flow too: the same-tab verifier round-trip destroys the
+      // in-memory `onDone` closure, so `resumePendingVerify` recovers which flow
+      // (register vs dual-link activation) to return to from this marker alone.
+      sessionStorage.setItem(
+        "pythia_verify_pending",
+        JSON.stringify({ standard: std, smart, flow }),
+      );
       window.location.href = buildUrl(body.nonce); // same-tab; returns to /#connectors
     } catch (e) {
       go.disabled = false;
@@ -1045,6 +1053,29 @@ async function resumePendingVerify() {
     pending = null;
   }
   if (!pending || !pending.standard || !pending.smart) return;
+
+  // Dual-link "API Link" activation flow (from the API-keys list): the verifier
+  // callback already recorded the proof + fired A_LinkDualApiKey server-side —
+  // return to the API-keys list, reselect the pair's row, and poll the live
+  // activation phase so the operator sees "firing A_Link… → Activated" in place.
+  // (The register-flow reselection below only knows unlinked halves, so a
+  // pre-linked pair would land on a screen that can't reflect its activation.)
+  if (pending.flow === "dual-link") {
+    goTo("#connectors/apikeys");
+    await loadDualLinks(); // authoritative rows (default "all" filter includes the inactive row)
+    // The composite key is deterministic (std|smart) — matching dualLinkKeyOf(row) for
+    // the pair's row — so select by it directly rather than depending on a row lookup.
+    dlState.selKey = `${pending.standard}${BAR}${pending.smart}`;
+    renderDualLinks();
+    await loadDlActivation(pending.standard, pending.smart);
+    // Clear once the pair is recorded (activating) or done (activated); a still-
+    // "pending" pair keeps the marker so a resume at another verifier can finish
+    // the second half.
+    if (dlState.actPhase === "activating" || dlState.actPhase === "activated") {
+      sessionStorage.removeItem("pythia_verify_pending");
+    }
+    return;
+  }
 
   goTo("#connectors/register"); // addressable: switch to connectors + the register sub-view
   await loadHalves(); // authoritative reload to re-point selection against

@@ -9,6 +9,32 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.0.7] — 2026-08-08
+
+### Fixed — "API Link" activation from the API-keys list survives the verifier round-trip
+
+Activating an inactive dual link via **"Verify & Activate (API Link)"** from `#connectors` (the
+API-keys list) dumped the operator on `#connectors/register` after verification, with no visible
+outcome — reported as "the page moved to register and no transaction fired."
+
+Root cause was frontend-only. `resumePendingVerify()` (the post-verifier return handler) was hardcoded
+to the **register** flow: it always `goTo("#connectors/register")` and ran the register-only
+reselection. The dual-link flow's `onDone` callback (`loadDlActivation`) lived in an in-memory closure
+that the same-tab verifier navigation destroys, so the activation-phase polling never resumed. The
+`A_LinkDualApiKey` transaction *did* fire — `verify/start` and the verifier callback have no
+linked-state guard (only Apollo-format checks), so a pre-linked-INACTIVE pair takes the exact same
+autonomous-activation path as the register flow — but the UI had abandoned the API-keys context, so the
+operator never saw the row flip `active`.
+
+The verify flow now **persists which flow it belongs to** (`{ standard, smart, flow }` in
+`sessionStorage`), so the return handler recovers it without the lost closure:
+- `flow: "dual-link"` → return to `#connectors/apikeys`, reselect the pair's row, and poll the live
+  activation phase in place (`firing A_Link… → Activated`).
+- `flow: "register"` → the existing two-unlinked-halves reselection, unchanged.
+
+Frontend-only (`apps/pythia/public/app.js`). No client, server, or on-chain change — the npm client
+stays `3.1.0`.
+
 ## [3.0.6] — 2026-08-08
 
 ### Added — activate/deactivate a dual link from the Connectors list (the frontend)
