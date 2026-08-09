@@ -76,6 +76,10 @@ describe("connectorGateMiddleware (hardened)", () => {
       headers: { "x-pythia-key": "pk_eph_unknown-or-expired" },
     });
     expect(res.status).toBe(401);
+    // A PRESENTED-but-stale key returns the SDK-self-heal-matched message so a
+    // refreshable client re-mints + retries (must stay in lockstep with the client's
+    // transport.ts INVALID_KEY_ERROR).
+    expect(await res.json()).toEqual({ error: "invalid or expired connector key" });
     expect(handlerCalled).toBe(false);
   });
 

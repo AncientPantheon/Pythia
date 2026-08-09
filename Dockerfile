@@ -83,6 +83,10 @@ ENV PYTH_EPOCH_FILE=/data/pyth-epoch.json
 # Runtime connector registry (admin-managed) — also on the /data volume so
 # registered connectors + their key hashes survive redeploys.
 ENV CONNECTORS_FILE=/data/connectors.json
+# Ephemeral connector keys (the minted pk_eph_ secrets) — MUST be on the /data volume,
+# or every redeploy orphans every consumer's live key (they then 401 until they re-mint,
+# and a non-self-healing client never recovers). See index.ts's ephemeralKeyStore note.
+ENV EPHEMERAL_KEYS_FILE=/data/ephemeral-keys.json
 # Admin-managed runtime settings (hub feed URL) — on the /data volume so an
 # admin-activated feed survives redeploys.
 ENV SETTINGS_FILE=/data/settings.json

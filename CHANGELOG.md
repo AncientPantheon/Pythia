@@ -9,6 +9,30 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.1.3] — 2026-08-09
+
+### Fixed — ephemeral keys persist across redeploys + restore the client's 401 self-heal
+
+Two connected gateway defects that left consumers orphaned:
+
+1. **`EPHEMERAL_KEYS_FILE` was not on the `/data` volume.** The store fell back to a
+   container-local path, so **every redeploy wiped all minted `pk_eph_` keys** — exactly what
+   `index.ts` warns against. Set `ENV EPHEMERAL_KEYS_FILE=/data/ephemeral-keys.json` in the
+   Dockerfile (alongside `CONNECTORS_FILE` et al.) so keys survive restarts/redeploys.
+
+2. **The v3.1.0 hard-gate broke the client SDK's 401 self-heal.** It returned
+   `"a valid connector API key is required"` for *every* rejection, but the client only
+   re-mints when the 401 body is exactly `"invalid or expired connector key"`
+   (`pythia-client` `transport.ts` `INVALID_KEY_ERROR`). So an orphaned/expired key no longer
+   triggered a re-mint — even for correctly-wired (`asKeySource()`) consumers. The gate now
+   returns `"invalid or expired connector key"` when a key **was presented** but didn't resolve
+   (stale/unknown), and keeps `"a valid connector API key is required"` only when **no key** was
+   sent (nothing to self-heal). Restores auto-recovery for refreshable-key consumers.
+
+Together: minted keys now outlive deploys, and any consumer on a self-healing key auto-recovers
+from an orphaned key. (A consumer wired with the non-refreshable `keyProvider()` still won't
+self-heal — that's a consumer-side wiring choice; use `asKeySource()`.) Client unchanged (3.1.0).
+
 ## [3.1.2] — 2026-08-09
 
 ### Fixed — daily activity chart discards all-zero on-chain day rows

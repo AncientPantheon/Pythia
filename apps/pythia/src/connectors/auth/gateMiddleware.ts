@@ -28,9 +28,17 @@ export function connectorGateMiddleware(resolveConsumer: ReadConsumerResolver) {
       return;
     }
 
-    const { consumer } = resolveConsumer(effectiveKey(c));
+    const key = effectiveKey(c);
+    const { consumer } = resolveConsumer(key);
     if (consumer === "direct") {
-      return c.json({ error: "a valid connector API key is required" }, 401);
+      // A PRESENTED-but-unresolvable key (unknown/expired/orphaned) must return the EXACT
+      // string the client SDK's 401 self-heal matches ("invalid or expired connector key",
+      // `transport.ts` INVALID_KEY_ERROR) — so a refreshable `asKeySource()` key
+      // invalidates → re-mints → retries once, instead of getting stuck on a dead key.
+      // A request with NO key at all has nothing to self-heal → the plain "need a key".
+      return key
+        ? c.json({ error: "invalid or expired connector key" }, 401)
+        : c.json({ error: "a valid connector API key is required" }, 401);
     }
 
     await next();
