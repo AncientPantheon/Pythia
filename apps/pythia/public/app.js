@@ -1601,6 +1601,22 @@ function parsePythMetrics(m) {
   };
 }
 
+// True when a day's parsed metrics are ALL zero — an on-chain row that EXISTS but carries
+// no activity (e.g. a day zeroed by an admin repair after a mis-flush, then kept open for
+// when its real date arrives). Such rows are discarded from the daily reader so the chart
+// never renders an empty 0-bar or leaves a gap in the axis for them.
+function isAllZeroMetrics(m) {
+  if (!m) return true;
+  return (
+    !m.petitions &&
+    !m.pondus &&
+    !m.transactions &&
+    !m.gasReserved &&
+    !m.failedTransactions &&
+    !m.wastedGasReserved
+  );
+}
+
 // The Pyth ledger's day-1 anchor (UTC midnight) — UR_PythLedgerEpochStart. Day N =
 // anchor + (N-1) days. Used to map on-chain integer day ordinals to date strings.
 const PYTH_EPOCH_MS = Date.UTC(2026, 7, 1); // 2026-08-01
@@ -1623,6 +1639,7 @@ async function loadPythChain() {
   const lastDay = coercePactNum(totalRaw && totalRaw["last-day"]);
   const total = parsePythMetrics(totalRaw && totalRaw["total-metrics"]);
   let daily = [];
+  let lastRealDay = 0;
   if (lastDay >= 1) {
     const from = Math.max(1, lastDay - CHART_DAYS + 1);
     const ordinals = [];
@@ -1631,6 +1648,7 @@ async function loadPythChain() {
       ordinals.map((d) =>
         pythiaRead(`(${PYTHIA_NS}.PYTHIA.UR_PythDay ${d})`).then(
           (row) => ({
+            ord: d,
             day: pythDayToDateStr(d),
             sealed: !!(row && row["iz-sealed"] === true),
             metrics: parsePythMetrics(row && row.metrics),
@@ -1639,9 +1657,13 @@ async function loadPythChain() {
         ),
       ),
     );
-    daily = rows.filter(Boolean);
+    // Discard rows that EXIST but are all-zero (e.g. a day zeroed by an admin repair) so
+    // they don't render as an empty 0-bar / leave a gap. `lastRealDay` is then the newest
+    // day that actually carries data — used for the "written through day N" footer.
+    daily = rows.filter(Boolean).filter((r) => !isAllZeroMetrics(r.metrics));
+    lastRealDay = daily.length ? daily[daily.length - 1].ord : 0;
   }
-  return { total, daily, lastDay };
+  return { total, daily, lastDay, lastRealDay };
 }
 
 /** A legend swatch + label for the stone/air key. */
@@ -1728,8 +1750,8 @@ function renderPyth(container, air, stone) {
   container.appendChild(outs);
 
   const foot = el("p", "pyth-foot");
-  if (stone && stone.lastDay >= 1) {
-    foot.textContent = `Written on-chain through day ${stone.lastDay} (${pythDayToDateStr(stone.lastDay)}). Air totals turn to stone on Pythia's next A_Flush.`;
+  if (stone && stone.lastRealDay >= 1) {
+    foot.textContent = `Written on-chain through day ${stone.lastRealDay} (${pythDayToDateStr(stone.lastRealDay)}). Air totals turn to stone on Pythia's next A_Flush.`;
   } else {
     foot.textContent = "Nothing written on-chain yet — all activity is still air, awaiting Pythia's first A_Flush.";
   }

@@ -9,6 +9,17 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.1.2] — 2026-08-09
+
+### Fixed — daily activity chart discards all-zero on-chain day rows
+
+After an admin repair zeroes a mis-flushed day on-chain (row kept, but all counters set to 0
+and left open for its real date), the daily reader (`loadPythChain`) now **discards any on-chain
+day row whose parsed metrics are all zero** (`isAllZeroMetrics`). So a zeroed day no longer renders
+as an empty 0-height bar or leaves a gap in the axis — it's simply dismissed. The "written on-chain
+through day N" footer now tracks `lastRealDay` (the newest day that actually carries data) instead
+of the raw `last-day` pointer. Frontend-only; client stays `3.1.0`.
+
 ## [3.1.1] — 2026-08-09
 
 ### Fixed — ledger epoch fallback corrected to 2026-08-01 (day-ordinal alignment)
