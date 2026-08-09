@@ -9,6 +9,27 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.1.4] — 2026-08-09
+
+### Changed — Pythia's OWN activity unifies under her self dual-link Apollo (her keyed API), not a separate "pythia-self" bucket
+
+Pythia has her own 24h self-connector (a dual-link API key) precisely so she is a first-class KEYED
+consumer of herself. But her own traffic was splitting across two rows: `"pythia-self"` (her same-origin
+website reads via the injected self secret/marker, + her Khronoton fires via `meterChainRuntime`) and her
+self dual-link Apollo `₱.…` ("Pythia" lane, reads that resolved via the ephemeral store). Now unified:
+
+- **Self identity is a dynamic getter** → `selfApolloVault.standardAccount()` (her self dual-link
+  Standard Apollo), falling back to `"pythia-self"` only until her dual-link-key is pasted.
+- **Reads** (`consumerResolver`): the `selfLabel` dep is now a getter — her injected self-secret reads
+  and the same-origin marker reads both attribute to her Apollo.
+- **Fires** (`meterChainRuntime`): a new settable seam (`setPythiaSelfConsumer` / `pythiaSelfConsumer`),
+  installed by the composition root at boot, routes her `A_Link`/`A_Flush`/… submits to the same Apollo.
+
+Result: ALL of Pythia's own activity — reads and fires — lands in ONE keyed bucket, her dual-link API
+key (the "Pythia" lane row). No metering change; purely which consumer the counters attribute to. The
+historical `"pythia-self"` numbers are folded into her Apollo row via a one-time ledger merge (operator
+jq, out-of-band). Client unchanged (3.1.0).
+
 ## [3.1.3] — 2026-08-09
 
 ### Fixed — ephemeral keys persist across redeploys + restore the client's 401 self-heal

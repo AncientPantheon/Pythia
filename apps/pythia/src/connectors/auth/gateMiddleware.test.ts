@@ -34,7 +34,7 @@ function resolverFor(
     resolveEphemeral: (s) => eph.resolve(s),
     nameForKey: (k) => conn.nameForKey(k),
     envConsumer: () => undefined,
-    selfLabel: "pythia-self",
+    selfLabel: () => "pythia-self",
     firstPartyMarker: MARKER,
   });
 }

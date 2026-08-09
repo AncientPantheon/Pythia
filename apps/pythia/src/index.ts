@@ -14,7 +14,7 @@ import { registerPyth } from "./routes/pyth.js";
 import { registerPythReport } from "./routes/pythReport.js";
 import { loadReporters } from "./pyth/reporters.js";
 import { makeResolveConsumer } from "./stats/consumerResolver.js";
-import { PYTHIA_SELF_CONSUMER } from "./automaton/khronoton/meteredRuntime.js";
+import { PYTHIA_SELF_CONSUMER, setPythiaSelfConsumer } from "./automaton/khronoton/meteredRuntime.js";
 import { registerPools } from "./routes/pools.js";
 import { registerConnectorVerify, trustAnchorPair } from "./routes/connectorVerify.js";
 import { registerConnectorAuth } from "./routes/connectorAuth.js";
@@ -142,7 +142,10 @@ const resolveConsumerFull = makeResolveConsumer({
   resolveEphemeral: (secret) => ephemeralKeyStore.resolve(secret),
   nameForKey: (key) => connectorStore.nameForKey(key),
   envConsumer: (key) => envConsumerMap.get(key),
-  selfLabel: PYTHIA_SELF_CONSUMER,
+  // Pythia's own reads unify under her self dual-link Apollo (her KEYED 24h self-connector),
+  // NOT a separate "pythia-self" bucket — a getter (lazily resolved per request, after boot,
+  // like the closures above). Falls back to "pythia-self" until her dual-link-key is pasted.
+  selfLabel: () => selfApolloVault.standardAccount() || PYTHIA_SELF_CONSUMER,
   firstPartyMarker: FIRST_PARTY_MARKER,
 });
 // The meter needs both the consumer AND the keyed/earning flag; stats + the report
@@ -300,6 +303,12 @@ export const selfConnectorLoop = new SelfConnectorLoop({
   fetchImpl: createInProcessFetch(app),
   vault: selfApolloVault,
 });
+// Route Pythia's OWN Khronoton fires (meterChainRuntime) to the SAME identity her reads
+// use — her self dual-link Apollo — so all her activity (reads + fires) lands in one KEYED
+// bucket (her 24h self-connector), not a separate "pythia-self" row. Falls back to
+// "pythia-self" until her dual-link-key is pasted. Set once at boot (the resolver reads the
+// same getter via selfLabel above).
+setPythiaSelfConsumer(() => selfApolloVault.standardAccount() || PYTHIA_SELF_CONSUMER);
 
 // Resolves a just-proven Apollo account's on-chain counterpart for
 // `registerConnectorAuth` below, so a successful verify for a NOT-yet-active account can

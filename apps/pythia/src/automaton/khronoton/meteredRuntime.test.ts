@@ -2,12 +2,13 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { meterChainRuntime } from "./meteredRuntime.js";
+import { meterChainRuntime, setPythiaSelfConsumer, PYTHIA_SELF_CONSUMER } from "./meteredRuntime.js";
 import { PythLedger } from "../../pyth/ledger.js";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
   for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  setPythiaSelfConsumer(() => PYTHIA_SELF_CONSUMER); // reset the module-level self-consumer getter
 });
 
 // Minimal fake ChainRuntime whose client records/echoes, so we can assert the
@@ -47,6 +48,14 @@ describe("meterChainRuntime", () => {
     const out = await client.submit(signedTx);
     expect(out).toEqual({ requestKey: "rk-1" }); // return value passes through
     expect(ledger.recordSend).toHaveBeenCalledWith(true, 1500, 1, "pythia-self");
+  });
+
+  it("attributes a fire to the INSTALLED self-consumer getter (Pythia's dual-link Apollo, not the static label)", async () => {
+    setPythiaSelfConsumer(() => "₱.pythia-self-apollo"); // composition root installs this at boot
+    const ledger = fakeLedger();
+    const rt = meterChainRuntime(fakeRuntime({}), ledger);
+    await rt.createClient("u").submit(signedTx);
+    expect(ledger.recordSend).toHaveBeenCalledWith(true, 1500, 1, "₱.pythia-self-apollo");
   });
 
   it("counts a REJECTED/thrown submit as a failed transaction and rethrows", async () => {

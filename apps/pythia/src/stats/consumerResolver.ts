@@ -39,8 +39,11 @@ export interface ConsumerResolverDeps {
   nameForKey: (key: string) => string | null | undefined;
   /** Env `PYTHIA_API_KEYS` map lookup → the configured name, or undefined. */
   envConsumer: (key: string) => string | undefined;
-  /** The label for Pythia's own activity (`PYTHIA_SELF_CONSUMER` = "pythia-self"). */
-  selfLabel: string;
+  /** Pythia's own-activity consumer identity, resolved PER CALL (a getter, not a static
+   *  string) — her self dual-link Apollo account when linked, so her own reads unify with
+   *  her fires under her KEYED self-connector (her 24h dual API key), NOT a separate
+   *  `"pythia-self"` bucket; falls back to `"pythia-self"` only when unlinked. */
+  selfLabel: () => string;
   /** A RANDOM per-process marker injected (server-side only, never sent to clients) by
    *  `firstPartyKeyMiddleware` for same-origin keyless reads when Pythia has no active
    *  self secret — resolves to `selfLabel` UNKEYED, so her own site stays readable in the
@@ -56,11 +59,11 @@ export function makeResolveConsumer(deps: ConsumerResolverDeps): ReadConsumerRes
     // non-earning; the gate rejects it before it is metered on operational paths.
     if (!key) return { consumer: "direct", keyed: false };
     // A caller presenting Pythia's own self secret is Pythia herself, keyed.
-    if (selfSecret !== undefined && key === selfSecret) return { consumer: deps.selfLabel, keyed: true };
+    if (selfSecret !== undefined && key === selfSecret) return { consumer: deps.selfLabel(), keyed: true };
     // The server-injected first-party marker (same-origin read, no active self secret) →
     // Pythia herself, but NOT keyed (no active self-connector to earn). Never keyed, never
     // client-presentable (random per process).
-    if (deps.firstPartyMarker && key === deps.firstPartyMarker) return { consumer: deps.selfLabel, keyed: false };
+    if (deps.firstPartyMarker && key === deps.firstPartyMarker) return { consumer: deps.selfLabel(), keyed: false };
     const eph = deps.resolveEphemeral(key);
     if (eph) return { consumer: eph.apolloAccount, keyed: true };
     const fromStore = deps.nameForKey(key);

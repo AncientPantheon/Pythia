@@ -7,7 +7,7 @@ function make(overrides: Partial<ConsumerResolverDeps> = {}) {
     resolveEphemeral: () => null,
     nameForKey: () => null,
     envConsumer: () => undefined,
-    selfLabel: "pythia-self",
+    selfLabel: () => "pythia-self",
     ...overrides,
   };
   return makeResolveConsumer(deps);
@@ -43,6 +43,14 @@ describe("makeResolveConsumer", () => {
   it("a caller explicitly presenting Pythia's self secret → 'pythia-self', keyed", () => {
     const r = make({ selfSecret: () => "SELF", resolveEphemeral: () => ({ apolloAccount: "x" }) });
     expect(r("SELF")).toEqual({ consumer: "pythia-self", keyed: true });
+  });
+
+  it("self identity is DYNAMIC: selfSecret AND the marker resolve to Pythia's self Apollo (unify under her dual-link key)", () => {
+    // The fix: Pythia's own reads attribute to her self dual-link Apollo (her KEYED
+    // self-connector), not a static "pythia-self" bucket. selfLabel() returns the Apollo.
+    const r = make({ selfLabel: () => "₱.pythia-self-apollo", selfSecret: () => "SELF", firstPartyMarker: "fp_m" });
+    expect(r("SELF")).toEqual({ consumer: "₱.pythia-self-apollo", keyed: true }); // current self secret
+    expect(r("fp_m")).toEqual({ consumer: "₱.pythia-self-apollo", keyed: false }); // marker (no active secret)
   });
 
   it("a real consumer's own key is NOT shadowed by the self label", () => {
