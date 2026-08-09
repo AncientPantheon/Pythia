@@ -9,6 +9,24 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.1.1] — 2026-08-09
+
+### Fixed — ledger epoch fallback corrected to 2026-08-01 (day-ordinal alignment)
+
+`PYTH_LEDGER_EPOCH_MS` was `2026-07-21`, which no longer matches the intended on-chain ledger
+anchor. With the on-chain `UR_PythLedgerEpochStart` set to `2026-08-01` (day 1 = Aug 1), the
+hardcoded FALLBACK must agree, or a boot where the chain read hasn't landed yet (or fails) would
+compute day ordinals ~11 too high (e.g. today flushing as day 18/19 instead of 7/8). Corrected the
+constant to `Date.UTC(2026, 7, 1)` = `2026-08-01T00:00:00Z`.
+
+Note: the gateway reads the epoch from chain (`UR_PythLedgerEpochStart`) and that value WINS over
+this constant; this fix only aligns the fallback for the pre-first-read window. The chain anchor is
+authoritative — it must read `2026-08-01`. (Root cause of the observed day-18/19 flush was the
+on-chain anchor being set to the wrong start date; the resolver + clock were correct.)
+
+Test dates in `ledger.test.ts` / `pythFlushResolver.test.ts` shifted +11 days in lockstep so every
+day-ordinal assertion is preserved. Frontend/client unchanged (client stays `3.1.0`).
+
 ## [3.1.0] — 2026-08-08
 
 ### Changed — read face HARD-GATED; Pythia's own reads go through her self key (no more "Anonymous")

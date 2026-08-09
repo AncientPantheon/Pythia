@@ -16,7 +16,7 @@ function fixedClock(iso: string): () => Date {
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
-function make(clock = fixedClock("2026-07-05T10:00:00.000Z"), filePath = scratchFile()) {
+function make(clock = fixedClock("2026-07-16T10:00:00.000Z"), filePath = scratchFile()) {
   return new PythLedger({ filePath, flushMs: 0, clock });
 }
 
@@ -43,15 +43,15 @@ describe("PythLedger", () => {
   });
 
   it("aggregates across days; total = sum of the daily deltas", () => {
-    let iso = "2026-07-05T10:00:00.000Z";
+    let iso = "2026-07-16T10:00:00.000Z";
     const l = new PythLedger({ filePath: scratchFile(), flushMs: 0, clock: () => new Date(iso) });
     l.recordRead(10); // day 05
-    iso = "2026-07-06T10:00:00.000Z";
+    iso = "2026-07-17T10:00:00.000Z";
     l.recordRead(20); // day 06
     l.recordSend(true, 500); // day 06
 
     const daily = l.daily();
-    expect(daily.map((d) => d.day)).toEqual(["2026-07-05", "2026-07-06"]);
+    expect(daily.map((d) => d.day)).toEqual(["2026-07-16", "2026-07-17"]);
     expect(daily[0].petitions).toBe(1);
     expect(daily[1].petitions).toBe(1);
     expect(daily[1].transactions).toBe(1);
@@ -76,12 +76,12 @@ describe("PythLedger", () => {
 
   it("persists and reloads across instances", () => {
     const file = scratchFile();
-    const a = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-05T10:00:00.000Z") });
+    const a = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-16T10:00:00.000Z") });
     a.recordRead(42);
     a.recordSend(true, 999);
     a.persist();
 
-    const b = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-05T10:00:00.000Z") });
+    const b = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-16T10:00:00.000Z") });
     const t = b.total();
     expect(t.petitions).toBe(1);
     expect(t.pondus).toBe(42);
@@ -101,7 +101,7 @@ describe("PythLedger", () => {
       file,
       JSON.stringify({
         days: {
-          "2026-07-21": {
+          "2026-08-01": {
             petitions: 1,
             pondus: 5,
             transactions: 0,
@@ -112,13 +112,13 @@ describe("PythLedger", () => {
         },
       }),
     );
-    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:00:00.000Z") });
     expect(l.total().petitions).toBe(1);
     // A subsequent ordinary persist() (disk generation 0 == our generation 0) must
     // still write normally, not be treated as stale.
     l.recordRead(2);
     l.persist();
-    const b = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    const b = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:00:00.000Z") });
     expect(b.total().petitions).toBe(2);
   });
 });
@@ -137,13 +137,13 @@ describe("PythLedger — nuke/deploy generation race", () => {
     const file = scratchFile();
 
     // The OUTGOING container: already live, has real accumulated activity, persisted.
-    const outgoing = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    const outgoing = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:00:00.000Z") });
     outgoing.recordRead(30.221);
     outgoing.persist();
 
     // The INCOMING container boots WHILE `outgoing` is still serving (the health-check
     // window) — it loads the SAME pre-nuke state into its own, separate memory.
-    const incoming = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:05:00.000Z") });
+    const incoming = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:05:00.000Z") });
     expect(incoming.total().petitions).toBe(1); // confirms it loaded the pre-nuke state
 
     // The admin clicks Nuke — Caddy hasn't cut over yet, so it lands on `outgoing`.
@@ -157,16 +157,16 @@ describe("PythLedger — nuke/deploy generation race", () => {
 
     // A third instance — the NEXT deploy's fresh container — must see the nuke, not
     // `incoming`'s resurrected stale total.
-    const verify = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:10:00.000Z") });
+    const verify = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:10:00.000Z") });
     expect(verify.total().petitions).toBe(0);
     expect(verify.daily()).toHaveLength(0);
   });
 
   it("a stale sibling's own new activity recorded before it self-heals is lost, not merged — an accepted, documented trade-off vs. resurrecting nuked history", () => {
     const file = scratchFile();
-    const outgoing = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    const outgoing = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:00:00.000Z") });
     outgoing.persist();
-    const incoming = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:05:00.000Z") });
+    const incoming = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:05:00.000Z") });
     outgoing.nuke();
     incoming.recordRead(99); // real traffic the stale sibling served post-cutover, pre-heal
     incoming.persist(); // self-heals: reloads the nuked state, discarding the above
@@ -175,13 +175,13 @@ describe("PythLedger — nuke/deploy generation race", () => {
 
   it("persist() writes normally (no self-heal, no data loss) when there is no staleness", () => {
     const file = scratchFile();
-    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:00:00.000Z") });
     l.recordRead(7);
     l.persist();
     l.recordRead(3);
     l.persist();
     expect(l.total().petitions).toBe(2);
-    const reloaded = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-21T10:00:00.000Z") });
+    const reloaded = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-08-01T10:00:00.000Z") });
     expect(reloaded.total().petitions).toBe(2);
   });
 });
@@ -194,12 +194,12 @@ function mkAt(iso: string): { l: PythLedger; set: (i: string) => void } {
 }
 
 describe("PythLedger — Khronoton flush (drain model)", () => {
-  it("beginFlush yields PythFlushEntry objects: integer day ordinal (epoch 2026-07-21), kebab keys, iz-complete derived", () => {
-    const { l, set } = mkAt("2026-07-21T08:00:00.000Z"); // day 1
+  it("beginFlush yields PythFlushEntry objects: integer day ordinal (epoch 2026-08-01), kebab keys, iz-complete derived", () => {
+    const { l, set } = mkAt("2026-08-01T08:00:00.000Z"); // day 1
     l.recordRead(10);
-    set("2026-07-22T08:00:00.000Z"); // day 2
+    set("2026-08-02T08:00:00.000Z"); // day 2
     l.recordSend(true, 500);
-    set("2026-07-23T08:00:00.000Z"); // day 3 (today)
+    set("2026-08-03T08:00:00.000Z"); // day 3 (today)
     l.recordRead(5);
 
     const { entries } = l.beginFlush();
@@ -219,7 +219,7 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
   });
 
   it("beginFlush does NOT mutate the ledger; commitFlush drains exactly what was sent", () => {
-    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    const { l } = mkAt("2026-08-03T08:00:00.000Z");
     l.recordRead(10);
     const { token } = l.beginFlush();
     expect(l.total().petitions).toBe(1); // untouched by beginFlush
@@ -229,7 +229,7 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
   });
 
   it("preserves traffic that arrives between snapshot and commit (subtract, not delete)", () => {
-    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    const { l } = mkAt("2026-08-03T08:00:00.000Z");
     l.recordRead(10); // pondus 10, 1 petition
     const { token } = l.beginFlush(); // snapshot: 1 petition / pondus 10
     l.recordRead(4); // arrives mid-flush: now 2 petitions / pondus 14
@@ -240,7 +240,7 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
   });
 
   it("a failed flush (beginFlush without commit) leaves everything to retry", () => {
-    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    const { l } = mkAt("2026-08-03T08:00:00.000Z");
     l.recordRead(10);
     l.beginFlush(); // fire failed → no commit
     expect(l.total().petitions).toBe(1); // still there
@@ -249,11 +249,11 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
   });
 
   it("caps the batch at maxDays (oldest-first); the rest stay for the next tick", () => {
-    const { l, set } = mkAt("2026-07-21T08:00:00.000Z");
+    const { l, set } = mkAt("2026-08-01T08:00:00.000Z");
     l.recordRead(1);
-    set("2026-07-22T08:00:00.000Z");
+    set("2026-08-02T08:00:00.000Z");
     l.recordRead(1);
-    set("2026-07-23T08:00:00.000Z");
+    set("2026-08-03T08:00:00.000Z");
     l.recordRead(1);
     const { entries, token } = l.beginFlush(2); // cap 2
     expect(entries.map((e) => e.day)).toEqual([1, 2]);
@@ -263,7 +263,7 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
   });
 
   it("previewEntries mirrors beginFlush without mutating (the admin monitor)", () => {
-    const { l } = mkAt("2026-07-23T08:00:00.000Z");
+    const { l } = mkAt("2026-08-03T08:00:00.000Z");
     l.recordRead(10);
     const preview = l.previewEntries();
     expect(preview).toEqual(l.beginFlush().entries); // same content
@@ -271,9 +271,9 @@ describe("PythLedger — Khronoton flush (drain model)", () => {
   });
 
   it("excludes pre-epoch buckets (day < 1 is not flushable on-chain)", () => {
-    const { l, set } = mkAt("2026-07-20T08:00:00.000Z"); // ordinal 0 — before epoch
+    const { l, set } = mkAt("2026-07-31T08:00:00.000Z"); // ordinal 0 — before epoch
     l.recordRead(9);
-    set("2026-07-21T08:00:00.000Z"); // ordinal 1
+    set("2026-08-01T08:00:00.000Z"); // ordinal 1
     l.recordRead(3);
     const { entries } = l.beginFlush();
     expect(entries.map((e) => e.day)).toEqual([1]); // the day-0 bucket is not sent
@@ -335,7 +335,7 @@ describe("PythLedger — per-consumer transaction attribution (byConsumer)", () 
 
   it("persists byConsumer across a reload of the same file", () => {
     const file = scratchFile();
-    const clock = fixedClock("2026-07-05T10:00:00.000Z");
+    const clock = fixedClock("2026-07-16T10:00:00.000Z");
     const l1 = new PythLedger({ filePath: file, flushMs: 0, clock });
     l1.recordSend(true, 700, 3, "explorer");
     l1.persist();
@@ -358,7 +358,7 @@ describe("PythLedger — per-consumer transaction attribution (byConsumer)", () 
   it("loading a legacy snapshot with no byConsumer key yields an empty map (no throw)", () => {
     const file = scratchFile();
     writeFileSync(file, JSON.stringify({ days: {}, generation: 0 }), "utf8");
-    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-05T10:00:00.000Z") });
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-16T10:00:00.000Z") });
     expect(l.byConsumer()).toEqual({});
   });
 });
@@ -404,7 +404,7 @@ describe("PythLedger — per-consumer READ attribution (byConsumer petitions/pon
 
   it("persists per-consumer reads across a reload", () => {
     const file = scratchFile();
-    const clock = fixedClock("2026-07-05T10:00:00.000Z");
+    const clock = fixedClock("2026-07-16T10:00:00.000Z");
     const a = new PythLedger({ filePath: file, flushMs: 0, clock });
     a.recordRead(7, "explorer");
     a.persist();
@@ -422,7 +422,7 @@ describe("PythLedger — per-consumer READ attribution (byConsumer petitions/pon
         byConsumer: { legacy: { transactions: 3, failedTransactions: 0, gasReserved: 90, wastedGasReserved: 0 } },
       }),
     );
-    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-05T10:00:00.000Z") });
+    const l = new PythLedger({ filePath: file, flushMs: 0, clock: fixedClock("2026-07-16T10:00:00.000Z") });
     expect(l.byConsumer().legacy).toEqual({
       transactions: 3,
       failedTransactions: 0,

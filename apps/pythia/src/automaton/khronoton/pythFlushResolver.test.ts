@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe("pyth-flush server resolver", () => {
   it("resolve() fills the `entries` payload from the ledger + carries a drain token", () => {
-    const l = ledgerAt("2026-07-23T08:00:00.000Z");
+    const l = ledgerAt("2026-08-03T08:00:00.000Z");
     l.recordRead(10);
     const r = createPythFlushResolver(l);
     const { payload, plan } = r.resolve();
@@ -31,7 +31,7 @@ describe("pyth-flush server resolver", () => {
     // Numbers are encoded as EXPLICIT Pact values — a raw JS number is rejected in a
     // Pact command, and read-msg needs the {int}/{decimal} tags to reproduce the
     // on-chain object{…PythFlushEntry} schema's integer/decimal fields.
-    expect(entries[0].day).toEqual({ int: "3" }); // day ordinal (epoch 2026-07-21)
+    expect(entries[0].day).toEqual({ int: "3" }); // day ordinal (epoch 2026-08-01)
     expect(entries[0]["iz-complete"]).toBe(false); // a bool — no wrapper
     expect(entries[0].petitions).toEqual({ int: "1" });
     expect(entries[0].pondus).toEqual({ decimal: "10" }); // decimal even when whole
@@ -39,7 +39,7 @@ describe("pyth-flush server resolver", () => {
   });
 
   it("encodes EVERY numeric field with its Pact type — pondus as {decimal} (incl. a whole value), the six counters as {int}", () => {
-    const l = ledgerAt("2026-07-23T08:00:00.000Z");
+    const l = ledgerAt("2026-08-03T08:00:00.000Z");
     l.recordRead(40.538); // a fractional pondus
     l.recordSend(true, 500); // +1 transaction, +500 gas-reserved
     l.recordSend(false, 800); // +1 failed-transaction, +800 wasted-gas-reserved
@@ -57,7 +57,7 @@ describe("pyth-flush server resolver", () => {
   });
 
   it("settle() drains the ledger (confirmed-success path)", () => {
-    const l = ledgerAt("2026-07-23T08:00:00.000Z");
+    const l = ledgerAt("2026-08-03T08:00:00.000Z");
     l.recordRead(10);
     const r = createPythFlushResolver(l);
     const { plan } = r.resolve();
@@ -67,7 +67,7 @@ describe("pyth-flush server resolver", () => {
   });
 
   it("registers under the canonical `pyth-flush` name for the tick to find", () => {
-    const l = ledgerAt("2026-07-23T08:00:00.000Z");
+    const l = ledgerAt("2026-08-03T08:00:00.000Z");
     registerPythFlushResolver(l);
     const reg = getServerResolver(PYTH_FLUSH_RESOLVER);
     expect(reg?.kind).toBe("single-tx");

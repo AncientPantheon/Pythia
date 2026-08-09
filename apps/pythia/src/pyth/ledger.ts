@@ -46,7 +46,7 @@ export interface ConsumerTx {
  * instant; the day ordinal a flush entry carries is `1 + floor((t − epoch)/86400s)`.
  * Must match the on-chain constant exactly. See docs/HANDOFF-pythia-khronoton-flush.md.
  */
-export const PYTH_LEDGER_EPOCH_MS = Date.UTC(2026, 6, 21, 0, 0, 0); // 2026-07-21T00:00:00Z
+export const PYTH_LEDGER_EPOCH_MS = Date.UTC(2026, 7, 1, 0, 0, 0); // 2026-08-01T00:00:00Z
 const DAY_MS = 86_400_000;
 
 /** The integer UTC calendar-day ordinal for a "YYYY-MM-DD" bucket key, against an epoch
