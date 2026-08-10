@@ -857,6 +857,33 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 .deploy-stall { margin: 8px 0 0; font-size: 13px; color: #f0736b; }
 .deploy-reload { margin: 8px 0 0; font-size: 13.5px; font-weight: 600; color: #7ce6a8; }
 
+/* ── Deploy progress step list (per-phase, driven by the deployer's "N/5 · …" markers) ── */
+.deploy-progress-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.deploy-head-title { font-weight: 700; color: var(--ink); }
+.deploy-head-title--ok { color: var(--gold); }
+.deploy-head-title--fail { color: #f0736b; }
+.deploy-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.deploy-step-item { display: flex; align-items: center; gap: 11px; font-size: 14px; }
+.deploy-step-label { flex: 1 1 auto; color: var(--ink); }
+.deploy-step-time { color: var(--ink-soft); font-variant-numeric: tabular-nums; font-size: 13px; }
+.deploy-step-item--pending .deploy-step-label,
+.deploy-step-item--pending .deploy-step-time { color: var(--ink-mute); }
+.deploy-step-item--active .deploy-step-label { color: var(--gold); font-weight: 600; }
+.deploy-step-item--active .deploy-step-time { color: var(--gold-dim); }
+.deploy-step-item--failed .deploy-step-label,
+.deploy-step-item--failed .deploy-step-time { color: #f0736b; }
+.deploy-step-dot { flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; }
+.deploy-step-dot--pending { border: 2px solid var(--line); background: transparent; }
+.deploy-step-dot--done { background: var(--gold); border: 2px solid var(--gold); }
+.deploy-step-dot--failed { background: #f0736b; border: 2px solid #f0736b; }
+.deploy-step-dot--active { border: 2px solid var(--gold); border-top-color: transparent; background: transparent; animation: deploy-spin 0.7s linear infinite; }
+@keyframes deploy-spin { to { transform: rotate(360deg); } }
+.deploy-log-details { margin-top: 12px; }
+.deploy-log-details > summary { cursor: pointer; color: var(--ink-soft); font-size: 13px; user-select: none; }
+.deploy-log-details > summary:hover { color: var(--ink); }
+.deploy-log-details[open] > summary { margin-bottom: 8px; }
+.deploy-log-details .console-out { margin: 0; }
+
 /* Pacman heartbeat — pac-man chomps left→right across a dot field on a CSS loop, so
    there is ALWAYS motion while a deploy runs. Parks at the end on done; pauses + reddens
    when the watchdog flags a stall (no host output for >20s). */

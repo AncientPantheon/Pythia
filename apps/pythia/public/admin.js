@@ -1358,34 +1358,77 @@ function wireDeployButton() {
   });
 }
 
-// ── Deploy progress display (canonical: always something moving) ──────────────
-// A ticking timer, the docker step (N/M), and a pacman heartbeat, so a slow-but-
-// working deploy never reads as stuck. The server deployer also heartbeats a log line
-// every ~6s; if THAT stops (>20s silent) the watchdog flags a genuinely stalled host.
+// ── Deploy progress display — a per-phase step list (always something moving) ─────
+// The on-box deployer logs a marker per phase: "═══ [<elapsed>] N/5 · <title> ═══"
+// (deploy/host/pythia-deploy.sh). We parse those to drive a 5-step list — done ● /
+// active spinner / pending ○ — with per-step + total elapsed, and keep the raw log
+// under a collapsible "Full log". A slow phase (the docker build) shows its own ticking
+// time, so a slow-but-working deploy never reads as stuck. The deployer also heartbeats
+// a log line every ~6s; if THAT stops (>20s silent) the watchdog flags a stalled host.
+const DEPLOY_STEPS = [
+  { n: 1, label: "Pulling source" },
+  { n: 2, label: "Building image" },
+  { n: 3, label: "Starting container" },
+  { n: 4, label: "Verifying health" },
+  { n: 5, label: "Cutting over" },
+];
 let deployProg = null;
 
-function fmtElapsed(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+function fmtDur(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
+function renderDeploySteps() {
+  const ul = document.getElementById("deploy-steps");
+  if (!ul || !deployProg) return;
+  ul.textContent = "";
+  const now = Date.now();
+  deployProg.steps.forEach((st, i) => {
+    const li = document.createElement("li");
+    li.className = "deploy-step-item deploy-step-item--" + st.status;
+    const dot = document.createElement("span");
+    dot.className = "deploy-step-dot deploy-step-dot--" + st.status;
+    dot.setAttribute("aria-hidden", "true");
+    const label = document.createElement("span");
+    label.className = "deploy-step-label";
+    label.textContent = DEPLOY_STEPS[i].label;
+    const time = document.createElement("span");
+    time.className = "deploy-step-time";
+    time.textContent =
+      st.status === "pending" ? "—"
+      : st.status === "active" ? fmtDur(now - st.startMs)
+      : fmtDur((st.endMs || now) - st.startMs);
+    li.append(dot, label, time);
+    ul.appendChild(li);
+  });
 }
 
 function showDeployProgress(startMs) {
   const panel = document.getElementById("deploy-progress");
   if (!panel) return;
   panel.hidden = false;
-  panel.classList.remove("is-done", "is-stalled");
-  const chip = document.getElementById("deploy-status-chip");
-  if (chip) { chip.textContent = "running"; chip.className = "deploy-chip deploy-chip--running"; }
-  const step = document.getElementById("deploy-step");
-  if (step) step.textContent = "";
+  panel.classList.remove("is-done", "is-stalled", "is-failed");
+  const btn = document.getElementById("deploy-btn");
+  if (btn) btn.textContent = "Deploying…"; // restored to "Deploy" on finish
+  const title = document.getElementById("deploy-head-title");
+  if (title) { title.textContent = "Running…"; title.className = "deploy-head-title"; }
   const stall = document.getElementById("deploy-stall");
   if (stall) stall.hidden = true;
   if (deployProg && deployProg.timer) clearInterval(deployProg.timer);
-  deployProg = { start: startMs || Date.now(), lastChunk: Date.now(), timer: null };
+  deployProg = {
+    start: startMs || Date.now(),
+    lastChunk: Date.now(),
+    activeN: 0,
+    steps: DEPLOY_STEPS.map(() => ({ status: "pending", startMs: 0, endMs: 0 })),
+    timer: null,
+  };
+  renderDeploySteps();
   deployProg.timer = setInterval(() => {
     if (!deployProg) return;
     const t = document.getElementById("deploy-timer");
-    if (t) t.textContent = fmtElapsed(Date.now() - deployProg.start);
+    if (t) t.textContent = `${fmtDur(Date.now() - deployProg.start)} elapsed`;
+    if (deployProg.activeN >= 1) renderDeploySteps(); // live-tick the active step's own time
     const silentMs = Date.now() - deployProg.lastChunk;
     const p = document.getElementById("deploy-progress");
     const st = document.getElementById("deploy-stall");
@@ -1399,32 +1442,61 @@ function showDeployProgress(startMs) {
   }, 1000);
 }
 
+// Advance the step list to phase N (1..5): close every earlier step as done, open N.
+function advanceDeployPhase(n) {
+  if (!deployProg || n < 1 || n > deployProg.steps.length || n <= deployProg.activeN) return;
+  const now = Date.now();
+  for (let i = 0; i < n - 1; i++) {
+    const s = deployProg.steps[i];
+    if (s.status !== "done") { if (!s.startMs) s.startMs = now; s.endMs = now; s.status = "done"; }
+  }
+  const cur = deployProg.steps[n - 1];
+  cur.status = "active";
+  cur.startMs = now;
+  deployProg.activeN = n;
+  renderDeploySteps();
+}
+
 function onDeployChunk(text) {
   if (deployProg) deployProg.lastChunk = Date.now();
-  // Track the latest docker "Step N/M" seen in the chunk.
-  let last = null;
-  const re = /Step (\d+)\/(\d+)/g;
+  // Phase markers "… N/5 · <title> …" — the middot guards against docker's "Step N/M".
+  // Advance to the HIGHEST phase seen in the chunk (the deployer only moves forward).
+  let maxN = 0;
+  const re = /(\d+)\/5\s*·/g;
   let m;
-  while ((m = re.exec(text)) !== null) last = m;
-  if (last) {
-    const el = document.getElementById("deploy-step");
-    if (el) el.textContent = `Step ${last[1]}/${last[2]}`;
-  }
+  while ((m = re.exec(text)) !== null) { const n = Number(m[1]); if (n > maxN) maxN = n; }
+  if (maxN > 0) advanceDeployPhase(maxN);
 }
 
 function finishDeployProgress(status) {
   if (deployProg && deployProg.timer) clearInterval(deployProg.timer);
-  const total = deployProg ? fmtElapsed(Date.now() - deployProg.start) : "";
-  deployProg = null;
-  const panel = document.getElementById("deploy-progress");
-  if (panel) { panel.classList.add("is-done"); panel.classList.remove("is-stalled"); }
   const ok = status === "success";
-  const chip = document.getElementById("deploy-status-chip");
-  if (chip) { chip.textContent = ok ? "success" : (status || "done"); chip.className = `deploy-chip deploy-chip--${ok ? "success" : "failed"}`; }
+  const now = Date.now();
+  const total = deployProg ? fmtDur(now - deployProg.start) : "";
+  if (deployProg) {
+    deployProg.steps.forEach((s) => {
+      if (s.status === "active") { s.endMs = now; s.status = ok ? "done" : "failed"; }
+    });
+    // A fast final phase may never log its own marker — on success, close everything.
+    if (ok) deployProg.steps.forEach((s) => {
+      if (s.status !== "done") { if (!s.startMs) s.startMs = now; s.endMs = now; s.status = "done"; }
+    });
+    renderDeploySteps();
+  }
+  const panel = document.getElementById("deploy-progress");
+  if (panel) { panel.classList.add(ok ? "is-done" : "is-failed"); panel.classList.remove("is-stalled"); }
+  const title = document.getElementById("deploy-head-title");
+  if (title) {
+    title.textContent = ok ? `Deployed in ${total}` : `${status || "Failed"} after ${total}`;
+    title.className = "deploy-head-title deploy-head-title--" + (ok ? "ok" : "fail");
+  }
   const t = document.getElementById("deploy-timer");
-  if (t) t.textContent = ok ? `finished in ${total}` : `${status} after ${total}`;
+  if (t) t.textContent = "";
   const stall = document.getElementById("deploy-stall");
   if (stall) stall.hidden = true;
+  const btn = document.getElementById("deploy-btn");
+  if (btn) btn.textContent = "Deploy"; // restore (the done handler re-enables it)
+  deployProg = null;
 }
 
 function openDeployStream(id, startedAtMs) {

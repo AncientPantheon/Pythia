@@ -195,19 +195,23 @@
                   </div>
                 </div>
                 <p class="conn-error" id="deploy-error" hidden></p>
-                <!-- Live progress: an always-moving pacman heartbeat + a ticking timer +
-                     the docker step (N/M), so a slow-but-working deploy never looks stuck. -->
+                <!-- Live progress: a per-phase step list (driven by the deployer's own
+                     "N/5 · <title>" phase markers) with per-step + total elapsed, an active
+                     spinner, and a collapsible full log — so a slow-but-working deploy reads
+                     clearly at a glance without staring at the raw terminal. -->
                 <div id="deploy-progress" class="deploy-progress" hidden>
-                  <div class="deploy-progress-row">
-                    <span id="deploy-status-chip" class="deploy-chip deploy-chip--running">running</span>
-                    <span id="deploy-step" class="deploy-step"></span>
-                    <span id="deploy-timer" class="deploy-timer" aria-live="polite">0m00s</span>
+                  <div class="deploy-progress-head">
+                    <span id="deploy-head-title" class="deploy-head-title">Running…</span>
+                    <span id="deploy-timer" class="deploy-timer" aria-live="polite">0s elapsed</span>
                   </div>
-                  <div class="deploy-pacman" aria-hidden="true"><span class="deploy-pacman-muncher">ᗧ</span></div>
+                  <ul id="deploy-steps" class="deploy-steps"></ul>
                   <p id="deploy-stall" class="deploy-stall" hidden></p>
                   <p id="deploy-reload" class="deploy-reload" hidden></p>
+                  <details id="deploy-log-details" class="deploy-log-details">
+                    <summary>Full log</summary>
+                    <pre id="deploy-log" class="console-out"></pre>
+                  </details>
                 </div>
-                <pre id="deploy-log" class="console-out" hidden></pre>
               </div>
             </section>
 

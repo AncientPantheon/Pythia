@@ -9,6 +9,22 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.1.5] — 2026-08-10
+
+### Changed — deploy progress is now a per-phase step list (Explorer-style), not the pacman heartbeat
+
+The admin Update & Deploy progress display is redesigned into a **per-phase step list** driven by the
+deployer's own `N/5 · <title>` phase markers: `Pulling source` / `Building image` / `Starting container`
+/ `Verifying health` / `Cutting over`, each rendered **done ●** (with its measured duration) / **active**
+(a spinning gold ring, live-ticking its own time) / **pending ○**. A header shows the title
+(`Running…` → `Deployed in 2m 41s` / `<status> after …`) + **total elapsed**; a failed deploy turns the
+active step **✕ red** and leaves later steps pending, so which phase failed is obvious. The raw build
+log moved under a collapsed **`▸ Full log`** `<details>`. Replaces the status-chip + `Step N/M` +
+full-width "pacman" heartbeat; the always-moving guarantee is now the active-step spinner + its live
+timer. The stall watchdog (>20s silent) still reddens the panel. Frontend-only
+(`apps/pythia/public/{admin.html,admin.js,styles.css}`); pattern documented in Pantheon
+`automaton/05-deploy-panel-and-progress.md` §5. Client stays `3.1.0`.
+
 ## [3.1.4] — 2026-08-09
 
 ### Changed — Pythia's OWN activity unifies under her self dual-link Apollo (her keyed API), not a separate "pythia-self" bucket
