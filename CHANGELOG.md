@@ -9,6 +9,18 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.2.1] — 2026-08-10
+
+### Added — Live Pulse "Public (free) reads" monitor (free-lane abuse watch)
+
+The Live Pulse now shows a free-vs-metered monitor above the per-consumer list: the public/free reads
+(the keyless `/{chain}/read` `"direct"` bucket — counted in Pythia's stats, never earning) against the
+metered (keyed) total — free petitions, its **% share of served reads**, the metered count, and a
+proportion bar (cyan free share over the gold metered remainder). So the operator can watch how much of
+the served load is the free lane and spot abuse at a glance. Clarifies the model: keyed reads (from
+apps with API keys) still meter + earn per consumer; only the free lane is non-earning. Frontend-only
+(`apps/pythia/public/{app.js,styles.css}`); client stays `3.1.0`.
+
 ## [3.2.0] — 2026-08-10
 
 ### Changed — `/{chain}/read` is now a FREE, keyless PUBLIC dirty-read lane (send/poll stay gated)

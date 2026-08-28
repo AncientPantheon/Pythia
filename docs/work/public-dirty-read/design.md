@@ -44,6 +44,10 @@ Alternatives considered:
 - [ ] The For-Developers page documents `/{chain}/read` as a free keyless dirty read, with a worked
       curl example and the response shape; the stale "keyless surface" wording is corrected (read =
       keyless, send/poll = keyed).
+- [ ] The Live Pulse shows a **free-lane monitor**: the public (free/`direct`) reads vs the metered
+      (keyed) total — free petitions, its % share of served reads, the metered count, and a proportion
+      bar — so the operator can watch usage and spot abuse of the free lane. (Free reads count in
+      Pythia's stats; keyed reads still meter + earn per consumer — nothing about earning changes.)
 
 ## Out of scope
 - Rate-limiting / abuse controls on the public read lane (deferred; the reads are public chain data and

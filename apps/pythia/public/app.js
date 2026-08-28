@@ -1825,6 +1825,51 @@ function pulseMetric(value, unit, fmt) {
   return cell;
 }
 
+function freeLaneStat(val, label) {
+  const s = el("div", "free-lane-stat");
+  s.append(el("span", "free-lane-val", val), el("span", "free-lane-lbl", label));
+  return s;
+}
+
+// The FREE public dirty-read lane monitor (abuse watch). The `"direct"` bucket is the
+// keyless `/{chain}/read` traffic — counted in Pythia's own stats but NEVER earning (no
+// node/operator reward). Reads that carry a real API key are metered per consumer and DO
+// earn — they're the rest of `byConsumer`. This summary shows free-vs-metered at a glance,
+// so the operator can watch how much of the served load is free (and spot abuse).
+function buildFreeLaneSummary(byConsumer) {
+  const bc = byConsumer || {};
+  const free = bc["direct"] || {};
+  const freePet = free.petitions || 0;
+  const totalPet = Object.values(bc).reduce((s, c) => s + (c.petitions || 0), 0);
+  const meteredPet = Math.max(0, totalPet - freePet);
+  const pct = totalPet > 0 ? (freePet / totalPet) * 100 : 0;
+  const pctTxt = freePet > 0 && pct < 0.1 ? "<0.1" : pct.toFixed(1);
+
+  const wrap = el("div", "free-lane");
+  const head = el("div", "free-lane-head");
+  head.append(
+    el("span", "free-lane-title", "Public (free) reads"),
+    el("span", "free-lane-sub", "keyless /read · counted, never earning"),
+  );
+  wrap.appendChild(head);
+
+  const stats = el("div", "free-lane-stats");
+  stats.append(
+    freeLaneStat(fmtInt(freePet), "free petitions"),
+    freeLaneStat(`${pctTxt}%`, "of served reads"),
+    freeLaneStat(fmtInt(meteredPet), "metered (keyed)"),
+  );
+  wrap.appendChild(stats);
+
+  // Proportion bar — free share (cyan) over the metered remainder (gold track).
+  const track = el("div", "free-lane-bar");
+  const fill = el("div", "free-lane-bar-fill");
+  fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  track.appendChild(fill);
+  wrap.appendChild(track);
+  return wrap;
+}
+
 // Consumer-list pagination. 10/page keeps the Live Pulse list short so the eye
 // finds a key fast; the graph now lives in its own Statistics sub-view so length
 // here no longer buries it. Trivially switchable to 15.
@@ -1852,6 +1897,7 @@ function renderPulseConsumers(container, byConsumer) {
     return;
   }
   container.appendChild(el("h4", "pulse-consumers-title", "Activity by consumer (per API key)"));
+  container.appendChild(buildFreeLaneSummary(byConsumer)); // free public-read lane monitor (abuse watch)
   // Clamp the page — the live list may have shrunk since the user last paged
   // (a consumer dropping off). Never reset to 0 on a refresh (§ live poll).
   const pageCount = Math.max(1, Math.ceil(entries.length / ACTIVITY_CONSUMER_PAGE_SIZE));

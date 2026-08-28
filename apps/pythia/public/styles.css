@@ -542,6 +542,18 @@ body.landing .work-area .tabpanel { padding: clamp(16px, 2vw, 22px); }
 
 .pulse-consumers { margin-top: 14px; }
 .pulse-consumers-title { font-size: 12px; color: var(--ink-soft); margin: 0 0 8px; font-weight: 600; }
+
+/* Free public dirty-read lane monitor (abuse watch) — free vs metered at a glance. */
+.free-lane { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(88,201,232,.04); }
+.free-lane-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.free-lane-title { font-weight: 700; color: var(--cyan); font-size: 13.5px; }
+.free-lane-sub { color: var(--ink-mute); font-size: 12px; }
+.free-lane-stats { display: flex; gap: 24px; margin: 10px 0 9px; flex-wrap: wrap; }
+.free-lane-stat { display: flex; flex-direction: column; gap: 2px; }
+.free-lane-val { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; font-size: 16px; }
+.free-lane-lbl { color: var(--ink-soft); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.free-lane-bar { height: 6px; border-radius: 4px; overflow: hidden; background: var(--gold-dim); border: 1px solid var(--line); }
+.free-lane-bar-fill { height: 100%; background: var(--cyan); transition: width 1s ease; }
 .pulse-empty { font-size: 12px; color: var(--ink-mute); margin: 4px 0 0; }
 .pulse-clist { display: flex; flex-direction: column; gap: 6px; }
 .pulse-crow { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.02); flex-wrap: wrap; }
