@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { app, ephemeralKeyStore } from "../src/index.js";
+import { app } from "../src/index.js";
 
 // Smoke coverage for the additive wiring in src/index.ts: the static landing
 // mount at `/` and the connectors route must both respond, and the pre-existing
@@ -41,26 +41,24 @@ describe("landing wiring in the app", () => {
     expect(["primary", "fallback", "unreachable"]).toContain(body.routing);
   });
 
-  it("keeps the read relay reachable — POST /stoachain/read is not shadowed", async () => {
-    // An out-of-range chainId is rejected with 400 BEFORE any network attempt,
-    // proving the read route handler ran — the static `/` catch-all did not shadow
-    // it (a shadow would yield a 404 from static file resolution, not a 400).
-    // The read face is now HARD-GATED (read-gate-self-key), so we must present a
-    // recognized key to reach the handler at all — issue a real ephemeral one.
-    const { secret } = ephemeralKeyStore.issue("₱.landing-wiring-test");
+  it("keeps the read relay reachable — a KEYLESS POST /stoachain/read reaches the handler (public dirty-read lane)", async () => {
+    // /{chain}/read is a keyless PUBLIC utility (public-dirty-read) — NO x-pythia-key
+    // needed. An out-of-range chainId is rejected with 400 BEFORE any network attempt,
+    // proving the read route handler ran (and the static `/` catch-all did not shadow
+    // it — a shadow would 404). A 401 here would mean the read got wrongly gated.
     const res = await app.request("/stoachain/read", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-pythia-key": secret },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ chainId: 99, code: "(f)" }),
     });
     expect(res.status).toBe(400);
   });
 
-  it("HARD-GATES the read face — a keyless POST /stoachain/read is 401 (read-gate-self-key)", async () => {
-    const res = await app.request("/stoachain/read", {
+  it("GATES the WRITE lane — a keyless POST /stoachain/send is 401 (read-gate-self-key)", async () => {
+    const res = await app.request("/stoachain/send", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chainId: 0, code: "(f)" }),
+      body: JSON.stringify({ cmds: [] }),
     });
     expect(res.status).toBe(401);
   });

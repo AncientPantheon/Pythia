@@ -156,7 +156,7 @@
       <section class="panel tabpanel" data-panel="developers" aria-labelledby="dev-h" hidden>
         <div class="panel-head">
           <h2 id="dev-h">For developers</h2>
-          <p class="panel-note">One base URL, one keyless surface, the same shape on every chain.</p>
+          <p class="panel-note">One base URL, the same shape on every chain. <b>Reads are a free, keyless public utility</b>; the send/poll relay lane is gated by a connector key.</p>
         </div>
         <pre class="install"><code>npm install @ancientpantheon/pythia-client</code></pre>
         <p class="dev-note">
@@ -167,13 +167,35 @@
           <li><span class="verb verb--get">GET</span> <a href="/healthz"><code>/healthz</code></a><span class="ep-note">service + node-pool status</span></li>
           <li><span class="verb verb--get">GET</span> <a href="/stats"><code>/stats</code></a><span class="ep-note">aggregate usage</span></li>
           <li><span class="verb verb--get">GET</span> <a href="/api/v1/connectors"><code>/api/v1/connectors</code></a><span class="ep-note">connector directory</span></li>
-          <li><span class="verb verb--post">POST</span> <code>/{chain}/read</code><span class="ep-note">dirty read — caller supplies Pact code</span></li>
-          <li><span class="verb verb--post">POST</span> <code>/{chain}/send</code><span class="ep-note">keyless broadcast — relay caller-signed txs</span></li>
-          <li><span class="verb verb--post">POST</span> <code>/{chain}/poll</code><span class="ep-note">tx status — pending vs final + depth</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/{chain}/read</code><span class="ep-note"><b>keyless</b> · dirty read — any Pact table/expr, no key, no gas</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/{chain}/send</code><span class="ep-note"><b>keyed</b> · relay caller-signed txs (<code>x-pythia-key</code>)</span></li>
+          <li><span class="verb verb--post">POST</span> <code>/{chain}/poll</code><span class="ep-note"><b>keyed</b> · tx status — pending vs final + depth</span></li>
         </ul>
+
+        <!-- Free dirty read — the public, keyless table-query API (any agent/explorer). -->
+        <div class="dev-example">
+          <h3 class="dev-example-h">Free dirty read — query Pact tables directly</h3>
+          <p class="dev-note">
+            A keyless Pact <code>/local</code> read: any agent or explorer (OuronetUI, an Ouronet
+            Pact agent, StoaExplorer, your own tool) can read on-chain table data straight through
+            Pythia — <b>no connector key, no gas, no signature</b>. Supply the Pact code; the value
+            comes back verbatim under <code>result.data</code>.
+          </p>
+          <pre class="install"><code>curl -X POST https://pythia.ancientholdings.eu/stoachain/read \
+  -H 'content-type: application/json' \
+  -d '{"chainId":0,"code":"(ouronet-ns.PYTHIA.URD_ListAllDualLinks)"}'</code></pre>
+          <p class="dev-note">
+            → <code>{ "result": { "status": "success", "data": [ … rows … ] }, "gas": 1 }</code>.
+            Any read-only Pact expression works — a table function, a getter, an account balance.
+            A bad expression returns <code>status: "failure"</code> with the node's <code>error</code>,
+            verbatim.
+          </p>
+        </div>
+
         <p class="dev-note">
-          Registered connectors pass their key as an <code>x-pythia-key</code>
-          header so their usage is attributed by name in Activity.
+          The send/poll relay lane needs a connector <code>x-pythia-key</code> (a registered
+          dual-link key), so relays are attributed + metered by consumer in Activity. Reads stay
+          free and public.
         </p>
       </section>
 

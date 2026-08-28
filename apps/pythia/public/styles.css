@@ -432,6 +432,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .chain-soon p { margin: 0 auto; max-width: 48ch; color: var(--ink-soft); }
 .dev-note { margin: 16px 0 0; color: var(--ink-soft); font-size: 14.5px; }
 .dev-note code { color: var(--gold); }
+/* Worked "free dirty read" example — a framed sub-card under the endpoints list. */
+.dev-example { margin: 20px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.015); }
+.dev-example-h { margin: 0; font-size: 15px; color: var(--gold); }
+.dev-example .install { margin-top: 12px; white-space: pre-wrap; word-break: break-word; }
+.dev-example .dev-note:first-of-type { margin-top: 10px; }
 
 /* dirty-read console */
 .console { display: flex; flex-direction: column; gap: 12px; }

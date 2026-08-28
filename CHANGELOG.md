@@ -9,6 +9,29 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.2.0] — 2026-08-10
+
+### Changed — `/{chain}/read` is now a FREE, keyless PUBLIC dirty-read lane (send/poll stay gated)
+
+The read verb is **un-gated**: any agent or explorer (OuronetUI, an Ouronet Pact agent, StoaExplorer,
+ad-hoc tools) can `POST /{chain}/read` a Pact `/local` dirty read — **no connector key, no gas, no
+signature** — to query chain/table data directly, exactly as Pythia's own website does. The
+**write/relay lane (`/{chain}/send`, `/{chain}/poll`) stays gated** behind a recognized `x-pythia-key`
+(the metered, earning path). One-line change in `connectorGateMiddleware` (skip the gate for
+`match[2] === "read"`). This deliberately reverses the `read-gate-self-key` hardening **for the read
+lane only**; the intents it protected still hold — no keyless caller can masquerade as `pythia-self`
+(external keyless reads resolve to the public bucket, not Pythia), and the earning `send` face stays
+keyed. See `docs/work/public-dirty-read/design.md`.
+
+Attribution: external keyless reads are metered under the `"direct"` bucket, **relabelled "Public
+reads"** in Activity (counted, never earning) — an intentional public lane now, not a misattribution.
+Same-origin website reads still → `pythia-self`; keyed consumer reads still → their Apollo.
+
+Docs: the **For-Developers page** now documents `/{chain}/read` as a free keyless dirty read with a
+worked `curl` example + response shape; the stale "keyless surface" / "keyless broadcast" wording on
+the For-Developers page and the Chains endpoints panel is corrected (read = keyless · send/poll =
+keyed). Frontend + one middleware line; npm client unchanged (stays `3.1.0`).
+
 ## [3.1.5] — 2026-08-10
 
 ### Changed — deploy progress is now a per-phase step list (Explorer-style), not the pacman heartbeat

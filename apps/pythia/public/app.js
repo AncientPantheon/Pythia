@@ -1339,11 +1339,11 @@ function renderChainModule(chain) {
 
     <div class="subpanel" data-subpanel="endpoints" hidden>
       <div class="sub">
-        <div class="sub-head"><h4>Endpoints</h4><span class="sub-note">one keyless surface · same shape every chain</span></div>
+        <div class="sub-head"><h4>Endpoints</h4><span class="sub-note">read is keyless + public · send/poll are keyed · same shape every chain</span></div>
         <ul class="endpoints endpoints--compact">
-          <li><span class="verb verb--post">POST</span> <code>${chain.base}/read</code><span class="ep-note">dirty read — caller supplies Pact code</span></li>
-          <li><span class="verb verb--post">POST</span> <code>${chain.base}/send</code><span class="ep-note">keyless broadcast — relay caller-signed txs</span></li>
-          <li><span class="verb verb--post">POST</span> <code>${chain.base}/poll</code><span class="ep-note">tx status — pending vs final + depth</span></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/read</code><span class="ep-note">keyless dirty read — any Pact code, no key, no gas</span></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/send</code><span class="ep-note">keyed broadcast — relay caller-signed txs (x-pythia-key)</span></li>
+          <li><span class="verb verb--post">POST</span> <code>${chain.base}/poll</code><span class="ep-note">keyed tx status — pending vs final + depth</span></li>
         </ul>
       </div>
     </div>
@@ -1776,7 +1776,10 @@ const PULSE_KEYS = [
 
 function consumerLabel(name) {
   if (name === "pythia-self") return "Pythia (self)";
-  if (name === "direct") return "Anonymous";
+  // Keyless reads through the public dirty-read lane (`/{chain}/read` — no connector key,
+  // e.g. explorers / ad-hoc agents). Metered, never earning. (Was "Anonymous"; renamed
+  // once the read lane became an intentional public utility, not a misattribution.)
+  if (name === "direct") return "Public reads";
   // Keyed consumers resolve to their (long) Apollo account — ellipsize for display.
   if (typeof name === "string" && name.length > 22) return shortApollo(name);
   return name;
