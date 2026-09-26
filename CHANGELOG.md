@@ -9,6 +9,88 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.3.0] — 2026-09-26
+
+### Fixed — four DEAD Pact names were breaking the Connectors panel in production
+
+`ouronet-ns.PYTHIA` was redeployed between 2026-09-11 and 2026-09-26, renaming the whole `URD_`
+reader family to `URH_`. `public/app.js` still called the old spellings, so four live call paths
+were returning `Module ouronet-ns.PYTHIA has no such member` and rendering as an empty world:
+
+| call site | was | now |
+|---|---|---|
+| Connectors → dual-link list (active filter) | `URD_ListActiveDualLinks` | `URH_ListActiveDualLinks` |
+| Connectors → dual-link list (inactive filter) | `URD_ListInactiveDualLinks` | `URH_ListInactiveDualLinks` |
+| Connectors → dual-link list (all) + Activity lane pills | `URD_ListAllDualLinks` | `URH_ListAllDualLinks` |
+| Connectors → Apollo halves list | `URD_ListAllApiKeys` | `URH_ListAllApiKeys` |
+
+Evidence for the redeploy date: `URD_ListAllDualLinks` returned 6 rows on 2026-09-11 and returns
+`has no such member` today. This was the **third** round of the same failure — after v3.0.2's
+`UR_ActiveDualLinkSet` (never existed) and its fix's `URD_ListActiveDualLinks` (also not a member),
+both of which took fleet-wide auth down silently.
+
+### Added — one Pact name inventory, and a boot-time existence check against the deployed module
+
+A Pact call naming a function that does not exist is a **resolution** error: `try` cannot catch it,
+nothing throws at the call site, and a fail-closed cache turns it into *"nobody is authorised"*
+rather than *"this read is broken"*. Care was never the missing ingredient — a source of truth was.
+
+- **`src/pact/names.ts`** is now the only place a Pact module or function name is spelled. It carries
+  every name Pythia calls (backend and frontend) with its arity and call site. Callers ask for a key;
+  `pythiaRead()` builds the expression and **refuses a short call**, which Pact would otherwise
+  partially apply into a closure rather than reject. This replaced three separate
+  `const PYTHIA_NS = "ouronet-ns"` aliases — the exact shape that hid the four dead names from a
+  literal-only scan.
+- **`src/pact/existenceCheck.ts`** runs at boot: ONE `describe-module` settles all names, and any
+  that are absent are logged as an error **naming the dead symbol and its call site**. Non-blocking
+  and non-fatal — an unreachable node is *not* a dead name and must never take the service down.
+- **`/healthz` gained `pactSurface`**: the installed `@ouronet/talos-registry` version (read from
+  `node_modules` on disk so it cannot lie), its `surfaceHash`, the **deployed `ouronet-ns.PYTHIA`
+  module hash** (this changes on *any* redeploy — the signal that would have caught all three
+  rounds), and `namesStatus` (`ok` / `dead-names` / `unverified` / `pending`).
+- Tests walk every inventory key, **ban the `URD_` family and `UR_ActiveDualLinkSet` by name**,
+  assert the frontend mirror (`public/pact-names.js`) has not drifted from the TypeScript inventory,
+  and assert no source file outside `src/pact/` spells the namespace. The next rename fails the
+  suite instead of the fleet's authentication.
+
+### Dependencies — five pre-existing bumps included in this release
+
+These were sitting **uncommitted in the working tree** before this change (so `origin/main`, and
+therefore every deployed image, was still building the older set) and are committed here rather than
+left to ship invisibly:
+
+| package | was | now |
+|---|---|---|
+| `@ancientpantheon/codex` | `^0.8.0` | `^0.10.0` |
+| `@ouronet/dalos-crypto` | `^4.0.3` | `^4.5.1` |
+| `@ouronet/ouronet-core` | `^4.4.0` | `^4.6.0` |
+| `@stoachain/kadena-stoic-legacy` | `^4.3.6` | `^4.4.0` |
+| `@stoachain/stoa-core` | `^4.3.6` | `^4.4.0` |
+
+The full suite (705 tests) and typecheck pass against the installed set. Note these are pre-1.0 /
+minor moves on packages the **Khronoton signing path** depends on (`codex` 0.8 → 0.10 spans two
+minors, and in 0.x a minor may break), so the first deploy of this version is worth watching for
+automaton fires specifically. `@ouronet/ouronet-core` is deliberately left on `^4.x`: 5.0.0 is a
+breaking release that adds a required argument to six transaction builders.
+
+### Added — `@ouronet/talos-registry@^1.1.0` as a dependency
+
+A plain `dependency` (not a peer): Pythia is a deployed service, so it owns its tree and its version.
+Its version and `surfaceHash` are reported in health.
+
+**Deliberate deviation from the adoption brief, recorded because it matters:** the brief asked for the
+boot check to validate names via `tryGetEntrypoint`. It cannot. The registry carries the
+transaction-callable surface — 423 entrypoints over 12 Talos modules and **zero reader functions**
+(`keys matching /\.(UR|URH|URD|URC)_/ === 0`, `keys starting "PYTHIA." === 0`). Measured:
+`tryGetEntrypoint("PYTHIA.URH_ListActiveDualLinks")` is `undefined` exactly as the broken `URD_`
+spelling is, and `resolveByName("ListActiveDualLinks")` *throws* rather than offering `URH_` — so it
+cannot tell a dead name from a live one, and a check built on it would have rejected every name
+Pythia calls and refused to boot a healthy service. The chain is the source of truth that actually
+covers this surface. See `docs/work/talos-registry-migration/design.md`.
+
+No shim was added. Pythia is the chokepoint, and rewriting other consumers' stale names at the
+transport would hide every consumer's staleness from every host. Diagnose, never rewrite.
+
 ## [3.2.1] — 2026-08-10
 
 ### Added — Live Pulse "Public (free) reads" monitor (free-lane abuse watch)

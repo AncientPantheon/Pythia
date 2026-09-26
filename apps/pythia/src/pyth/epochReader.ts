@@ -4,6 +4,7 @@ import { buildLocalCommand } from "../chainweb/localCommand.js";
 import { resolveReadPair } from "../routes/relay.js";
 import type { NodePool } from "../pool/nodePool.js";
 import { parseEpochResult } from "./epoch.js";
+import { pythiaRead } from "../pact/names.js";
 
 /**
  * Keyless read of the on-chain ledger epoch (`PYTHIA.UR_PythLedgerEpochStart`) — a plain
@@ -11,7 +12,8 @@ import { parseEpochResult } from "./epoch.js";
  * epoch as UTC ms, or null on any failure (no read node, node error, unparseable result)
  * so the caller keeps the hardcoded default. Reads only; signs nothing.
  */
-const EPOCH_CODE = "(ouronet-ns.PYTHIA.UR_PythLedgerEpochStart)";
+/** Built from the checked inventory — never hand-typed. See `src/pact/names.ts`. */
+const EPOCH_CODE = pythiaRead("ledgerEpochStart");
 
 /** The chain the PYTHIA ledger module lives on (env override, default 0). */
 function ledgerChainId(): number {

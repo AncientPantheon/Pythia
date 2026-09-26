@@ -2,9 +2,7 @@ import { dial, STOA_NETWORK, type DialNode, type FetchImpl } from "../../dial/in
 import { buildLocalCommand } from "../../chainweb/localCommand.js";
 import { PYTHIA_DUAL_LINK_BAR, APOLLO_ACCOUNT_LEN } from "./dualLinkCache.js";
 import { isStandardApollo, isSmartApollo } from "../../routes/connectorVerify.js";
-
-/** The namespace + module the PYTHIA consumer-key reads live in. */
-const PYTHIA_NS = "ouronet-ns";
+import { pythiaRead } from "../../pact/names.js";
 
 /** The {primary, fallback} nodes to read an Apollo account's counterpart from. */
 export interface ApolloCounterpartReadPair {
@@ -44,7 +42,7 @@ export async function readApolloCounterpart(
   opts: { chainId?: number; fetchImpl?: FetchImpl } = {},
 ): Promise<string | null> {
   const chainId = opts.chainId ?? 0;
-  const body = buildLocalCommand(`(${PYTHIA_NS}.PYTHIA.UR_Counterpart (read-string "acct"))`, {
+  const body = buildLocalCommand(pythiaRead("counterpart", ['(read-string "acct")']), {
     chainId,
     data: { acct: apolloAccount },
   });

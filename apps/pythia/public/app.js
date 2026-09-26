@@ -4,6 +4,7 @@
 // Adding a chain = adding one entry to CHAINS.
 
 import { renderIdentity, setVersion, confirmDialog } from "./pantheon-header.js";
+import { pythiaRead as pactCall } from "./pact-names.js";
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -168,7 +169,6 @@ function renderAutomatonLive(a) {
 // half — the Pythia side — linked to a Smart (Π.) half — the consumer side.
 // This tab reads that state live off StoaChain via Pythia's own /stoachain/read,
 // so it dogfoods the read gateway and stays keyless.
-const PYTHIA_NS = "ouronet-ns";
 const CONN_CHAIN_ID = 0; // ouronet-ns.PYTHIA + DPL-UR live on chain 0.
 const BAR = "|"; // Pact sentinel: an ApiKey half whose counterpart == BAR is UNLINKED.
 const DL_PAGE = 15;
@@ -272,12 +272,12 @@ async function loadDualLinks() {
   renderReading(list); // visible loading state while the chain read is in flight
   const fn =
     dlState.filter === "active"
-      ? "URD_ListActiveDualLinks"
+      ? "listActiveDualLinks"
       : dlState.filter === "inactive"
-        ? "URD_ListInactiveDualLinks"
-        : "URD_ListAllDualLinks";
+        ? "listInactiveDualLinks"
+        : "listAllDualLinks";
   try {
-    const data = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.${fn})`);
+    const data = await pythiaRead(pactCall(fn));
     if (seq !== dlReqSeq) return; // a newer request superseded this one
     dlState.rows = Array.isArray(data) ? data : [];
     dlState.page = 0;
@@ -634,7 +634,7 @@ async function loadHalves() {
   renderReading(document.querySelector('[data-role="std-list"]'));
   renderReading(document.querySelector('[data-role="smart-list"]'));
   try {
-    const data = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.URD_ListAllApiKeys)`);
+    const data = await pythiaRead(pactCall("listAllApiKeys"));
     if (seq !== halvesReqSeq) return; // superseded by a newer reload
     regState.halves = Array.isArray(data) ? data : [];
     regState.loaded = true;
@@ -1635,7 +1635,7 @@ function pythDayToDateStr(ordinal) {
 // no longer discards the whole on-chain read (the bug that showed stone = 0 despite a
 // real flush).
 async function loadPythChain() {
-  const totalRaw = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.UR_PythTotal)`);
+  const totalRaw = await pythiaRead(pactCall("pythTotal"));
   const lastDay = coercePactNum(totalRaw && totalRaw["last-day"]);
   const total = parsePythMetrics(totalRaw && totalRaw["total-metrics"]);
   let daily = [];
@@ -1646,7 +1646,7 @@ async function loadPythChain() {
     for (let d = from; d <= lastDay; d++) ordinals.push(d);
     const rows = await Promise.all(
       ordinals.map((d) =>
-        pythiaRead(`(${PYTHIA_NS}.PYTHIA.UR_PythDay ${d})`).then(
+        pythiaRead(pactCall("pythDay", [String(d)])).then(
           (row) => ({
             ord: d,
             day: pythDayToDateStr(d),
@@ -2103,7 +2103,7 @@ async function loadConsumerLanes(force) {
   if (!force && consumerLaneLoadedAt && now - consumerLaneLoadedAt < 60000) return;
   consumerLaneLoadedAt = now;
   try {
-    const rows = await pythiaRead(`(${PYTHIA_NS}.PYTHIA.URD_ListAllDualLinks)`);
+    const rows = await pythiaRead(pactCall("listAllDualLinks"));
     const map = {};
     if (Array.isArray(rows)) {
       for (const r of rows) {

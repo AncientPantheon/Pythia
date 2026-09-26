@@ -3,6 +3,7 @@ import { loadConfigFromDisk, type PythiaConfig } from "../config/index.js";
 import { resolveHealth, type HealthSnapshot } from "../health/index.js";
 import { STOA_NETWORK, type DialNode } from "../dial/index.js";
 import { PYTHIA_VERSION } from "../version.js";
+import { pactSurface } from "../pact/surface.js";
 
 /** The automaton's own capability flags — is Pythia LIVE and working as an
  * automaton (its autonomous machinery up + its own API link online), distinct
@@ -83,6 +84,9 @@ export function registerHealthz(app: Hono, deps: HealthzDeps = {}): void {
         active: snapshot.active,
         routing: snapshot.routing,
         sources: snapshot.sources,
+        // Which contract surface this build composes, and whether every Pact name it
+        // calls was verified against the deployed module at boot.
+        pactSurface: pactSurface(),
         ...(automaton ? { automaton } : {}),
       },
       200,

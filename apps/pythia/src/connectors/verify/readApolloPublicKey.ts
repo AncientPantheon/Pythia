@@ -2,7 +2,7 @@ import { dial, STOA_NETWORK, type DialNode, type FetchImpl } from "../../dial/in
 import { buildLocalCommand } from "../../chainweb/localCommand.js";
 
 /** The namespace + module the PYTHIA consumer-key reads live in. */
-const PYTHIA_NS = "ouronet-ns";
+import { pythiaRead } from "../../pact/names.js";
 
 /** The {primary, fallback} nodes to read the trust anchor from. */
 export interface ReadPair {
@@ -36,7 +36,7 @@ export async function readApolloPublicKey(
 ): Promise<string | null> {
   const chainId = opts.chainId ?? 0;
   const body = buildLocalCommand(
-    `(${PYTHIA_NS}.PYTHIA.UR_Public (read-string "acct"))`,
+    pythiaRead("publicKey", ['(read-string "acct")']),
     { chainId, data: { acct: account } },
   );
 

@@ -66,6 +66,8 @@ import { statsMiddleware } from "./stats/middleware.js";
 import { PythLedger } from "./pyth/ledger.js";
 import { PythEpochStore } from "./pyth/epoch.js";
 import { createEpochReader } from "./pyth/epochReader.js";
+import { checkPactNamesExist, formatExistenceReport } from "./pact/existenceCheck.js";
+import { recordPactExistence } from "./pact/surface.js";
 import { pythMeterMiddleware } from "./pyth/meter.js";
 import { TxTracker } from "./pyth/txTracker.js";
 import { pollExecution } from "./reads/index.js";
@@ -349,6 +351,27 @@ void detectEgressIp();
 // the node pool's read path; the ledger already serves day ordinals off the default
 // until this lands. Surfaced in the admin (StoaChain Earnings).
 void pythEpoch.resolve(createEpochReader(nodePool));
+
+// BOOT-TIME EXISTENCE CHECK over every Pact name this service calls.
+//
+// Pythia is fail-closed, so a dead read is indistinguishable from an empty world: the
+// auth cache stays empty, every consumer reads as inactive, and the fleet silently stops
+// minting keys. That has happened three times (UR_ActiveDualLinkSet, then
+// URD_ListActiveDualLinks, then the frontend's URD_List* after the 2026-09 redeploy) and
+// each time it looked exactly like a quiet day.
+//
+// ONE describe-module settles all of them. Non-blocking and non-fatal — an unreachable
+// node is NOT a dead name and must not take the service down — but a name that is really
+// gone is logged as an error NAMING THE SYMBOL AND ITS CALL SITE, and surfaces in
+// /healthz as `pactSurface.namesStatus`.
+void (async () => {
+  const report = await checkPactNamesExist(nodePool);
+  recordPactExistence(report);
+  const line = formatExistenceReport(report);
+  if (report.missing.length > 0) console.error(line);
+  else if (report.unreachable) console.warn(line);
+  else console.log(line);
+})();
 
 // The control surface the admin UI drives: read status, set the feed config (then
 // hot-reconfigure the pool + poll immediately), or force a refresh. The HMAC

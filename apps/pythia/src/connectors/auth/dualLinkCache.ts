@@ -2,7 +2,7 @@ import { dial, STOA_NETWORK, type DialNode, type FetchImpl } from "../../dial/in
 import { buildLocalCommand } from "../../chainweb/localCommand.js";
 
 /** The namespace + module the PYTHIA consumer-key reads live in. */
-const PYTHIA_NS = "ouronet-ns";
+import { pythiaRead } from "../../pact/names.js";
 
 /** The length (chars) of one Apollo account half (standard OR smart) within a
  * composite `dual-link-key`. Exported so other Apollo-account-length checks
@@ -86,7 +86,7 @@ export async function readActiveDualLinkAccounts(
   opts: { chainId?: number; fetchImpl?: FetchImpl } = {},
 ): Promise<Set<string>> {
   const chainId = opts.chainId ?? 0;
-  const body = buildLocalCommand(`(${PYTHIA_NS}.PYTHIA.URH_ListActiveDualLinks)`, { chainId });
+  const body = buildLocalCommand(pythiaRead("listActiveDualLinks"), { chainId });
 
   const res = await dial(
     {
