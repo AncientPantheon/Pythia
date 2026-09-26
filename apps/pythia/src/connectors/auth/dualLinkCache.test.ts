@@ -34,7 +34,7 @@ describe("splitDualLinkKey", () => {
   });
 });
 
-describe("readActiveDualLinkAccounts (reads URD_ListActiveDualLinks row objects)", () => {
+describe("readActiveDualLinkAccounts (reads URH_ListActiveDualLinks row objects)", () => {
   it("rejects when a 'success' response's data is not an array, instead of resolving to an empty set", async () => {
     const fetchImpl = fakeChainFetch({ status: "success", data: { unexpected: "shape" } });
     await expect(

@@ -43,17 +43,35 @@ export function splitDualLinkKey(key: string): { standard: string; smart: string
 
 /**
  * Read the chain's active-`DualLink` set via a keyless Pact local read of
- * `(ouronet-ns.PYTHIA.URD_ListActiveDualLinks)`, and return a flat `Set` of
+ * `(ouronet-ns.PYTHIA.URH_ListActiveDualLinks)`, and return a flat `Set` of
  * every standard AND smart Apollo account that is part of an active link.
  *
  * NOTE (v3.0.2): this previously called `UR_ActiveDualLinkSet`, which does NOT
  * exist on the deployed `ouronet-ns.PYTHIA` module — the read failed on every
  * poll, the fail-closed cache stayed empty, and so EVERY consumer's account
  * read as inactive (all `/verify` → `202 pending`, no `x-pythia-key` ever
- * minted, fleet-wide). Repointed to `URD_ListActiveDualLinks` — the live
- * function the landing page already uses — which returns active `DualLink` ROW
- * objects (`standard-apollo`, `smart-apollo`, `iz-active`, …); we take both
- * halves of each.
+ * minted, fleet-wide). It was repointed to `URD_ListActiveDualLinks`, described
+ * at the time as "the live function the landing page already uses".
+ *
+ * FIXED AGAIN 2026-09-26, BECAUSE THAT REPLACEMENT WAS ALSO DEAD.
+ * `(ouronet-ns.PYTHIA.URD_ListActiveDualLinks)` answers
+ * `Module ouronet-ns.PYTHIA has no such member` — the deployed name is
+ * `URH_ListActiveDualLinks`, and it returns 6 rows today. So the v3.0.2 fix
+ * swapped one non-existent name for another and reproduced the outage it was
+ * written to end: same empty fail-closed cache, same fleet-wide `202 pending`.
+ *
+ * WHY IT KEEPS HAPPENING, and the reason a third repoint is not the fix. A Pact
+ * call naming a function that does not exist is a RESOLUTION error. `try`
+ * cannot catch it, nothing throws at the call site, and a fail-closed cache
+ * turns it into "nobody is authorised" rather than "this read is broken" —
+ * which reads exactly like a quiet day. The only authority on whether a name
+ * exists is the chain, and `@ouronet/talos-registry` is that answer as data:
+ * `tryGetEntrypoint` / `resolveByName` would have said `URD_` is not a member
+ * and offered `URH_`, at build time, twice.
+ *
+ * `URH_ListActiveDualLinks` returns active `DualLink` ROW objects
+ * (`standard-apollo`, `smart-apollo`, `iz-active`, …); we take both halves of
+ * each.
  *
  * Mirrors {@link readApolloPublicKey}'s request-building shape, but — unlike
  * that fail-closed-to-`null` read — REJECTS on any failure (bad response,
@@ -68,7 +86,7 @@ export async function readActiveDualLinkAccounts(
   opts: { chainId?: number; fetchImpl?: FetchImpl } = {},
 ): Promise<Set<string>> {
   const chainId = opts.chainId ?? 0;
-  const body = buildLocalCommand(`(${PYTHIA_NS}.PYTHIA.URD_ListActiveDualLinks)`, { chainId });
+  const body = buildLocalCommand(`(${PYTHIA_NS}.PYTHIA.URH_ListActiveDualLinks)`, { chainId });
 
   const res = await dial(
     {
@@ -108,7 +126,7 @@ export async function readActiveDualLinkAccounts(
       "smart-apollo"?: unknown;
       "iz-active"?: unknown;
     };
-    // Defensive: URD_ListActiveDualLinks returns only actives, but never trust a
+    // Defensive: URH_ListActiveDualLinks returns only actives, but never trust a
     // row explicitly flagged inactive.
     if (r["iz-active"] === false) continue;
     const std = r["standard-apollo"];
