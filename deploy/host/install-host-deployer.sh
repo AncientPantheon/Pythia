@@ -67,8 +67,12 @@ echo "→ rendering + installing systemd path + service units"
 # container-writable side the path unit must watch), not the base.
 sed "s|__PYTHIA_SPOOL__|$REQ_DIR|" "$HOST/pythia-deploy.path" >/etc/systemd/system/pythia-deploy.path
 cp "$HOST/pythia-deploy.service" /etc/systemd/system/pythia-deploy.service
+cp "$HOST/pythia-docker-prune.service" /etc/systemd/system/pythia-docker-prune.service
+cp "$HOST/pythia-docker-prune.timer" /etc/systemd/system/pythia-docker-prune.timer
 systemctl daemon-reload
 systemctl enable --now pythia-deploy.path
+# Weekly disk hygiene — the second line of defence behind the deploy's own prune.
+systemctl enable --now pythia-docker-prune.timer
 
 cat <<EOF
 ✓ Deployer installed. pythia-deploy.path is watching:

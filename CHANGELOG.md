@@ -9,6 +9,46 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.3.1] — 2026-09-27
+
+### Fixed — the deploy leaked a dangling image on EVERY run and filled the disk
+
+`docker build -t pythia:latest` **untags** the previous image rather than deleting it, so every
+blue/green deploy left one orphaned `<none>` layer set behind — and nothing ever pruned them.
+Roughly **250 dangling images (~179 GB)** accumulated one per deploy and filled the 232 GB SSD to
+100% on 2026-09-27. journald died with `No space left on device`, the OOM killer took
+`chainweb-node` (7 GB RSS), the box wedged, and **Pythia — the fleet chokepoint — went dark for a
+day**. Every deploy had been leaking silently since blue/green was introduced.
+
+`deploy/host/pythia-deploy.sh` is now self-cleaning. After cutover it runs
+`docker image prune -f` plus an age-capped `docker builder prune`. Placement is load-bearing in
+two ways, both commented at the call site:
+
+- **After the old container is removed** — Docker refuses to prune an image a container still
+  references, so pruning any earlier would have reclaimed precisely nothing.
+- **Only on the success path** — `fail()` exits, so a failed or rolled-back deploy still keeps the
+  prior image intact and re-runnable.
+
+Only dangling `<none>` images are removed; both live tagged images (`pythia:latest` and the
+chainweb node's `stoa-node:latest`) are never candidates. Build cache is capped by age rather than
+wiped, so the next deploy still gets a warm `npm ci` / `better-sqlite3` layer. The whole step is
+best-effort — a cleanup failure never fails an otherwise-good deploy — and logs free space before
+and after.
+
+### Added — a weekly prune timer as the second line of defence
+
+`deploy/host/pythia-docker-prune.{service,timer}`, installed and enabled by
+`install-host-deployer.sh`. Catches what the deploy path cannot: rolled-back deploys, manual
+builds, and the chainweb node's `:latest` re-pulls (a separate leak owned by the hub's
+fleet-upgrade tooling).
+
+Uses `docker image prune -af --filter until=24h` rather than a bare `-af` deliberately: `-a` also
+removes tagged images no container currently uses, and there is a real window during a deploy where
+the freshly-built `pythia:latest` is tagged but its container has not started yet — a bare `-af`
+firing then would delete the image mid-deploy. The 24h floor keeps the breadth of `-a` while making
+that race impossible. Volumes are never touched (`pythia-data` holds the Pyth ledger, the ephemeral
+connector keys and `khronoton.db`).
+
 ## [3.3.0] — 2026-09-26
 
 ### Fixed — four DEAD Pact names were breaking the Connectors panel in production

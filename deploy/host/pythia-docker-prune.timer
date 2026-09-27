@@ -1,0 +1,18 @@
+# Weekly disk hygiene. Paired with pythia-docker-prune.service.
+#
+# Context: ~250 dangling images (~179 GB) accumulated one per deploy and filled the
+# 232 GB disk to 100% on 2026-09-27 — journald died with "No space left on device",
+# the OOM killer took chainweb-node, and Pythia (the fleet chokepoint) went dark for
+# a day. The deploy script is now self-cleaning; this is the second line of defence.
+[Unit]
+Description=Weekly Docker image prune on the Pythia box
+
+[Timer]
+OnCalendar=Sun 04:00
+# Survive downtime: if the box was off at 04:00 Sunday, run at next boot instead of
+# silently skipping the week.
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,29 @@
+# Belt-and-braces reclaim of unused Docker images, independent of the deploy path.
+#
+# pythia-deploy.sh now prunes the image it orphans on every deploy, but that only
+# helps when a deploy actually reaches its success path. This timer catches anything
+# the deploy path misses — a rolled-back deploy, a manual `docker build`, or the
+# chainweb node's `:latest` re-pulls (a separate leak, owned by the hub's
+# fleet-upgrade tooling, which currently pulls without pruning).
+#
+# Why `--filter until=24h` and not a bare `-af`:
+#   `-a` also removes TAGGED images that no container currently uses. There is a real
+#   window during a deploy where the freshly-built `pythia:latest` is tagged but its
+#   container has not started yet — a bare `-af` firing in that window would delete
+#   the image mid-deploy. Restricting to images older than 24h keeps the breadth of
+#   `-a` while making that race impossible.
+#
+# Volumes are NEVER touched: pythia-data holds the Pyth ledger, the ephemeral connector
+# keys and khronoton.db. Do not add --volumes here.
+[Unit]
+Description=Prune unused Docker images (Pythia box disk hygiene)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/docker image prune -af --filter until=24h
+ExecStart=/usr/bin/docker builder prune -f --filter until=168h
+# Never let a cleanup failure mark the unit failed and page anyone.
+SuccessExitStatus=0 1

@@ -198,6 +198,31 @@ docker stop "pythia-$OLD" >/dev/null 2>&1 || true
 docker rm "pythia-$OLD" >/dev/null 2>&1 || true
 log "✓ old container (pythia-$OLD) stopped + removed"
 
+# 8) Reclaim the image the retired color was running.
+#    `docker build -t pythia:latest` UNTAGS the previous image rather than deleting it,
+#    so EVERY deploy leaves one dangling <none> layer set behind. Nothing ever pruned
+#    them: ~250 accumulated (~179 GB) and filled the 232 GB disk to 100% on 2026-09-27,
+#    wedging the box — journald "No space left on device", then the OOM killer took
+#    chainweb-node, and Pythia (the fleet chokepoint) went dark for a day.
+#
+#    Placement matters, twice over:
+#      · AFTER the old container is removed — Docker refuses to prune an image that a
+#        container still references, so pruning any earlier reclaims nothing at all.
+#      · ONLY on the success path — `fail()` exits, so a failed or rolled-back deploy
+#        still keeps the prior image intact and re-runnable.
+#
+#    `docker image prune -f` removes ONLY dangling <none> images. The two live TAGGED
+#    images (this deploy's pythia:latest and the chainweb node's stoa-node:latest) are
+#    never candidates. Build cache is capped by age rather than wiped, so the next
+#    deploy still gets a warm npm ci / better-sqlite3 layer.
+#
+#    Best-effort throughout: a cleanup failure must never fail an otherwise-good deploy.
+log "→ reclaiming dangling images (root fs free before: $(df -Ph / | awk 'NR==2{print $4}'))"
+docker image prune -f 2>&1 | tee -a "$LOG" || log "⚠ image prune failed — continuing"
+docker builder prune -f --filter until=168h 2>&1 | tee -a "$LOG" \
+  || log "⚠ builder prune skipped (filter unsupported on this docker) — continuing"
+log "✓ cleanup done (root fs free after: $(df -Ph / | awk 'NR==2{print $4}'))"
+
 stop_heartbeat
 log "✓ deploy complete in $(elapsed)"
 echo success >"$STATUS"
