@@ -8,11 +8,41 @@ import { effectiveKey } from "../connectors/auth/effectiveKey.js";
 /** Only the three operational verbs are metered — `/{chain}/{read|send|poll}`. */
 const OPERATIONAL = OPERATIONAL_PATH;
 
-/** Extract the chainweb `/local` `gas` from a read response body (0 if absent or
- * not a Pact-local shape). Keyless — reads only the node's reported number. */
+/**
+ * Extract the chainweb `/local` `gas` from a read response body — but ONLY when the Pact
+ * call actually SUCCEEDED. 0 for a failure, a missing field, or a non-Pact shape.
+ *
+ * WHY THE SUCCESS CHECK IS LOAD-BEARING (2026-09 over-mint incident):
+ *
+ * A FAILED Pact `/local` reports the entire gas CEILING as consumed, not the trivial work a
+ * resolution error actually costs. Pythia sends `DEFAULT_READ_GAS_LIMIT = 100_000_000`, so a
+ * failing read comes back `gas: 100000000` where a successful one reports single digits.
+ * Since `pondus = classBase + sqrt(gasUsed)/2 + responseBytes/4096`, that is:
+ *
+ *     success:  10 + sqrt(2)/2        + …  ≈     10.8 pondus
+ *     failure:  10 + sqrt(1e8)/2      + …  ≈  5,010.1 pondus     ← 464x, measured live
+ *
+ * On ~2026-09-23 the `ouronet-ns.PYTHIA` module was redeployed (`URD_*` -> `URH_*`) and four
+ * frontend reads started failing. Those are same-origin, so the self key is injected and they
+ * meter as KEYED — the path that flows to the hub report and MINTS. Reported pondus jumped
+ * ~93x per request (7.3M/day -> 8,563M/day), the Hub over-credited an operator, and ~33,000
+ * Stoicism was over-minted on chain before the minter was paused.
+ *
+ * Beyond that incident this was a standing MINT-FARMING VECTOR: a keyed consumer could issue
+ * deliberately-failing reads — free, since `/local` costs nothing — and earn 464x the pondus of
+ * an honest read. Gas is evidence of work performed; a failed call performed none.
+ *
+ * Failed reads are still metered (classBase + response bytes) so abuse stays visible as
+ * petitions; they simply cannot mint. Scale of honest traffic is UNCHANGED, so `pondus_version`
+ * does not move — this restores the intended baseline rather than redefining it.
+ */
 export function gasFromLocalResponse(bodyText: string): number {
   try {
-    const g = (JSON.parse(bodyText) as { gas?: unknown }).gas;
+    const body = JSON.parse(bodyText) as { gas?: unknown; result?: { status?: unknown } };
+    // Only a successful Pact result may contribute gas. Anything else — an explicit
+    // "failure", an absent/!== "success" status, or a non-Pact body — contributes nothing.
+    if (body?.result?.status !== "success") return 0;
+    const g = body.gas;
     return typeof g === "number" && Number.isFinite(g) && g > 0 ? g : 0;
   } catch {
     return 0;

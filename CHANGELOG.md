@@ -9,6 +9,42 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.3.3] — 2026-09-27
+
+### Fixed — SECURITY/METERING: a FAILED read billed 464x an honest one, over-minting on chain
+
+A failed Pact `/local` reports the entire gas **ceiling** as consumed rather than the trivial work
+a resolution error actually costs. Pythia sends `DEFAULT_READ_GAS_LIMIT = 100_000_000`, and
+`gasFromLocalResponse` trusted the node's number without checking whether the call succeeded.
+Since `pondus = classBase + sqrt(gasUsed)/2 + responseBytes/4096`, measured live against the
+production gateway:
+
+| read | node `gas` | pondus |
+|---|---|---|
+| success (`UR_PythCurrentDay`) | `2` | **10.8** |
+| failure (dead `URD_ListActiveDualLinks`) | `100000000` | **5010.1** |
+
+**Impact.** On ~2026-09-23 `ouronet-ns.PYTHIA` was redeployed, renaming `URD_*` → `URH_*`, and
+four of Pythia's own frontend reads started failing. Those are same-origin, so the self key is
+injected and they meter as **keyed** — the path that flows to the hub report and **mints**.
+Reported `keyed_pondus` went 7.3M/day → 8,563M/day, the Hub over-credited an operator, and
+~33,000 Stoicism was over-minted on chain before the minter was paused. The Hub's own arithmetic
+(~10x requests × ~93x pondus-per-request ≈ ~930x) matches: the ~93x is this bug, and the ~10x is
+consumers retrying reads that the same redeploy had broken.
+
+**This was also a standing mint-farming vector, independent of the incident.** A keyed consumer
+could issue deliberately-failing reads — free, since `/local` costs nothing — and earn ~464x the
+pondus of an honest read. Gas is evidence of work performed; a failed call performed none.
+
+`gasFromLocalResponse` now counts gas **only** when `result.status === "success"`, and fails
+closed on an absent or unrecognised status. Failed reads are still metered at class base +
+response bytes, so abuse stays visible as petitions — they simply cannot mint.
+
+**`pondus_version` does NOT move.** This restores the intended scale rather than redefining it;
+honest traffic is billed exactly as before. Projected at Sep-24 volume: 8,563M/day →
+**17.5M/day** from this fix alone, and **~9.2M/day** (the 7–9M baseline) once request volume
+normalises as consumers' dead names are fixed — Pythia's own four are fixed in v3.3.0.
+
 ## [3.3.2] — 2026-09-27
 
 ### Fixed — a breaking constructor release could block EVERY Pythia deploy

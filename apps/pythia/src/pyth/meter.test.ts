@@ -10,6 +10,7 @@ import {
   gasFromLocalResponse,
   reservedGasForCmds,
 } from "./meter.js";
+import { pondus, CLASS_BASE } from "./pondus.js";
 
 const tmpDirs: string[] = [];
 function ledger(): PythLedger {
@@ -41,13 +42,49 @@ function appWith(l: PythLedger, handler: (c: Context) => Response | Promise<Resp
 }
 
 describe("gasFromLocalResponse", () => {
-  it("extracts a top-level gas field", () => {
-    expect(gasFromLocalResponse(JSON.stringify({ gas: 500000, result: {} }))).toBe(500000);
+  const ok = (gas: unknown) => JSON.stringify({ gas, result: { status: "success", data: 1 } });
+
+  it("extracts a top-level gas field from a SUCCESSFUL result", () => {
+    expect(gasFromLocalResponse(ok(500000))).toBe(500000);
   });
+
   it("returns 0 for missing / invalid / non-JSON", () => {
     expect(gasFromLocalResponse("{}")).toBe(0);
     expect(gasFromLocalResponse("not json")).toBe(0);
-    expect(gasFromLocalResponse(JSON.stringify({ gas: -5 }))).toBe(0);
+    expect(gasFromLocalResponse(ok(-5))).toBe(0);
+  });
+
+  // ── the 2026-09 over-mint ────────────────────────────────────────────────────────
+  it("returns 0 when the Pact call FAILED, even though the node reports the gas CEILING", () => {
+    // This is the real shape: a dead function name is a RESOLUTION error, and the node
+    // bills the whole 100M limit. Counting it made one failing read worth 5,010 pondus
+    // against an honest read's ~11 — a 464x mint multiplier.
+    const failed = JSON.stringify({
+      gas: 100_000_000,
+      result: {
+        status: "failure",
+        error: { message: "Module ouronet-ns.PYTHIA has no such member: URD_ListActiveDualLinks" },
+      },
+    });
+    expect(gasFromLocalResponse(failed)).toBe(0);
+  });
+
+  it("refuses to count gas when the result status is absent or unrecognised", () => {
+    // Fail closed: only an explicit "success" is evidence that work was performed.
+    expect(gasFromLocalResponse(JSON.stringify({ gas: 100_000_000, result: {} }))).toBe(0);
+    expect(gasFromLocalResponse(JSON.stringify({ gas: 100_000_000 }))).toBe(0);
+    expect(gasFromLocalResponse(JSON.stringify({ gas: 100_000_000, result: { status: "x" } }))).toBe(0);
+  });
+
+  it("bounds a failed read's pondus to roughly an honest read's, not 464x it", () => {
+    const failedGas = gasFromLocalResponse(
+      JSON.stringify({ gas: 100_000_000, result: { status: "failure" } }),
+    );
+    const honestGas = gasFromLocalResponse(ok(2));
+    const failedPondus = pondus({ classBase: CLASS_BASE.read, gasUsed: failedGas, responseBytes: 309 });
+    const honestPondus = pondus({ classBase: CLASS_BASE.read, gasUsed: honestGas, responseBytes: 440 });
+    expect(failedPondus).toBeLessThan(11);
+    expect(failedPondus).toBeLessThan(honestPondus * 2);
   });
 });
 
