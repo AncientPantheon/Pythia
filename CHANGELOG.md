@@ -13,27 +13,30 @@ Note: this is the **repo/service** changelog. The npm client's own change histor
 
 ### Fixed — a breaking constructor release could block EVERY Pythia deploy
 
-`codex@0.11.0` widened its `SeedType` with a fourth member, `"stoic"`, while
-`khronoton-core`'s mirrored `StoaChainSeedType` (whose own doc comment claims to copy Codex
-"verbatim") still carried the original three:
+`codex@0.11.0` is **internally inconsistent**: it widened `SeedType` with a fourth member,
+`"stoic"`, but left `StoaChainSeedType` — the union its own headless resolver consumes — at the
+original three. Both types live in Codex, in two different emitted modules:
 
 ```ts
-// codex 0.11.0
-type SeedType = "koala" | "chainweaver" | "eckowallet" | "stoic";
-// khronoton-core 0.11.0
+// codex 0.11.0 · dist/entities-*.d.ts:34
+type SeedType          = "koala" | "chainweaver" | "eckowallet" | "stoic";
+// codex 0.11.0 · dist/headlessResolver-*.d.ts:30   (feeds SnapshotSlice)
 type StoaChainSeedType = "koala" | "chainweaver" | "eckowallet";
 ```
 
-`tsc` then failed inside the image build (`keyResolver.ts` — `CodexSnapshot` no longer assignable
-to `SnapshotSlice`), so the deploy died at "Building image" — **every time**, including deploys
-carrying Pythia's own unrelated fixes. Reproduced across the matrix:
+So Codex's own `CodexSnapshot` is no longer assignable to Codex's own `SnapshotSlice`, and any
+consumer of `createHeadlessKadenaResolver` fails to typecheck. In Pythia that is
+`keyResolver.ts:88`, which runs inside the image build — so the deploy died at "Building image"
+**every time**, including deploys carrying Pythia's own unrelated fixes.
+
+Measured across the matrix — `khronoton-core`'s version has **no effect**; the only variable is Codex:
 
 | codex | khronoton-core | build |
 |---|---|---|
-| 0.10.0 | 0.10.0 | ❌ |
-| 0.11.0 | 0.10.0 | ❌ |
-| **0.10.0** | **0.11.0** | **✅** |
-| 0.11.0 | 0.11.0 | ❌ |
+| 0.10.0 | 0.10.0 | ✅ |
+| **0.11.0** | 0.10.0 | ❌ |
+| 0.10.0 | 0.11.0 | ✅ |
+| **0.11.0** | 0.11.0 | ❌ |
 
 Two changes:
 
@@ -43,13 +46,18 @@ Two changes:
   restores the pins committed on `main` and rebuilds **once**; only a failure on *both* is a real
   deploy failure. A constructor's breaking release can no longer hold Pythia's releases hostage,
   and the log says plainly which pins the image was actually built from.
-- **Committed pins moved to the verified-good pair** — `codex ^0.10.0` + `khronoton-core ^0.11.0`
-  — so the fallback target is current rather than ancient. `^0.10.0` is deliberate: in 0.x a caret
-  does not cross the minor, so it cannot drift onto the broken `0.11.0`.
+- **Committed pins moved to a verified-good pair** — `codex ^0.10.0` + `khronoton-core ^0.11.0` —
+  so the fallback target is current. The `^0.10.0` is the load-bearing one: in 0.x a caret does not
+  cross the minor, so it cannot drift onto the broken `0.11.0`.
 
-**Owned elsewhere:** the actual fix is `khronoton-core` adding `"stoic"` to `StoaChainSeedType`
-and publishing `0.12.0`. Until then `codex@latest` (0.11.0) is unusable here and the deployer will
-log that it fell back.
+**Owned elsewhere:** the fix belongs to **Codex** — reconcile `StoaChainSeedType` with `SeedType`
+(and handle `"stoic"` wherever the union is switched on) and publish `0.11.1`/`0.12.0`. Until then
+`codex@latest` is unusable here and the deployer will log that it fell back.
+
+> **Correction:** an earlier revision of this entry attributed the drift to `khronoton-core`
+> failing to mirror Codex's type. That was wrong — both unions are Codex's own, and the original
+> matrix that appeared to implicate Khronoton was a faulty measurement. Recorded rather than
+> silently edited, because acting on it would have sent the fix to the wrong repo.
 
 ## [3.3.1] — 2026-09-27
 
