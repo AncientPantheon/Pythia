@@ -9,6 +9,48 @@ MUST equal the root `package.json`'s `version` (and, in turn, `packages/pythia-c
 Note: this is the **repo/service** changelog. The npm client's own change history lives in
 [`packages/pythia-client/CHANGELOG.md`](packages/pythia-client/CHANGELOG.md).
 
+## [3.3.2] — 2026-09-27
+
+### Fixed — a breaking constructor release could block EVERY Pythia deploy
+
+`codex@0.11.0` widened its `SeedType` with a fourth member, `"stoic"`, while
+`khronoton-core`'s mirrored `StoaChainSeedType` (whose own doc comment claims to copy Codex
+"verbatim") still carried the original three:
+
+```ts
+// codex 0.11.0
+type SeedType = "koala" | "chainweaver" | "eckowallet" | "stoic";
+// khronoton-core 0.11.0
+type StoaChainSeedType = "koala" | "chainweaver" | "eckowallet";
+```
+
+`tsc` then failed inside the image build (`keyResolver.ts` — `CodexSnapshot` no longer assignable
+to `SnapshotSlice`), so the deploy died at "Building image" — **every time**, including deploys
+carrying Pythia's own unrelated fixes. Reproduced across the matrix:
+
+| codex | khronoton-core | build |
+|---|---|---|
+| 0.10.0 | 0.10.0 | ❌ |
+| 0.11.0 | 0.10.0 | ❌ |
+| **0.10.0** | **0.11.0** | **✅** |
+| 0.11.0 | 0.11.0 | ❌ |
+
+Two changes:
+
+- **`deploy/host/pythia-deploy.sh` now falls back.** Step 1's `@latest` constructor bump was
+  always documented as best-effort, but only a *registry* failure was handled — an *incompatible
+  release* still killed the deploy. If the build fails and the pins were bumped, the deployer now
+  restores the pins committed on `main` and rebuilds **once**; only a failure on *both* is a real
+  deploy failure. A constructor's breaking release can no longer hold Pythia's releases hostage,
+  and the log says plainly which pins the image was actually built from.
+- **Committed pins moved to the verified-good pair** — `codex ^0.10.0` + `khronoton-core ^0.11.0`
+  — so the fallback target is current rather than ancient. `^0.10.0` is deliberate: in 0.x a caret
+  does not cross the minor, so it cannot drift onto the broken `0.11.0`.
+
+**Owned elsewhere:** the actual fix is `khronoton-core` adding `"stoic"` to `StoaChainSeedType`
+and publishing `0.12.0`. Until then `codex@latest` (0.11.0) is unusable here and the deployer will
+log that it fell back.
+
 ## [3.3.1] — 2026-09-27
 
 ### Fixed — the deploy leaked a dangling image on EVERY run and filled the disk

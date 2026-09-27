@@ -112,9 +112,11 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG"
 # BEST-EFFORT: a registry hiccup must not fail an otherwise-good deploy. On failure we log
 # and continue, building the constructor pins committed on main.
 log "→ bumping constructors to @latest (npm in a throwaway node container)"
+BUMPED=0
 if docker run --rm -v "$REPO":/w -w /w node:22-alpine \
      npm install @ancientpantheon/codex@latest @ancientpantheon/khronoton-core@latest \
      -w @ancientpantheon/pythia --no-audit --no-fund 2>&1 | tee -a "$LOG"; then
+  BUMPED=1
   log "✓ constructor pins bumped to @latest"
 else
   log "⚠ constructor bump failed — continuing with the pins committed on main"
@@ -123,12 +125,39 @@ fi
 # 2) Build the new image. Prefer BuildKit + --progress=plain (line-by-line, no
 #    cursor-rewrite → cleaner SSE terminal) WHEN buildx is present; otherwise fall
 #    back to the legacy builder, which streams fine and is all some hosts have.
+build_image() {
+  if DOCKER_BUILDKIT=1 docker buildx version >/dev/null 2>&1; then
+    DOCKER_BUILDKIT=1 docker build --progress=plain -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
+  else
+    log "(buildx not present — using the legacy builder)"
+    docker build -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
+  fi
+}
+
 phase "2/5 · Build image"
-if DOCKER_BUILDKIT=1 docker buildx version >/dev/null 2>&1; then
-  DOCKER_BUILDKIT=1 docker build --progress=plain -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
-else
-  log "(buildx not present — using the legacy builder)"
-  docker build -t "$IMAGE" "$REPO" 2>&1 | tee -a "$LOG"
+# The @latest bump in step 1 is BEST-EFFORT — but until now only a *registry* failure
+# was handled, not an *incompatible release*. On 2026-09-27 codex@0.11.0 widened its
+# `SeedType` with "stoic" while khronoton-core's mirrored `StoaChainSeedType` still had
+# the old three, so `tsc` failed inside the image build and EVERY deploy died at this
+# phase — including deploys carrying Pythia's own unrelated fixes. A constructor's
+# breaking release must never hold Pythia's releases hostage.
+#
+# So: if the build fails AND we bumped, restore the pins committed on main and rebuild
+# once. Only a failure on BOTH is a real deploy failure. (`if !` suppresses `set -e`/the
+# ERR trap for the probe, which is exactly what we want here.)
+if ! build_image; then
+  if [ "$BUMPED" = 1 ]; then
+    log "⚠ build FAILED with constructors at @latest — an incompatible constructor release."
+    log "  Restoring the pins committed on main and rebuilding ONCE."
+    git -C "$REPO" reset --hard origin/main 2>&1 | tee -a "$LOG"
+    if ! build_image; then
+      fail "build failed with BOTH @latest and the committed constructor pins"
+    fi
+    log "✓ built with the COMMITTED constructor pins — @latest is broken, see the tsc errors above."
+    log "  Pythia deployed fine; the constructor needs a fix before its @latest is usable."
+  else
+    fail "docker build failed (constructors were already at the committed pins)"
+  fi
 fi
 
 # 3) Pick the target color (the one NOT currently serving).
